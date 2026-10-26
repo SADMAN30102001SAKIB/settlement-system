@@ -1,0 +1,27 @@
+{
+  "name": "@settlement/app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cf dev",
+    "preview": "vite preview",
+    "build": "cf build",
+    "types": "cf workers types",
+    "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000001 --mode development --local --persist-to .cloudflare/state --dir ../../packages/database/migrations",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json && tsc -p tsconfig.tools.json"
+  },
+  "dependencies": {
+    "@settlement/database": "workspace:*",
+    "hono": "4.13.13",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "cf": "1.0.0-beta.21",
+    "vite": "8.3.5"
+  }
+}

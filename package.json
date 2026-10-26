@@ -1,0 +1,39 @@
+{
+  "name": "settlement-system",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "pnpm": ">=12.0.0 <13"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @settlement/app dev",
+    "preview": "pnpm --filter @settlement/app preview",
+    "build": "pnpm --filter @settlement/app build",
+    "typecheck": "pnpm --filter @settlement/app types && tsc -p tsconfig.json && pnpm -r typecheck",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "deadcode": "fallow dead-code --fail-on-issues",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm deadcode && pnpm test && pnpm build",
+    "db:generate": "pnpm --filter @settlement/database generate",
+    "db:migrate:local": "pnpm --filter @settlement/app db:migrate:local"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.19.2",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "fallow": "3.35.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  }
+}
