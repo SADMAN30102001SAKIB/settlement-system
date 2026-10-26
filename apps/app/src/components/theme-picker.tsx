@@ -1,21 +1,13 @@
 import { useEffect, useState } from 'react';
-
-type Theme = 'light' | 'dark' | 'system';
+import { applyTheme, readTheme } from '../lib/theme';
+import type { Theme } from '../lib/theme';
 
 export function ThemePicker() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    try {
-      const saved = localStorage.getItem('hexa-theme');
-      return saved === 'light' || saved === 'dark' ? saved : 'system';
-    } catch {
-      return 'system';
-    }
-  });
+  const [theme, setTheme] = useState<Theme>(readTheme);
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
-      document.documentElement.dataset['theme'] =
-        theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
+      applyTheme(theme);
     };
     apply();
     try {

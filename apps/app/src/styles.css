@@ -6,11 +6,14 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --ink: #172e28;
-  --muted: #64756c;
+  --muted: #5d6f63;
+  --focus-ring: #497f65;
   --line: #dfe6de;
   --accent: #17684e;
   --surface: #fff;
   --soft: #eef3ec;
+  --scrollbar-thumb: #6f8376;
+  --scrollbar-hover: #4e6858;
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
@@ -18,10 +21,13 @@
   background: #111c18;
   --ink: #e4ece7;
   --muted: #a4b7aa;
+  --focus-ring: #8dceac;
   --line: #35483d;
-  --accent: #26856a;
+  --accent: #21765d;
   --surface: #1b2a23;
   --soft: #25392e;
+  --scrollbar-thumb: #6c8875;
+  --scrollbar-hover: #95b19e;
 }
 :root[data-theme='dark'] input,
 :root[data-theme='dark'] select,
@@ -90,6 +96,41 @@
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+@supports selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-hover);
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 body {
   margin: 0;
@@ -200,7 +241,7 @@ input[type='checkbox'] {
   accent-color: var(--accent);
 }
 :focus-visible {
-  outline: 3px solid #83b49b;
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 h1,
@@ -252,6 +293,7 @@ strong {
 .secondary {
   background: white;
   color: #354c40;
+  transition: none;
 }
 .secondary:hover {
   background: var(--soft);
@@ -516,7 +558,8 @@ strong {
   width: 36px;
   height: 36px;
   border: 1px solid var(--line);
-  background: #edf1e8;
+  background: var(--soft);
+  color: var(--ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -653,10 +696,10 @@ strong {
 }
 .breadcrumb {
   font-size: 11px;
-  color: #6f7e72;
+  color: var(--muted);
 }
 .breadcrumb span {
-  color: #a2afa3;
+  color: var(--muted);
   margin: 0 12px;
 }
 .topbar-meta {
@@ -1036,8 +1079,8 @@ td .text-button {
   height: 28px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #f4f7f0;
-  color: #668055;
+  background: var(--soft);
+  color: var(--muted);
 }
 .form-sections p {
   font-size: 12px;
@@ -1089,7 +1132,7 @@ td .text-button {
 }
 .commission span {
   font-size: 11px;
-  color: #587046;
+  color: #50683f;
   display: block;
 }
 .commission strong {
@@ -1210,7 +1253,8 @@ td .text-button {
   left: 250px;
   top: -100px;
   padding: 12px;
-  background: white;
+  background: var(--surface);
+  color: var(--ink);
   z-index: 100;
 }
 .skip-link:focus {

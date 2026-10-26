@@ -181,7 +181,7 @@ export function Business({
               </button>
               <a
                 className="primary business-settlement-link"
-                href="#/settlements/new"
+                href="/settlements/new"
               >
                 Create settlement
               </a>
@@ -275,7 +275,7 @@ export function Business({
           </button>
           {!brands.length ? (
             <p>
-              <a href="#/brands">Add your first brand before importing</a>
+              <a href="/brands">Add your first brand before importing</a>
             </p>
           ) : null}
         </section>

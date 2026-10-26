@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { contrastFailures } from './contrast';
 
 async function signIn(page: Page) {
   await page.goto('/');
@@ -47,7 +48,7 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
   await page.getByLabel(/Making cost/).fill('100');
   await page.getByRole('button', { name: /Save brand|Add brand/ }).click();
   await expect(page.getByText(brand, { exact: true })).toBeVisible();
-  await page.goto('/#/settlements/new');
+  await page.goto('/settlements/new');
   await page
     .getByLabel('Brand', { exact: true })
     .last()
@@ -110,12 +111,12 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     path: testInfo.outputPath('invoice.png'),
     fullPage: true,
   });
-  await page.goto('/#/notes');
+  await page.goto('/notes');
   await page.getByLabel('Filter work by brand').selectOption({ label: brand });
   await expect(
     page.getByRole('cell', { name: 'Browser verification', exact: true }),
   ).toBeVisible();
-  await page.goto('/#/business');
+  await page.goto('/business');
   await expect(
     page.getByRole('heading', { name: 'Understand every order’s outcome' }),
   ).toBeVisible();
@@ -179,13 +180,13 @@ test('business tracking guides import, costs and review without exposing every f
     errors.push(error.message);
   });
   await signIn(page);
-  await page.goto('/#/brands');
+  await page.goto('/brands');
   const brand = `Guided ${testInfo.project.name} ${String(Date.now())}`;
   await page.getByLabel('Brand name', { exact: true }).fill(brand);
   await page.getByLabel(/Making cost/).fill('100');
   await page.getByRole('button', { name: 'Save brand' }).click();
   await expect(page.getByText(brand, { exact: true })).toBeVisible();
-  await page.goto('/#/business');
+  await page.goto('/business');
   await page
     .getByLabel('Brand', { exact: true })
     .selectOption({ label: brand });
@@ -329,11 +330,11 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   });
   await signIn(page);
   const brand = `Ads ${testInfo.project.name} ${String(Date.now())}`;
-  await page.goto('/#/brands');
+  await page.goto('/brands');
   await page.getByLabel('Brand name', { exact: true }).fill(brand);
   await page.getByRole('button', { name: 'Save brand' }).click();
   await expect(page.getByText(brand, { exact: true })).toBeVisible();
-  await page.goto('/#/advertising/new');
+  await page.goto('/advertising/new');
   await page
     .getByLabel('Brand', { exact: true })
     .selectOption({ label: brand });
@@ -364,7 +365,7 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   await expect(page.getByText(/Paid ৳40/)).toBeVisible();
   await page.getByRole('button', { name: 'View / edit proof' }).click();
   await expect(page.getByRole('img', { name: 'proof preview' })).toBeVisible();
-  await page.goto('/#/settings');
+  await page.goto('/settings');
   await page.getByLabel(/^(Upload|Replace) signature/).setInputFiles(image);
   await expect(
     page.getByRole('img', { name: 'signature preview' }),
@@ -443,7 +444,7 @@ test('advertising invoice, payment proof and invoice image controls work end to 
     path: testInfo.outputPath('settings.png'),
     fullPage: true,
   });
-  await page.goto('/#/advertising');
+  await page.goto('/advertising');
   await page
     .getByLabel('Brand account', { exact: true })
     .selectOption({ label: brand });
@@ -473,7 +474,7 @@ test('layouts stay balanced across desktop, tablet and narrow mobile screens', a
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of ['settings', 'files', 'settlements/new']) {
-      await page.goto(`/#/${route}`);
+      await page.goto(`/${route}`);
       await expect(page.locator('main h1')).toBeVisible();
       await expect(page.locator('main')).not.toContainText(
         'Internal server error',
@@ -604,7 +605,7 @@ test('a 50-campaign invoice exports readable multiple A4 pages rather than shrin
   });
   expect(response.status()).toBe(201);
   const id = z.object({ id: z.string() }).parse(await response.json()).id;
-  await page.goto(`/#/advertising/${id}`);
+  await page.goto(`/advertising/${id}`);
   await expect(page.locator('.invoice-document tbody tr')).toHaveCount(50);
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download PDF' }).click();
@@ -629,7 +630,7 @@ test('themes persist, follow the system, and keep compact advertising invoices p
   await page.reload();
   await expect(page.getByLabel('Color theme')).toHaveValue('dark');
   for (const route of ['settings', 'business', 'settlements/new']) {
-    await page.goto(`/#/${route}`);
+    await page.goto(`/${route}`);
     await expect(page.getByLabel('Color theme')).toHaveValue('dark');
     expect(
       await page.evaluate(
@@ -673,7 +674,7 @@ test('themes persist, follow the system, and keep compact advertising invoices p
     },
   });
   expect(imported.status()).toBe(200);
-  await page.goto('/#/settlements/new');
+  await page.goto('/settlements/new');
   await page.reload();
   await page
     .getByRole('button', { name: 'Load settlement totals', exact: true })
@@ -705,7 +706,7 @@ test('themes persist, follow the system, and keep compact advertising invoices p
   });
   expect(response.status()).toBe(201);
   const id = z.object({ id: z.string() }).parse(await response.json()).id;
-  await page.goto(`/#/advertising/${id}`);
+  await page.goto(`/advertising/${id}`);
   await expect(page.locator('.invoice-advertising')).toBeVisible();
   await expect(page.locator('.invoice-document')).toHaveCSS(
     'color',
@@ -736,5 +737,121 @@ test('themes persist, follow the system, and keep compact advertising invoices p
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByLabel('Color theme').selectOption('light');
+});
+
+test('clean routes support navigation, reloads, history and existing hash bookmarks', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto('/brands');
+  await expect(
+    page.getByRole('heading', { name: 'Built around your brands' }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/brands$/);
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: 'Built around your brands' }),
+  ).toBeVisible();
+  if (testInfo.project.name === 'mobile')
+    await page.getByRole('button', { name: 'Toggle navigation' }).click();
+  const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+  await expect(
+    navigation.getByRole('link', { name: 'Invoice settings' }),
+  ).toHaveAttribute('href', '/settings');
+  await navigation.getByRole('link', { name: 'Invoice settings' }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/brands$/);
+  await expect(
+    page.getByRole('heading', { name: 'Built around your brands' }),
+  ).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole('heading', { name: 'Make it yours' }),
+  ).toBeVisible();
+  await page.goto('/#/brands');
+  await expect(page).toHaveURL(/\/brands$/);
+  await expect(
+    page.getByRole('heading', { name: 'Built around your brands' }),
+  ).toBeVisible();
+  await expect(page.locator('a[href^="#/"]')).toHaveCount(0);
+});
+
+test('shared screen colors and scrollbars remain legible in both themes', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto('/brands');
+  await page
+    .getByLabel('Brand name', { exact: true })
+    .fill(
+      `OK Tailor appearance ${testInfo.project.name} ${String(Date.now())}`,
+    );
+  await page.getByLabel(/Making cost/).fill('450');
+  await page.getByRole('button', { name: 'Save brand' }).click();
+  await expect(page.locator('.brand-row .avatar').last()).toBeVisible();
+  for (const theme of ['light', 'dark']) {
+    await page.getByLabel('Color theme').selectOption(theme);
+    for (const route of [
+      'brands',
+      'settlements',
+      'settlements/new',
+      'advertising',
+      'advertising/new',
+      'business',
+      'notes',
+      'settings',
+      'files',
+    ]) {
+      await page.goto(`/${route}`);
+      await expect(page.getByLabel('Color theme')).toHaveValue(theme);
+      await expect(page.locator('main h1')).toBeVisible();
+      const failures = await contrastFailures(page);
+      console.log(JSON.stringify({ theme, route, failures }));
+      expect.soft(failures, `${theme} ${route} text contrast`).toEqual([]);
+      const scrollbar = await page.evaluate(() => ({
+        width: getComputedStyle(document.documentElement, '::-webkit-scrollbar')
+          .width,
+        arrows: getComputedStyle(
+          document.documentElement,
+          '::-webkit-scrollbar-button',
+        ).display,
+        thumb: getComputedStyle(
+          document.documentElement,
+          '::-webkit-scrollbar-thumb',
+        ).backgroundColor,
+      }));
+      expect(scrollbar.width).toBe('8px');
+      expect(scrollbar.arrows).toBe('none');
+      expect(scrollbar.thumb).not.toBe('rgba(0, 0, 0, 0)');
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > window.innerWidth,
+        ),
+      ).toBe(false);
+      if (route === 'brands' || route === 'settlements/new')
+        await page.screenshot({
+          path: testInfo.outputPath(`${theme}-${route.replace('/', '-')}.png`),
+          fullPage: true,
+        });
+      if (route === 'brands') {
+        await page.locator('.skip-link').focus();
+        expect
+          .soft(await contrastFailures(page), `${theme} focused skip link`)
+          .toEqual([]);
+      }
+      if (route === 'business') {
+        await page
+          .getByRole('button', { name: 'Add ad spend', exact: true })
+          .click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        expect
+          .soft(await contrastFailures(page), `${theme} advertising dialog`)
+          .toEqual([]);
+        await page.keyboard.press('Escape');
+      }
+    }
+  }
   await page.getByLabel('Color theme').selectOption('light');
 });

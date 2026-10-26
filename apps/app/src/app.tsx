@@ -131,8 +131,12 @@ function ReportView({
 }
 
 export function App() {
-  const [path, setPath] = useState(
-    window.location.hash.slice(1) || '/settlements',
+  const [path, setPath] = useState(() =>
+    window.location.hash.startsWith('#/')
+      ? window.location.hash.slice(1)
+      : window.location.pathname === '/'
+        ? '/settlements'
+        : window.location.pathname,
   );
   const [session, setSession] = useState<{
     initialized: boolean;
@@ -163,20 +167,63 @@ export function App() {
     setBrands(data.brands);
     setSettings(data.settings);
   }, []);
-  const navigate = (next: string) => {
-    window.location.hash = next;
+  const navigate = useCallback((next: string) => {
+    if (window.location.pathname !== next)
+      window.history.pushState(null, '', next);
+    setPath(next);
     setNavOpen(false);
-  };
+    window.scrollTo(0, 0);
+  }, []);
   useEffect(() => {
-    const onHash = () => {
-      setPath(window.location.hash.slice(1) || '/settlements');
+    if (window.location.hash.startsWith('#/'))
+      window.history.replaceState(null, '', window.location.hash.slice(1));
+    const onPop = () => {
+      setPath(
+        window.location.pathname === '/'
+          ? '/settlements'
+          : window.location.pathname,
+      );
+      setNavOpen(false);
       window.scrollTo(0, 0);
     };
-    window.addEventListener('hashchange', onHash);
-    return () => {
-      window.removeEventListener('hashchange', onHash);
+    window.addEventListener('popstate', onPop);
+    const onLink = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey ||
+        !(event.target instanceof Element)
+      )
+        return;
+      const link = event.target.closest<HTMLAnchorElement>('a[href]');
+      if (
+        link === null ||
+        link.hasAttribute('download') ||
+        (link.target && link.target !== '_self')
+      )
+        return;
+      const url = new URL(link.href);
+      if (
+        url.origin !== window.location.origin ||
+        url.hash ||
+        url.search ||
+        !/^\/(settlements|brands|settings|notes|advertising|business|files)(\/|$)/.test(
+          url.pathname,
+        )
+      )
+        return;
+      event.preventDefault();
+      navigate(url.pathname);
     };
-  }, []);
+    document.addEventListener('click', onLink);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('click', onLink);
+    };
+  }, [navigate]);
   useEffect(() => {
     const controller = new AbortController();
     api(
@@ -263,7 +310,7 @@ export function App() {
       </a>
       <aside className={`sidebar ${navOpen ? 'is-open' : ''}`}>
         <a
-          href="#/settlements"
+          href="/settlements"
           className="wordmark"
           onClick={() => {
             setNavOpen(false);
@@ -287,7 +334,7 @@ export function App() {
           ].map(([href, label, marker]) => (
             <a
               key={href}
-              href={`#${href ?? ''}`}
+              href={href ?? '/settlements'}
               className={path.startsWith(href ?? '/') ? 'active' : ''}
               aria-current={path.startsWith(href ?? '/') ? 'page' : undefined}
               onClick={() => {
