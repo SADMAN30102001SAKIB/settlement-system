@@ -4,7 +4,7 @@ import { parseMoney } from '@settlement/domain/money';
 import { paymentStatus } from '@settlement/domain/payments';
 import { z } from 'zod';
 
-import { Alert, ErrorMessage, Field } from '../../components/ui';
+import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { api, okSchema, paymentSchema } from '../../lib/api';
 import type { Payment } from '../../lib/api';
 import { dateLabel, formText, money, today } from '../../lib/format';
@@ -244,7 +244,13 @@ export function PaymentsPanel({
             }}
           />
           <button className="primary" disabled={pending || uploading}>
-            {pending ? 'Saving…' : 'Record payment'}
+            {pending ? (
+              <>
+                <Spinner size={12} /> Saving…
+              </>
+            ) : (
+              'Record payment'
+            )}
           </button>
         </form>
       </div>

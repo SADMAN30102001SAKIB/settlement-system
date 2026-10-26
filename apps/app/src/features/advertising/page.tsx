@@ -12,6 +12,7 @@ import {
   Field,
   Metric,
   PageHeading,
+  Skeleton,
   SkeletonInvoice,
   SkeletonMetrics,
   SkeletonTable,
@@ -224,7 +225,13 @@ function Editor({
         </div>
         {error ? <Alert>{error}</Alert> : null}
         <button className="primary" disabled={pending}>
-          {pending ? 'Saving…' : 'Save invoice'}
+          {pending ? (
+            <>
+              <Spinner size={12} /> Saving invoice…
+            </>
+          ) : (
+            'Save invoice'
+          )}
         </button>
       </form>
     </>
@@ -361,6 +368,7 @@ export function Advertising({
   const [overview, setOverview] = useState<
     z.infer<typeof accountOverviewSchema>['items']
   >([]);
+  const [overviewLoading, setOverviewLoading] = useState(true);
   const parts = path.split('/');
   const listing = !parts[2];
   async function reloadAccount() {
@@ -388,6 +396,9 @@ export function Advertising({
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(ErrorMessage(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setOverviewLoading(false);
       });
     return () => {
       controller.abort();
@@ -450,65 +461,86 @@ export function Advertising({
       />
       <section className="panel">
         <h2>Brand accounts · all dates</h2>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Brand</th>
-                <th>Invoices</th>
-                <th>Advertising cost</th>
-                <th>Total paid</th>
-                <th>Due / advance</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {overview.map((account) => (
-                <tr key={account.id}>
-                  <td>{account.name}</td>
-                  <td>{account.count}</td>
-                  <td>{money(account.total)}</td>
-                  <td>{money(account.paid)}</td>
-                  <td>
-                    {money(Math.abs(account.total - account.paid))}{' '}
-                    {account.paid > account.total
-                      ? 'Advance'
-                      : account.paid === account.total
-                        ? 'Settled'
-                        : 'Due'}
-                  </td>
-                  <td>
-                    <button
-                      className="secondary compact"
-                      disabled={reloading}
-                      onClick={() => {
-                        if (brandId !== account.id) {
-                          setBrandId(account.id);
-                          setData(null);
-                        }
-                        setError('');
-                        setQuery('');
-                        setFrom('');
-                        setTo('');
-                        accountPanel.current?.focus({ preventScroll: true });
-                        accountPanel.current?.scrollIntoView({
-                          behavior: window.matchMedia(
-                            '(prefers-reduced-motion: reduce)',
-                          ).matches
-                            ? 'instant'
-                            : 'smooth',
-                          block: 'start',
-                        });
-                      }}
-                    >
-                      Open account
-                    </button>
-                  </td>
+        {overviewLoading && overview.length === 0 ? (
+          <SkeletonTable
+            rows={3}
+            columns={6}
+            headers={[
+              'Brand',
+              'Invoices',
+              'Advertising cost',
+              'Total paid',
+              'Due / advance',
+              'Action',
+            ]}
+          />
+        ) : overview.length === 0 ? (
+          <div className="empty">
+            <p className="muted">
+              No brand accounts with advertising activity yet.
+            </p>
+          </div>
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Brand</th>
+                  <th>Invoices</th>
+                  <th>Advertising cost</th>
+                  <th>Total paid</th>
+                  <th>Due / advance</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {overview.map((account) => (
+                  <tr key={account.id}>
+                    <td>{account.name}</td>
+                    <td>{account.count}</td>
+                    <td>{money(account.total)}</td>
+                    <td>{money(account.paid)}</td>
+                    <td>
+                      {money(Math.abs(account.total - account.paid))}{' '}
+                      {account.paid > account.total
+                        ? 'Advance'
+                        : account.paid === account.total
+                          ? 'Settled'
+                          : 'Due'}
+                    </td>
+                    <td>
+                      <button
+                        className="secondary compact"
+                        disabled={reloading}
+                        onClick={() => {
+                          if (brandId !== account.id) {
+                            setBrandId(account.id);
+                            setData(null);
+                          }
+                          setError('');
+                          setQuery('');
+                          setFrom('');
+                          setTo('');
+                          accountPanel.current?.focus({ preventScroll: true });
+                          accountPanel.current?.scrollIntoView({
+                            behavior: window.matchMedia(
+                              '(prefers-reduced-motion: reduce)',
+                            ).matches
+                              ? 'instant'
+                              : 'smooth',
+                            block: 'start',
+                          });
+                        }}
+                      >
+                        Open account
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
       <section
         className="panel advertising-account-panel"
@@ -548,6 +580,14 @@ export function Advertising({
             </button>
           ) : null}
         </div>
+        {reloading ? (
+          <Skeleton
+            className="skeleton-progress-bar"
+            height={4}
+            radius={2}
+            aria-label="Reloading account…"
+          />
+        ) : null}
         <div className="form-grid">
           <Field label="Brand account">
             <select
