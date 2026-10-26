@@ -99,6 +99,7 @@ input,
 select,
 textarea {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 10px 12px;
   background: white;
@@ -587,9 +588,9 @@ strong {
 }
 .page-content {
   width: 100%;
-  max-width: 1500px;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 42px;
+  padding: 32px;
   flex: 1;
 }
 .page-heading {
@@ -597,7 +598,76 @@ strong {
   justify-content: space-between;
   align-items: center;
   gap: 22px;
+  flex-wrap: wrap;
   margin-bottom: 30px;
+}
+.page-heading > div:first-child {
+  min-width: 0;
+  flex: 1 1 360px;
+}
+.page-heading > button,
+.page-heading > .actions {
+  flex-shrink: 0;
+}
+.page-content > .panel + .panel {
+  margin-top: 24px;
+}
+.settings-layout {
+  display: grid;
+  gap: 24px;
+  max-width: 1120px;
+}
+.invoice-images-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.invoice-image-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfa;
+}
+.invoice-image-card h3 {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+.invoice-image-card .image-upload {
+  margin: 0;
+}
+.invoice-image-card .image-upload > a,
+.invoice-image-card .image-upload > p.muted {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 132px;
+  padding: 16px;
+  margin: 0 0 20px;
+  border: 1px dashed #cdd8cb;
+  border-radius: 8px;
+  background: white;
+}
+.invoice-image-card img {
+  max-width: 100%;
+}
+.files-table .numeric {
+  text-align: right;
+}
+.files-table .file-actions {
+  text-align: left;
+  width: 160px;
+}
+.files-table .file-name {
+  overflow-wrap: anywhere;
+}
+.files-table .actions {
+  flex-wrap: nowrap;
+  gap: 16px;
+}
+.files-table .actions a {
+  display: inline-flex;
+  align-items: center;
 }
 .page-heading p.muted {
   font-size: 12px;
@@ -704,7 +774,7 @@ td.numeric {
   white-space: nowrap;
   text-align: right;
 }
-th:nth-child(n + 3):nth-child(-n + 5) {
+th.numeric {
   text-align: right;
 }
 .emphasis {
@@ -784,6 +854,69 @@ td .text-button {
   grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
   gap: 25px;
   align-items: start;
+}
+.settlement-source {
+  margin-bottom: 24px;
+}
+.settlement-source > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.settlement-source[open] > summary {
+  margin-bottom: 16px;
+}
+.source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.settlement-source > .panel {
+  padding: 0;
+  border: 0;
+}
+.settlement-editor {
+  display: block;
+}
+.settlement-identity {
+  grid-template-columns: 1fr 1fr 1.4fr;
+}
+.settlement-counts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.settlement-amounts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.settlement-editor .calculation {
+  position: static;
+  margin-top: 24px;
+}
+.settlement-editor .calculation h2 {
+  font-size: 20px;
+}
+.settlement-editor .calculation dl {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+}
+.settlement-editor .commission {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.settlement-editor .commission strong {
+  margin: 0;
+}
+.settlement-editor .calculation > button {
+  width: auto;
+  min-width: 240px;
+}
+.calculation-breakdown > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
 }
 .form-sections {
   display: flex;
@@ -1179,6 +1312,21 @@ td .text-button {
     display: none;
   }
 }
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 250px;
+  }
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+  .workspace-body {
+    margin-left: 0;
+  }
+  .menu-toggle {
+    display: block;
+  }
+}
 @media (max-width: 850px) {
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1244,6 +1392,68 @@ td .text-button {
     flex-direction: column;
     gap: 17px;
   }
+  .page-heading > div:first-child {
+    flex-basis: auto;
+  }
+  .invoice-images-grid,
+  .settlement-identity,
+  .settlement-amounts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settlement-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-editor .calculation dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settlement-editor .calculation > button {
+    width: 100%;
+    min-width: 0;
+  }
+  .invoice-image-card {
+    padding: 16px;
+  }
+  .files-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .files-table,
+  .files-table tbody,
+  .files-table tr,
+  .files-table td {
+    display: block;
+    width: 100%;
+  }
+  .files-table tr {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .files-table tr:last-child {
+    border-bottom: 0;
+  }
+  .files-table td,
+  .files-table .file-actions,
+  .files-table .numeric {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 6px 0;
+    border: 0;
+    text-align: right;
+    width: 100%;
+  }
+  .files-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .files-table .text-button {
+    min-height: 44px;
+  }
   .page-heading h1 {
     font-size: 28px;
   }
@@ -1271,16 +1481,24 @@ td .text-button {
   .form-grid {
     grid-template-columns: 1fr;
   }
+  .form-grid.settlement-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
   .filters {
     gap: 10px;
   }
   .filters .field {
-    font-size: 10px;
+    font-size: 12px;
   }
   .filters input,
   .filters select {
     padding: 9px;
-    font-size: 11px;
+    font-size: 16px;
   }
   .section-heading {
     align-items: start;

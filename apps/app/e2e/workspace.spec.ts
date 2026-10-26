@@ -347,6 +347,118 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   expect(errors).toEqual([]);
 });
 
+test('layouts stay balanced across desktop, tablet and narrow mobile screens', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  const widths =
+    testInfo.project.name === 'desktop' ? [1440, 1024, 768] : [390, 360];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of ['settings', 'files', 'settlements/new']) {
+      await page.goto(`/#/${route}`);
+      await expect(page.locator('main h1')).toBeVisible();
+      await expect(page.locator('main')).not.toContainText(
+        'Internal server error',
+      );
+      if (route === 'settings') {
+        const panels = page.locator('.settings-layout > .panel');
+        const first = await panels.nth(0).boundingBox();
+        const second = await panels.nth(1).boundingBox();
+        expect(first).not.toBeNull();
+        expect(second).not.toBeNull();
+        if (first && second) {
+          expect(Math.abs(first.width - second.width)).toBeLessThan(1);
+          expect(second.y - (first.y + first.height)).toBeGreaterThanOrEqual(
+            20,
+          );
+        }
+        await expect(page.locator('.invoice-image-card')).toHaveCount(2);
+      } else if (route === 'files') {
+        await expect(
+          page.locator('.files-table tbody tr').first(),
+        ).toBeVisible();
+        if (width > 680) {
+          await expect(page.locator('.files-table th').last()).toHaveCSS(
+            'text-align',
+            'left',
+          );
+          await expect(page.locator('.files-table th.numeric')).toHaveCSS(
+            'text-align',
+            'right',
+          );
+        } else {
+          await expect(page.locator('.files-table tbody tr').first()).toHaveCSS(
+            'display',
+            'block',
+          );
+          await expect(
+            page.locator('.files-table td.file-actions').first(),
+          ).toHaveCSS('display', 'flex');
+        }
+      } else {
+        await expect(page.getByLabel('CSV / XLSX / PDF')).not.toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Save & view invoice' }),
+        ).toBeVisible();
+        const identity = await page
+          .locator('.settlement-identity')
+          .boundingBox();
+        const editor = await page.locator('.settlement-editor').boundingBox();
+        if (identity && editor && width > 1100)
+          expect(identity.width).toBeGreaterThan(editor.width * 0.85);
+        await page
+          .getByText('Load settlement totals (optional)', { exact: true })
+          .click();
+        await expect(
+          page.getByRole('button', {
+            name: 'Load saved courier totals & allocated ads',
+          }),
+        ).toBeVisible();
+        await expect(page.getByLabel('CSV / XLSX / PDF')).not.toBeVisible();
+        await page
+          .getByRole('button', { name: 'Courier file', exact: true })
+          .click();
+        await expect(page.getByLabel('CSV / XLSX / PDF')).toBeVisible();
+        await expect(
+          page.getByRole('button', {
+            name: 'Load saved courier totals & allocated ads',
+          }),
+        ).not.toBeVisible();
+        await page
+          .getByRole('button', { name: 'Business Tracking', exact: true })
+          .click();
+        await page
+          .getByText('Load settlement totals (optional)', { exact: true })
+          .click();
+        await page.getByText('Calculation breakdown', { exact: true }).click();
+        await expect(
+          page.getByText('Gross settlement', { exact: true }),
+        ).toBeVisible();
+        await page.getByText('Calculation breakdown', { exact: true }).click();
+      }
+      if (width <= 1024)
+        await expect(
+          page.getByRole('button', { name: 'Toggle navigation' }),
+        ).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > window.innerWidth,
+        ),
+      ).toBe(false);
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `layout-${route.replace('/', '-')}-${String(width)}.png`,
+        ),
+        fullPage: true,
+      });
+    }
+  }
+});
+
 test('a 50-campaign invoice exports readable multiple A4 pages rather than shrinking to one page', async ({
   page,
 }, testInfo) => {

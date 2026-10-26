@@ -196,9 +196,9 @@ export function History({
                 <tr>
                   <th>Invoice / Brand</th>
                   <th>Report date</th>
-                  <th>Net amount</th>
-                  <th>Agency share</th>
-                  <th>Balance</th>
+                  <th className="numeric">Net amount</th>
+                  <th className="numeric">Agency share</th>
+                  <th className="numeric">Balance</th>
                   <th>Status</th>
                   <th>
                     <span className="sr-only">Action</span>

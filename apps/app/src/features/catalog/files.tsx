@@ -19,7 +19,7 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
   const [items, setItems] = useState<z.infer<typeof fileList>['items']>([]);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState(true);
   const [cursor, setCursor] = useState<z.infer<typeof fileList>['next']>(null);
   const [next, setNext] = useState<z.infer<typeof fileList>['next']>(null);
   useEffect(() => {
@@ -79,22 +79,26 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
       {error ? <Alert>{error}</Alert> : null}
       <section className="panel">
         <div className="table-scroll">
-          <table>
+          <table className="files-table">
             <thead>
               <tr>
                 <th>File</th>
                 <th>Purpose</th>
-                <th>Size</th>
-                <th>Actions</th>
+                <th className="numeric">Size</th>
+                <th className="file-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.filename}</td>
-                  <td>{item.kind}</td>
-                  <td>{Math.ceil(item.size / 1024)} KB</td>
-                  <td>
+                  <td data-label="File" className="file-name">
+                    {item.filename}
+                  </td>
+                  <td data-label="Purpose">{item.kind}</td>
+                  <td data-label="Size" className="numeric">
+                    {Math.ceil(item.size / 1024)} KB
+                  </td>
+                  <td data-label="Actions" className="file-actions">
                     <div className="actions">
                       <a
                         className="text-button"
@@ -121,6 +125,9 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
               ))}
             </tbody>
           </table>
+          {items.length === 0 && !pending ? (
+            <p className="empty">No uploaded files yet.</p>
+          ) : null}
         </div>
         {next ? (
           <button

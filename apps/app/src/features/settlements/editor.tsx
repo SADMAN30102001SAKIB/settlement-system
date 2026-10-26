@@ -190,6 +190,10 @@ export function ReportEditor({
       {report === null ? (
         <SettlementSource
           brands={brands}
+          brandId={values.brandId}
+          onBrandChange={(value) => {
+            update('brandId', value);
+          }}
           onLoad={(source) => {
             setValues((current) => ({ ...current, ...source }));
             setAutoCost(true);
@@ -198,7 +202,7 @@ export function ReportEditor({
         />
       ) : null}
       <form
-        className="editor-layout"
+        className="editor-layout settlement-editor"
         onSubmit={(event) => {
           submit(event).catch((reason: unknown) => {
             setError(ErrorMessage(reason));
@@ -213,7 +217,7 @@ export function ReportEditor({
               </h2>
               <span className="pill">{report?.rule ?? 'v2'} calculation</span>
             </div>
-            <div className="form-grid">
+            <div className="form-grid settlement-identity">
               <Field label="Brand">
                 <select
                   value={values.brandId}
@@ -264,7 +268,7 @@ export function ReportEditor({
               Pending parcels are counted separately. Check totals against your
               courier report.
             </p>
-            <div className="form-grid">
+            <div className="form-grid settlement-counts">
               {countFields.map(([key, label]) => (
                 <Field key={key} label={label}>
                   <input
@@ -279,6 +283,8 @@ export function ReportEditor({
                   />
                 </Field>
               ))}
+            </div>
+            <div className="form-grid settlement-amounts">
               {moneyFields.map(([key, label]) => (
                 <Field key={key} label={`${label} (৳)`}>
                   <input
@@ -321,8 +327,8 @@ export function ReportEditor({
               Calculate product cost from brand making cost
             </label>
             <p className="muted">
-              Screenshot-era rule: making cost × delivered, cancelled and
-              partial parcel counts; pending excluded.
+              Making cost × delivered, cancelled and partial parcel counts.
+              Pending parcels are excluded.
             </p>
             <div className="form-grid">
               <Field label="Product cost (৳)">
@@ -356,44 +362,48 @@ export function ReportEditor({
         </div>
         <aside className="panel calculation">
           <p className="eyebrow">LIVE CALCULATION</p>
-          <h2>Nothing hidden.</h2>
-          <p className="muted">Every deduction, before you save.</p>
-          <dl>
-            <div>
-              <dt>Delivered</dt>
-              <dd>
-                {values.deliveredAmount ? `৳${values.deliveredAmount}` : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Partial collection</dt>
-              <dd>{values.partialAmount ? `৳${values.partialAmount}` : '—'}</dd>
-            </div>
-            <div>
-              <dt>Shipping</dt>
-              <dd>−৳{values.shipping || '0'}</dd>
-            </div>
-            <div>
-              <dt>COD charges</dt>
-              <dd>−৳{values.codCharge || '0'}</dd>
-            </div>
-            <div className="total-row">
-              <dt>Gross settlement</dt>
-              <dd>{calculation ? money(calculation.gross) : '—'}</dd>
-            </div>
-            <div>
-              <dt>Advertising</dt>
-              <dd>−৳{values.ads || '0'}</dd>
-            </div>
-            <div>
-              <dt>Product cost</dt>
-              <dd>{calculation ? money(-productCost) : '—'}</dd>
-            </div>
-            <div className="total-row">
-              <dt>Net amount</dt>
-              <dd>{calculation ? money(calculation.net) : '—'}</dd>
-            </div>
-          </dl>
+          <h2>Review & save</h2>
+          <details className="calculation-breakdown">
+            <summary>Calculation breakdown</summary>
+            <dl>
+              <div>
+                <dt>Delivered</dt>
+                <dd>
+                  {values.deliveredAmount ? `৳${values.deliveredAmount}` : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Partial collection</dt>
+                <dd>
+                  {values.partialAmount ? `৳${values.partialAmount}` : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Shipping</dt>
+                <dd>−৳{values.shipping || '0'}</dd>
+              </div>
+              <div>
+                <dt>COD charges</dt>
+                <dd>−৳{values.codCharge || '0'}</dd>
+              </div>
+              <div className="total-row">
+                <dt>Gross settlement</dt>
+                <dd>{calculation ? money(calculation.gross) : '—'}</dd>
+              </div>
+              <div>
+                <dt>Advertising</dt>
+                <dd>−৳{values.ads || '0'}</dd>
+              </div>
+              <div>
+                <dt>Product cost</dt>
+                <dd>{calculation ? money(-productCost) : '—'}</dd>
+              </div>
+              <div className="total-row">
+                <dt>Net amount</dt>
+                <dd>{calculation ? money(calculation.net) : '—'}</dd>
+              </div>
+            </dl>
+          </details>
           <div className="commission">
             <span>Agency share · {values.percentage}%</span>
             <strong>{calculation ? money(calculation.commission) : '—'}</strong>
