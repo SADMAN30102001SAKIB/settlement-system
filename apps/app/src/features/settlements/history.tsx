@@ -8,6 +8,8 @@ import {
   Field,
   Metric,
   PageHeading,
+  Skeleton,
+  SkeletonMetrics,
   SkeletonTable,
   Spinner,
 } from '../../components/ui';
@@ -101,28 +103,32 @@ export function History({
           </button>
         }
       />
-      <div className="metrics">
-        <Metric
-          label="Saved reports"
-          value={String(totals.count)}
-          detail="Within the selected filters"
-        />
-        <Metric
-          label="Net settlement"
-          value={money(totals.net)}
-          detail="All reports matching your filters"
-        />
-        <Metric
-          label="Agency earnings"
-          value={money(totals.commission)}
-          detail="Saved report percentages"
-        />
-        <Metric
-          label="Payments received"
-          value={money(totals.paid)}
-          detail="Against matching settlements"
-        />
-      </div>
+      {pending && items.length === 0 ? (
+        <SkeletonMetrics count={4} />
+      ) : (
+        <div className="metrics">
+          <Metric
+            label="Saved reports"
+            value={String(totals.count)}
+            detail="Within the selected filters"
+          />
+          <Metric
+            label="Net settlement"
+            value={money(totals.net)}
+            detail="All reports matching your filters"
+          />
+          <Metric
+            label="Agency earnings"
+            value={money(totals.commission)}
+            detail="Saved report percentages"
+          />
+          <Metric
+            label="Payments received"
+            value={money(totals.paid)}
+            detail="Against matching settlements"
+          />
+        </div>
+      )}
       <section className="panel report-totals" aria-label="Settlement totals">
         <h2>Delivery & cost totals</h2>
         <dl className="summary-grid">
@@ -141,7 +147,13 @@ export function History({
           ].map(([label, value]) => (
             <div key={label}>
               <dt>{label}</dt>
-              <dd>{value}</dd>
+              <dd>
+                {pending && items.length === 0 ? (
+                  <Skeleton width={110} height={20} radius={4} />
+                ) : (
+                  value
+                )}
+              </dd>
             </div>
           ))}
         </dl>
@@ -224,6 +236,14 @@ export function History({
           </button>
         </form>
         {error ? <Alert>{error}</Alert> : null}
+        {pending && items.length > 0 ? (
+          <Skeleton
+            className="skeleton-progress-bar"
+            height={4}
+            radius={2}
+            aria-label="Updating settlements…"
+          />
+        ) : null}
         {pending && items.length === 0 ? (
           <SkeletonTable
             rows={5}

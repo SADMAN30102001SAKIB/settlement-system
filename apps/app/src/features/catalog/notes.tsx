@@ -9,6 +9,8 @@ import {
   ErrorMessage,
   Field,
   PageHeading,
+  Skeleton,
+  Spinner,
 } from '../../components/ui';
 import { api, noteSchema, okSchema } from '../../lib/api';
 import type { Brand, Note } from '../../lib/api';
@@ -144,7 +146,27 @@ export function Notes({ brands }: { brands: Brand[] }) {
       <div className="split-layout">
         <section className="panel">
           <h2>Work notes</h2>
-          {items.length ? (
+          {pending && items.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="panel" style={{ padding: 16 }}>
+                  <Skeleton
+                    width="35%"
+                    height={16}
+                    radius={4}
+                    style={{ marginBottom: 10 }}
+                  />
+                  <Skeleton
+                    width="85%"
+                    height={14}
+                    radius={3}
+                    style={{ marginBottom: 6 }}
+                  />
+                  <Skeleton width="55%" height={14} radius={3} />
+                </div>
+              ))}
+            </div>
+          ) : items.length ? (
             items.map((note) => (
               <article key={note.id} className="note-item">
                 <div className="section-heading">
@@ -195,7 +217,13 @@ export function Notes({ brands }: { brands: Brand[] }) {
                 setCursor(next);
               }}
             >
-              Load 200 older notes
+              {pending ? (
+                <>
+                  <Spinner size={12} /> Loading…
+                </>
+              ) : (
+                'Load 200 older notes'
+              )}
             </button>
           ) : null}
         </section>
