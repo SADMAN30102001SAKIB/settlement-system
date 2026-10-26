@@ -25,12 +25,16 @@ export function Importer({
   brands,
   onImported,
   onReviewed,
+  initialBrandId = '',
+  onBrandChange,
 }: {
   brands: Brand[];
+  initialBrandId?: string;
+  onBrandChange?: (brandId: string) => void;
   onImported?: () => void;
   onReviewed?: (brandId: string, rows: ReturnType<typeof mapOrder>[]) => void;
 }) {
-  const [brandId, setBrandId] = useState('');
+  const [brandId, setBrandId] = useState(initialBrandId);
   const [mode, setMode] = useState<'orders' | 'courier'>('courier');
   const [format, setFormat] = useState<'ISO' | 'DMY'>('ISO');
   const [text, setText] = useState('');
@@ -191,6 +195,7 @@ export function Importer({
             value={brandId}
             onChange={(event) => {
               setBrandId(event.target.value);
+              onBrandChange?.(event.target.value);
               setReviewed(false);
             }}
           >
@@ -214,18 +219,6 @@ export function Importer({
             <option value="orders">
               Daily order IDs (does not replace courier status)
             </option>
-          </select>
-        </Field>
-        <Field label="Source date format">
-          <select
-            value={format}
-            onChange={(event) => {
-              setFormat(event.target.value === 'DMY' ? 'DMY' : 'ISO');
-              setReviewed(false);
-            }}
-          >
-            <option value="ISO">YYYY-MM-DD (including Excel dates)</option>
-            <option value="DMY">DD/MM/YYYY</option>
           </select>
         </Field>
         <Field label="CSV / XLSX / PDF">
@@ -275,49 +268,66 @@ export function Importer({
       {error ? <Alert>{error}</Alert> : null}
       {rows.length ? (
         <>
-          <div className="form-grid">
-            <Field label="Header row">
-              <select
-                value={header}
-                onChange={(event) => {
-                  setHeader(Number(event.target.value));
-                  setReviewed(false);
-                }}
-              >
-                {rows.slice(0, 100).map((row, index) => (
-                  <option key={index} value={index}>
-                    Row {index + 1}: {row.join(' · ').slice(0, 120)}
+          <details className="import-options">
+            <summary>Check date format & column mapping</summary>
+            <div className="form-grid">
+              <Field label="Source date format">
+                <select
+                  value={format}
+                  onChange={(event) => {
+                    setFormat(event.target.value === 'DMY' ? 'DMY' : 'ISO');
+                    setReviewed(false);
+                  }}
+                >
+                  <option value="ISO">
+                    YYYY-MM-DD (including Excel dates)
                   </option>
+                  <option value="DMY">DD/MM/YYYY</option>
+                </select>
+              </Field>
+              <Field label="Header row">
+                <select
+                  value={header}
+                  onChange={(event) => {
+                    setHeader(Number(event.target.value));
+                    setReviewed(false);
+                  }}
+                >
+                  {rows.slice(0, 100).map((row, index) => (
+                    <option key={index} value={index}>
+                      Row {index + 1}: {row.join(' · ').slice(0, 120)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {importColumns
+                .filter(
+                  (key) =>
+                    mode === 'courier' || key === 'id' || key === 'orderDate',
+                )
+                .map((key) => (
+                  <Field key={key} label={labels[key]}>
+                    <select
+                      value={mapping[key]}
+                      onChange={(event) => {
+                        setMapping((current) => ({
+                          ...current,
+                          [key]: Number(event.target.value),
+                        }));
+                        setReviewed(false);
+                      }}
+                    >
+                      <option value={-1}>Map a column</option>
+                      {rows[header]?.map((cell, index) => (
+                        <option key={index} value={index}>
+                          {index + 1}: {cell}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 ))}
-              </select>
-            </Field>
-            {importColumns
-              .filter(
-                (key) =>
-                  mode === 'courier' || key === 'id' || key === 'orderDate',
-              )
-              .map((key) => (
-                <Field key={key} label={labels[key]}>
-                  <select
-                    value={mapping[key]}
-                    onChange={(event) => {
-                      setMapping((current) => ({
-                        ...current,
-                        [key]: Number(event.target.value),
-                      }));
-                      setReviewed(false);
-                    }}
-                  >
-                    <option value={-1}>Map a column</option>
-                    {rows[header]?.map((cell, index) => (
-                      <option key={index} value={index}>
-                        {index + 1}: {cell}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ))}
-          </div>
+            </div>
+          </details>
           <label className="checkbox-field">
             <input
               type="checkbox"

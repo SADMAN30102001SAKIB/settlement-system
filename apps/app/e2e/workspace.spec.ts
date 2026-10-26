@@ -83,8 +83,14 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
       '/api/manage/business/orders?from=2026-10-01&to=2026-10-31&basis=order',
     );
     const owner = z
-      .object({ items: z.array(z.object({ brandId: z.string() })) })
-      .parse(await existingOrders.json()).items[0]?.brandId;
+      .object({
+        items: z.array(z.object({ id: z.string(), brandId: z.string() })),
+      })
+      .parse(await existingOrders.json())
+      .items.find((item) => !item.id.startsWith('guided-'))?.brandId;
+    await page
+      .getByRole('button', { name: /Import orders|Import updates/ })
+      .click();
     const importer = page.locator('section').filter({
       has: page.getByRole('heading', {
         name: 'Import orders & courier updates',
@@ -115,6 +121,155 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(overflow).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('business tracking guides import, costs and review without exposing every form', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => {
+    errors.push(error.message);
+  });
+  await signIn(page);
+  await page.goto('/#/brands');
+  const brand = `Guided ${testInfo.project.name} ${String(Date.now())}`;
+  await page.getByLabel('Brand name', { exact: true }).fill(brand);
+  await page.getByLabel(/Making cost/).fill('100');
+  await page.getByRole('button', { name: 'Save brand' }).click();
+  await expect(page.getByText(brand, { exact: true })).toBeVisible();
+  await page.goto('/#/business');
+  await page
+    .getByLabel('Brand', { exact: true })
+    .selectOption({ label: brand });
+  await page.getByLabel('From', { exact: true }).fill('2026-10-01');
+  await page.getByLabel('To', { exact: true }).fill('2026-10-31');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'No orders in this view' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('CSV / XLSX / PDF')).not.toBeVisible();
+  await expect(page.getByLabel('Total ads spend (৳)')).not.toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Delete day', exact: true }),
+  ).not.toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('business-empty.png'),
+    fullPage: true,
+  });
+  const importButton = page.getByRole('button', {
+    name: 'Import orders',
+    exact: true,
+  });
+  await importButton.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Brand', { exact: true })).toHaveValue(
+    await page
+      .locator('.filters')
+      .getByLabel('Brand', { exact: true })
+      .inputValue(),
+  );
+  await expect(dialog.getByLabel('Source date format')).not.toBeVisible();
+  const orderId = `guided-${testInfo.project.name}-${String(Date.now())}`;
+  await dialog
+    .getByLabel('Or paste spreadsheet cells (including headers)')
+    .fill(
+      `Order ID\tOrder Date\tDelivery Date\tStatus\tCOD Amount\tShipping Charge\tCOD Charge\n${orderId}\t26/10/2026\t26/10/2026\tDelivered\t500\t60\t5`,
+    );
+  await dialog.getByRole('button', { name: 'Preview pasted rows' }).click();
+  await dialog
+    .getByText('Check date format & column mapping', { exact: true })
+    .click();
+  await dialog.getByLabel('Source date format').selectOption('DMY');
+  await expect(
+    dialog.getByRole('cell', { name: 'Ready', exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole('checkbox', { name: /I checked the dates/ }).check();
+  await dialog.getByRole('button', { name: 'Import 1 orders' }).click();
+  await expect(dialog.getByRole('status')).toContainText('1 orders imported');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: new RegExp(orderId) }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Create settlement', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Create settlement', exact: true }),
+  ).toHaveCSS('min-height', '42px');
+  await expect(
+    page.getByText('Allocated advertising', { exact: true }),
+  ).not.toBeVisible();
+  await page.getByRole('button', { name: 'Add ad spend', exact: true }).click();
+  await expect(dialog.getByLabel('Brand', { exact: true })).toHaveValue(
+    await page
+      .locator('.filters')
+      .getByLabel('Brand', { exact: true })
+      .inputValue(),
+  );
+  await dialog.getByLabel('Order date', { exact: true }).fill('2026-10-26');
+  await dialog.getByLabel('Total ads spend (৳)').fill('100');
+  await page.screenshot({
+    path: testInfo.outputPath('business-cost-dialog.png'),
+    fullPage: true,
+  });
+  await dialog
+    .getByRole('button', { name: 'Save / replace daily spend' })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole('button', { name: 'Add ad spend', exact: true }).click();
+  await dialog.getByText('Saved daily spend', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Edit spend' }).click();
+  await expect(dialog.getByLabel('Total ads spend (৳)')).toHaveValue('100');
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Add ad spend', exact: true }),
+  ).toBeFocused();
+  await page.getByRole('button', { name: 'Add expense', exact: true }).click();
+  await dialog.getByLabel('Date', { exact: true }).fill('2026-10-26');
+  await dialog.getByLabel('Amount (৳)', { exact: true }).fill('10');
+  await dialog
+    .getByLabel('Description', { exact: true })
+    .fill(`Test expense ${orderId}`);
+  await dialog.getByRole('button', { name: 'Save expense' }).click();
+  await expect(dialog).not.toBeVisible();
+  await page
+    .getByText('Cost breakdown & daily totals', { exact: true })
+    .click();
+  await expect(
+    page.getByText('Allocated advertising', { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('business-review.png'),
+    fullPage: true,
+  });
+  await page.getByText('Data management', { exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Remove an imported day', exact: true })
+    .click();
+  await expect(dialog.getByLabel('Brand', { exact: true })).toHaveValue(
+    await page
+      .locator('.filters')
+      .getByLabel('Brand', { exact: true })
+      .inputValue(),
+  );
+  await dialog.getByLabel('Order date', { exact: true }).fill('2026-10-26');
+  page.once('dialog', async (confirmation) => {
+    await confirmation.dismiss();
+  });
+  await dialog.getByRole('button', { name: 'Delete day', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(
+    page.getByRole('cell', { name: new RegExp(orderId) }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false);
   expect(errors).toEqual([]);
 });
 
