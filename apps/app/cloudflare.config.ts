@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => ({
     },
     env: {
       ADMIN_SETUP_TOKEN: bindings.secret(),
+      PASSWORD_PEPPER: bindings.secret(),
       FILES: bindings.r2({ name: 'settlement-system-files' }),
       DB: bindings.d1({
         name: 'settlement-system-db',

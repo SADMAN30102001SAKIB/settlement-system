@@ -1,11 +1,21 @@
-import { pbkdf2, timingSafeEqual } from 'node:crypto';
+import { createHmac, pbkdf2, timingSafeEqual } from 'node:crypto';
 
-const ITERATIONS = 600_000;
+// Production Workers enforce a 100,000-iteration PBKDF2 limit; local workerd does not.
+const ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
-function derive(password: string, salt: string): Promise<Uint8Array> {
+function derive(
+  password: string,
+  salt: string,
+  pepper: string,
+): Promise<Uint8Array> {
+  if (!/^[a-f0-9]{64}$/.test(pepper))
+    throw new Error('Password hashing secret is not configured.');
+  const input = createHmac('sha256', Buffer.from(pepper, 'hex'))
+    .update(password, 'utf8')
+    .digest();
   return new Promise((resolve, reject) => {
-    pbkdf2(password, salt, ITERATIONS, 32, 'sha256', (error, key) => {
+    pbkdf2(input, salt, ITERATIONS, 32, 'sha256', (error, key) => {
       if (error) reject(error);
       else resolve(new Uint8Array(key));
     });
@@ -41,25 +51,30 @@ export async function secretMatches(
   return timingSafeEqual(encoder.encode(left), encoder.encode(right));
 }
 
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(
+  password: string,
+  pepper: string,
+): Promise<string> {
   const salt = randomToken();
-  return `pbkdf2-sha256$${String(ITERATIONS)}$${salt}$${hex(await derive(password, salt))}`;
+  return `pbkdf2-sha256-hmac$${String(ITERATIONS)}$${salt}$${hex(await derive(password, salt, pepper))}`;
 }
 
 export async function verifyPassword(
   password: string,
   stored: string,
+  pepper: string,
 ): Promise<boolean> {
   const [algorithm, iterations, salt, expected] = stored.split('$');
   if (
-    algorithm !== 'pbkdf2-sha256' ||
+    algorithm !== 'pbkdf2-sha256-hmac' ||
     iterations !== String(ITERATIONS) ||
     salt === undefined ||
+    !/^[a-f0-9]{64}$/.test(salt) ||
     expected === undefined ||
     !/^[a-f0-9]{64}$/.test(expected)
   ) {
     return false;
   }
-  const actual = hex(await derive(password, salt));
+  const actual = hex(await derive(password, salt, pepper));
   return timingSafeEqual(encoder.encode(actual), encoder.encode(expected));
 }

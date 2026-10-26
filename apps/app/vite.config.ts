@@ -9,7 +9,10 @@ export default defineConfig(({ mode }) => ({
       remoteBindings: false,
       ...(mode === 'test'
         ? {
-            persistState: { path: '.cloudflare/e2e-state' },
+            persistState: {
+              path:
+                process.env['SETTLEMENT_TEST_STATE'] ?? '.cloudflare/e2e-state',
+            },
             inspectorPort: false,
           }
         : {}),

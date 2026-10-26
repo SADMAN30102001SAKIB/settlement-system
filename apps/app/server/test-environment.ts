@@ -30,6 +30,10 @@ export async function testEnvironment() {
   }
   return {
     runtime,
-    env: { ...bindings, ADMIN_SETUP_TOKEN: randomToken() } satisfies Env,
+    env: {
+      ...bindings,
+      ADMIN_SETUP_TOKEN: randomToken(),
+      PASSWORD_PEPPER: randomToken(),
+    } satisfies Env,
   };
 }

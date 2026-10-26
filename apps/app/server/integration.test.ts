@@ -42,6 +42,7 @@ beforeAll(async () => {
     DB: binding,
     FILES: (await runtime.getBindings<Pick<Env, 'FILES'>>()).FILES,
     ADMIN_SETUP_TOKEN: setupToken,
+    PASSWORD_PEPPER: randomToken(),
   };
 });
 
@@ -323,15 +324,16 @@ it('rejects cross-origin mutations before database work', async () => {
   expect(response.status).toBe(403);
 });
 
-it('supports the password work factor inside the Workers runtime', async () => {
+it('supports the production-capped password work factor inside the Workers runtime', async () => {
   const worker = new Miniflare({
     modules: true,
     compatibilityDate: '2026-07-30',
     compatibilityFlags: ['nodejs_compat'],
-    script: `import { pbkdf2 } from 'node:crypto';
+    script: `import { createHmac, pbkdf2 } from 'node:crypto';
       export default { async fetch() {
+        const input = createHmac('sha256', 'runtime-test-only-pepper').update('runtime-test-only').digest();
         const length = await new Promise((resolve, reject) => {
-          pbkdf2('runtime-test-only', 'test-salt', 600000, 32, 'sha256', (error, key) => {
+          pbkdf2(input, 'test-salt', 100000, 32, 'sha256', (error, key) => {
             if (error) reject(error); else resolve(key.length);
           });
         });

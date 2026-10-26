@@ -20,6 +20,7 @@ describe('API', () => {
       },
       {
         ADMIN_SETUP_TOKEN: '',
+        PASSWORD_PEPPER: '',
         get FILES(): R2Bucket {
           throw new Error('Files must not be accessed');
         },
@@ -40,6 +41,7 @@ describe('API', () => {
       {},
       {
         ADMIN_SETUP_TOKEN: '',
+        PASSWORD_PEPPER: '',
         get FILES(): R2Bucket {
           throw new Error('Files must not be accessed');
         },

@@ -10,13 +10,20 @@ import {
 
 it('creates salted password hashes and verifies without storing plaintext', async () => {
   const password = 'a long test password only';
-  const first = await hashPassword(password);
-  const second = await hashPassword(password);
+  const pepper = randomToken();
+  const first = await hashPassword(password, pepper);
+  const second = await hashPassword(password, pepper);
+  expect(first).toMatch(
+    /^pbkdf2-sha256-hmac\$100000\$[a-f0-9]{64}\$[a-f0-9]{64}$/,
+  );
+  expect(first).not.toContain(pepper);
   expect(first).not.toBe(second);
   expect(first).not.toContain(password);
-  expect(await verifyPassword(password, first)).toBe(true);
-  expect(await verifyPassword('incorrect', first)).toBe(false);
-  expect(await verifyPassword(password, 'malformed')).toBe(false);
+  expect(await verifyPassword(password, first, pepper)).toBe(true);
+  expect(await verifyPassword(password, first, randomToken())).toBe(false);
+  expect(await verifyPassword('incorrect', first, pepper)).toBe(false);
+  expect(await verifyPassword(password, 'malformed', pepper)).toBe(false);
+  await expect(hashPassword(password, '')).rejects.toThrow('not configured');
 });
 
 it('uses unpredictable tokens and fixed-length token digests', async () => {

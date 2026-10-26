@@ -114,7 +114,10 @@ export const authRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(409, {
         message: 'The admin account already exists.',
       });
-    const passwordHash = await hashPassword(input.password);
+    const passwordHash = await hashPassword(
+      input.password,
+      context.env.PASSWORD_PEPPER,
+    );
     const [insertedAdmins] = await database.batch([
       database
         .insert(admins)
@@ -169,7 +172,11 @@ export const authRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(403, {
         message: 'An administrator must set up this installation first.',
       });
-    const validPassword = await verifyPassword(input.password, admin.hash);
+    const validPassword = await verifyPassword(
+      input.password,
+      admin.hash,
+      context.env.PASSWORD_PEPPER,
+    );
     if (
       !validPassword ||
       !(await secretMatches(input.username, admin.username))
