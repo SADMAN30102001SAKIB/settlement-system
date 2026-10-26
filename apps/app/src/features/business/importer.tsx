@@ -6,7 +6,7 @@ import {
   parseDelimited,
 } from '@settlement/domain/imports';
 import type { ImportColumn } from '@settlement/domain/imports';
-import { Alert, ErrorMessage, Field } from '../../components/ui';
+import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { Brand } from '../../lib/api';
 import { money } from '../../lib/format';
@@ -572,11 +572,15 @@ export function Importer({
                 });
               }}
             >
-              {pending
-                ? 'Importing…'
-                : onReviewed
-                  ? 'Confirm & use rows in settlement'
-                  : `Confirm & import ${String(preview.length)} orders`}
+              {pending ? (
+                <>
+                  <Spinner size={12} /> Importing…
+                </>
+              ) : onReviewed ? (
+                'Confirm & use rows in settlement'
+              ) : (
+                `Confirm & import ${String(preview.length)} orders`
+              )}
             </button>
           </div>
         </>

@@ -9,6 +9,7 @@ import {
   ErrorMessage,
   Field,
   PageHeading,
+  Spinner,
 } from '../../components/ui';
 import { api, brandSchema } from '../../lib/api';
 import type { Brand } from '../../lib/api';
@@ -130,7 +131,13 @@ export function Brands({
             {error ? <Alert>{error}</Alert> : null}
             <div className="actions">
               <button className="primary" disabled={pending}>
-                {pending ? 'Saving…' : 'Save brand'}
+                {pending ? (
+                  <>
+                    <Spinner size={12} /> Saving…
+                  </>
+                ) : (
+                  'Save brand'
+                )}
               </button>
               {editing ? (
                 <button

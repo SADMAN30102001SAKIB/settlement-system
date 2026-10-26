@@ -3,7 +3,13 @@ import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import { parsePercentage } from '@settlement/domain/money';
 
-import { Alert, ErrorMessage, Field, PageHeading } from '../../components/ui';
+import {
+  Alert,
+  ErrorMessage,
+  Field,
+  PageHeading,
+  Spinner,
+} from '../../components/ui';
 import { api, settingsSchema } from '../../lib/api';
 import type { Settings as SettingsData } from '../../lib/api';
 import { formText } from '../../lib/format';
@@ -163,7 +169,13 @@ export function Settings({
                 Saved reports retain their calculation inputs.
               </p>
               <button className="primary" disabled={pending}>
-                {pending ? 'Saving…' : 'Save changes'}
+                {pending ? (
+                  <>
+                    <Spinner size={12} /> Saving…
+                  </>
+                ) : (
+                  'Save changes'
+                )}
               </button>
             </div>
           </form>

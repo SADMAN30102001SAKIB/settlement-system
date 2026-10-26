@@ -288,7 +288,13 @@ export function Notes({ brands }: { brands: Brand[] }) {
                 className="primary"
                 disabled={pending || brands.length === 0}
               >
-                {pending ? 'Saving…' : 'Save note'}
+                {pending ? (
+                  <>
+                    <Spinner size={12} /> Saving…
+                  </>
+                ) : (
+                  'Save note'
+                )}
               </button>
               {editing ? (
                 <button

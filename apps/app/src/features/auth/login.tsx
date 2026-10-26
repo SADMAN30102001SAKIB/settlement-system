@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 
-import { Alert, ErrorMessage, Field } from '../../components/ui';
+import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import { formText } from '../../lib/format';
 import { ThemePicker } from '../../components/theme-picker';
@@ -134,11 +134,15 @@ export function Login({
             ) : null}
             {error ? <Alert>{error}</Alert> : null}
             <button className="primary full" type="submit" disabled={pending}>
-              {pending
-                ? 'Please wait…'
-                : setup
-                  ? 'Create admin & sign in'
-                  : 'Sign in to workspace'}
+              {pending ? (
+                <>
+                  <Spinner size={12} /> Please wait…
+                </>
+              ) : setup ? (
+                'Create admin & sign in'
+              ) : (
+                'Sign in to workspace'
+              )}
               <span aria-hidden="true">→</span>
             </button>
           </form>

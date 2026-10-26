@@ -7,7 +7,13 @@ import {
 } from '@settlement/domain/settlement';
 import { z } from 'zod';
 
-import { Alert, ErrorMessage, Field, PageHeading } from '../../components/ui';
+import {
+  Alert,
+  ErrorMessage,
+  Field,
+  PageHeading,
+  Spinner,
+} from '../../components/ui';
 import { api, reportSchema } from '../../lib/api';
 import type { Brand, Report, Settings } from '../../lib/api';
 import { amountInput, money, today } from '../../lib/format';
@@ -532,7 +538,13 @@ export function ReportEditor({
             className="primary full"
             disabled={pending || brands.length === 0}
           >
-            {pending ? 'Saving…' : 'Save & view invoice'}
+            {pending ? (
+              <>
+                <Spinner size={12} /> Saving…
+              </>
+            ) : (
+              'Save & view invoice'
+            )}
             <span aria-hidden="true">→</span>
           </button>
           <p className="caption">
