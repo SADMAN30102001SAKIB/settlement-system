@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { z } from 'zod';
 import { api, okSchema } from '../lib/api';
-import { Alert, ErrorMessage, Field } from './ui';
+import { Alert, ErrorMessage, Field, Spinner } from './ui';
 import { prepareInvoiceImage } from '../lib/prepare-image';
 import { FilePicker } from './file-picker';
 import { useConfirmation } from './confirmation-context';
@@ -150,7 +150,21 @@ export function ImageUpload({
           </div>
         </>
       ) : null}
-      {pending ? <p role="status">Updating image…</p> : null}
+      {pending ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginTop: 12,
+          }}
+        >
+          <Spinner size={14} label="Updating image…" />
+          <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
+            Updating image…
+          </span>
+        </div>
+      ) : null}
       {error ? <Alert>{error}</Alert> : null}
     </div>
   );

@@ -8,6 +8,10 @@ import {
   Field,
   Metric,
   PageHeading,
+  Skeleton,
+  SkeletonMetrics,
+  SkeletonTable,
+  Spinner,
 } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import type { Brand, Settings } from '../../lib/api';
@@ -253,11 +257,48 @@ export function Business({
           </select>
         </Field>
         <button className="secondary" disabled={loading}>
-          Apply filters
+          {loading ? (
+            <>
+              <Spinner size={12} /> Apply filters
+            </>
+          ) : (
+            'Apply filters'
+          )}
         </button>
       </form>
       {error && action === null ? <Alert>{error}</Alert> : null}
-      {loading ? <p role="status">Loading business data…</p> : null}
+      {loading && report === null ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 24,
+            marginTop: 24,
+          }}
+        >
+          <SkeletonMetrics count={4} />
+          <section className="panel">
+            <SkeletonTable
+              rows={5}
+              columns={5}
+              headers={[
+                'Metric / Segment',
+                'Volume',
+                'Revenue',
+                'Cost',
+                'Margin',
+              ]}
+            />
+          </section>
+        </div>
+      ) : loading ? (
+        <Skeleton
+          className="skeleton-progress-bar"
+          height={4}
+          radius={2}
+          aria-label="Updating business data…"
+        />
+      ) : null}
       {report && !hasOrders ? (
         <section className="panel business-empty">
           <p className="eyebrow">STEP 1 / IMPORT</p>

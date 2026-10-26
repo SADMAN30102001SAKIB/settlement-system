@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { api } from '../../lib/api';
-import { Alert, ErrorMessage, Field } from '../../components/ui';
+import {
+  Alert,
+  ErrorMessage,
+  Field,
+  SkeletonTable,
+  Spinner,
+} from '../../components/ui';
 
 const schema = z.object({
   items: z.array(
@@ -75,29 +81,36 @@ export function Progress({ brandId }: { brandId: string }) {
         </select>
       </Field>
       {error ? <Alert>{error}</Alert> : null}
-      {pending ? <p role="status">Loading progress…</p> : null}
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Brand</th>
-              <th>Period</th>
-              <th>Date</th>
-              <th>Completed invoice</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.brandName}</td>
-                <td>{item.period}</td>
-                <td>{item.date}</td>
-                <td>{item.invoiceNumber}</td>
+      {pending && data.items.length === 0 ? (
+        <SkeletonTable
+          rows={4}
+          columns={4}
+          headers={['Brand', 'Period', 'Date', 'Completed invoice']}
+        />
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Period</th>
+                <th>Date</th>
+                <th>Completed invoice</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.brandName}</td>
+                  <td>{item.period}</td>
+                  <td>{item.date}</td>
+                  <td>{item.invoiceNumber}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {!pending && !data.items.length ? (
         <p className="muted">No saved invoices in this view.</p>
       ) : null}
@@ -110,7 +123,13 @@ export function Progress({ brandId }: { brandId: string }) {
             setPending(true);
           }}
         >
-          Load 50 older completed invoices
+          {pending ? (
+            <>
+              <Spinner size={12} /> Loading…
+            </>
+          ) : (
+            'Load 50 older completed invoices'
+          )}
         </button>
       ) : null}
     </section>

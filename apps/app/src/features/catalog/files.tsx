@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
-import { Alert, ErrorMessage, PageHeading } from '../../components/ui';
+import {
+  Alert,
+  ErrorMessage,
+  PageHeading,
+  SkeletonTable,
+  Spinner,
+} from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import { useConfirmation } from '../../components/confirmation-context';
 const fileList = z.object({
@@ -83,57 +89,65 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
       />
       {error ? <Alert>{error}</Alert> : null}
       <section className="panel">
-        <div className="table-scroll">
-          <table className="files-table">
-            <thead>
-              <tr>
-                <th>File</th>
-                <th>Purpose</th>
-                <th className="numeric">Size</th>
-                <th className="file-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td data-label="File" className="file-name">
-                    {item.filename}
-                  </td>
-                  <td data-label="Purpose">{item.kind}</td>
-                  <td data-label="Size" className="numeric">
-                    {Math.ceil(item.size / 1024)} KB
-                  </td>
-                  <td data-label="Actions" className="file-actions">
-                    <div className="actions">
-                      <a
-                        className="text-button"
-                        href={`/api/manage/files/${item.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View
-                      </a>
-                      <button
-                        className="text-button danger-text"
-                        disabled={pending}
-                        onClick={() => {
-                          remove(item.id).catch((reason: unknown) => {
-                            setError(ErrorMessage(reason));
-                          });
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+        {pending && items.length === 0 ? (
+          <SkeletonTable
+            rows={4}
+            columns={4}
+            headers={['File', 'Purpose', 'Size', 'Actions']}
+          />
+        ) : (
+          <div className="table-scroll">
+            <table className="files-table">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Purpose</th>
+                  <th className="numeric">Size</th>
+                  <th className="file-actions">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {items.length === 0 && !pending ? (
-            <p className="empty">No uploaded files yet.</p>
-          ) : null}
-        </div>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td data-label="File" className="file-name">
+                      {item.filename}
+                    </td>
+                    <td data-label="Purpose">{item.kind}</td>
+                    <td data-label="Size" className="numeric">
+                      {Math.ceil(item.size / 1024)} KB
+                    </td>
+                    <td data-label="Actions" className="file-actions">
+                      <div className="actions">
+                        <a
+                          className="text-button"
+                          href={`/api/manage/files/${item.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View
+                        </a>
+                        <button
+                          className="text-button danger-text"
+                          disabled={pending}
+                          onClick={() => {
+                            remove(item.id).catch((reason: unknown) => {
+                              setError(ErrorMessage(reason));
+                            });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {items.length === 0 && !pending ? (
+              <p className="empty">No uploaded files yet.</p>
+            ) : null}
+          </div>
+        )}
         {next ? (
           <button
             className="secondary"
@@ -143,7 +157,13 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
               setCursor(next);
             }}
           >
-            Load 200 older files
+            {pending ? (
+              <>
+                <Spinner size={12} /> Loading…
+              </>
+            ) : (
+              'Load 200 older files'
+            )}
           </button>
         ) : null}
       </section>

@@ -12,6 +12,10 @@ import {
   Field,
   Metric,
   PageHeading,
+  SkeletonInvoice,
+  SkeletonMetrics,
+  SkeletonTable,
+  Spinner,
 } from '../../components/ui';
 import { api, adAccountSchema, adDetailSchema, okSchema } from '../../lib/api';
 import type { AdInvoice, Brand, Settings } from '../../lib/api';
@@ -260,7 +264,7 @@ function Detail({
     return error ? (
       <Alert>{error}</Alert>
     ) : (
-      <p role="status">Loading invoice…</p>
+      <SkeletonInvoice kind="advertising" />
     );
   async function remove() {
     if (
@@ -534,7 +538,13 @@ export function Advertising({
                 });
               }}
             >
-              {reloading ? 'Reloading account…' : 'Reload account'}
+              {reloading ? (
+                <>
+                  <Spinner size={12} /> Reloading account…
+                </>
+              ) : (
+                'Reload account'
+              )}
             </button>
           ) : null}
         </div>
@@ -593,7 +603,23 @@ export function Advertising({
           Create a brand before recording advertising costs.
         </Empty>
       ) : data === null ? (
-        <p role="status">Loading account…</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <SkeletonMetrics count={4} />
+          <section className="panel">
+            <SkeletonTable
+              rows={4}
+              columns={6}
+              headers={[
+                'Invoice',
+                'Period',
+                'Date',
+                'Amount',
+                'Paid',
+                'Status',
+              ]}
+            />
+          </section>
+        </div>
       ) : (
         <>
           <div className="metrics">

@@ -8,6 +8,8 @@ import {
   Field,
   Metric,
   PageHeading,
+  SkeletonTable,
+  Spinner,
 } from '../../components/ui';
 import { api, reportListSchema } from '../../lib/api';
 import type { Brand, ReportRow } from '../../lib/api';
@@ -212,12 +214,29 @@ export function History({
             />
           </Field>
           <button className="secondary compact" disabled={pending}>
-            {pending ? 'Loading…' : 'Apply filters'}
+            {pending ? (
+              <>
+                <Spinner size={12} /> Loading…
+              </>
+            ) : (
+              'Apply filters'
+            )}
           </button>
         </form>
         {error ? <Alert>{error}</Alert> : null}
         {pending && items.length === 0 ? (
-          <p role="status">Loading settlements…</p>
+          <SkeletonTable
+            rows={5}
+            columns={6}
+            headers={[
+              'Invoice / Brand',
+              'Report date',
+              'Net amount',
+              'Agency share',
+              'Balance',
+              'Status',
+            ]}
+          />
         ) : items.length === 0 ? (
           <Empty title="A clean slate">
             Your saved reports will appear here. Add a brand, then create your
@@ -301,7 +320,13 @@ export function History({
                 setPending(true);
               }}
             >
-              {pending ? 'Loading…' : 'Load 50 more reports'}
+              {pending ? (
+                <>
+                  <Spinner size={12} /> Loading…
+                </>
+              ) : (
+                'Load 50 more reports'
+              )}
             </button>
           </div>
         ) : null}

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Brand } from '../../lib/api';
 import { api } from '../../lib/api';
 import { amountInput, today } from '../../lib/format';
-import { Alert, ErrorMessage, Field } from '../../components/ui';
+import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { Importer } from '../business/importer';
 
 const amount = z.number().int();
@@ -224,9 +224,13 @@ export function SettlementSource({
                   });
                 }}
               >
-                {pending
-                  ? 'Loading saved totals…'
-                  : 'Load saved courier totals & allocated ads'}
+                {pending ? (
+                  <>
+                    <Spinner size={12} /> Loading saved totals…
+                  </>
+                ) : (
+                  'Load saved courier totals & allocated ads'
+                )}
               </button>
               {error ? <Alert>{error}</Alert> : null}
             </>

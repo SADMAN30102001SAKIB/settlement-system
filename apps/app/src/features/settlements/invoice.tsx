@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { calculateSettlement } from '@settlement/domain/settlement';
 import type { AdInvoice, Report, Settings } from '../../lib/api';
 import { dateLabel, money } from '../../lib/format';
-import { Alert, ErrorMessage, PageHeading } from '../../components/ui';
+import { Alert, ErrorMessage, PageHeading, Spinner } from '../../components/ui';
 
 export function Invoice({
   report,
@@ -216,7 +216,13 @@ export function Invoice({
                   });
                 }}
               >
-                {downloading ? 'Preparing PDF…' : 'Download PDF'}
+                {downloading ? (
+                  <>
+                    <Spinner size={12} /> Preparing PDF…
+                  </>
+                ) : (
+                  'Download PDF'
+                )}
               </button>
             </div>
           }

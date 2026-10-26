@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 
-import { Alert, ErrorMessage } from './components/ui';
+import {
+  Alert,
+  ErrorMessage,
+  Skeleton,
+  SkeletonInvoice,
+} from './components/ui';
 import { Login } from './features/auth/login';
 import { Brands } from './features/catalog/brands';
 import { Settings } from './features/catalog/settings';
@@ -79,7 +84,7 @@ function ReportView({
     navigate('/settlements');
   }
   if (error) return <Alert>{error}</Alert>;
-  if (report === null) return <p role="status">Loading report…</p>;
+  if (report === null) return <SkeletonInvoice kind="settlement" />;
   return edit ? (
     <ReportEditor
       key={report.id}
@@ -308,7 +313,15 @@ export function App() {
             </button>
           </>
         ) : (
-          <p>Connecting securely to your data.</p>
+          <>
+            <p>Connecting securely to your data.</p>
+            <Skeleton
+              className="boot-loader"
+              height={4}
+              radius={2}
+              aria-label="Connecting securely…"
+            />
+          </>
         )}
       </main>
     );
