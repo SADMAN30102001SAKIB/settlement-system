@@ -39,11 +39,12 @@ export function SettlementSource({
   onBrandChange: (brandId: string) => void;
   onLoad: (values: SourceValues) => void;
 }) {
-  const [from, setFrom] = useState(today()),
+  const [from, setFrom] = useState(`${today().slice(0, 7)}-01`),
     [to, setTo] = useState(today()),
     [basis, setBasis] = useState('order');
   const [source, setSource] = useState<'saved' | 'file'>('saved');
   const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState('');
   const [error, setError] = useState(''),
     [pending, setPending] = useState(false);
   function load(
@@ -71,16 +72,30 @@ export function SettlementSource({
       partialCodCharge: amountInput(values.partialCodCharge),
       ads: amountInput(values.ads),
     });
+    setLoaded(
+      `Loaded ${String(values.deliveredQty + values.cancelledQty + values.partialQty + values.pendingQty)} orders for ${start === end ? start : `${start} – ${end}`}. Review the populated report below.`,
+    );
     setOpen(false);
   }
   async function fetchData() {
     setPending(true);
     setError('');
+    setLoaded('');
     try {
       const values = await api(
         `/manage/business/settlement?${new URLSearchParams({ from, to, brandId, basis }).toString()}`,
         totals,
       );
+      if (
+        values.deliveredQty +
+          values.cancelledQty +
+          values.partialQty +
+          values.pendingQty ===
+        0
+      )
+        throw new Error(
+          'No saved orders match this brand and date range. Change the dates or import courier orders in Business Tracking first.',
+        );
       load(brandId, from, to, values);
     } catch (reason) {
       setError(ErrorMessage(reason));
@@ -89,7 +104,13 @@ export function SettlementSource({
     }
   }
   return (
-    <section className="panel no-print settlement-source">
+    <section
+      className="panel no-print settlement-source"
+      onChange={() => {
+        setError('');
+        setLoaded('');
+      }}
+    >
       <div className="section-heading">
         <div>
           <h2>Start from existing data</h2>
@@ -107,6 +128,11 @@ export function SettlementSource({
           {open ? 'Close data source' : 'Load settlement totals'}
         </button>
       </div>
+      {loaded ? (
+        <p role="status" className="success">
+          {loaded}
+        </p>
+      ) : null}
       {open ? (
         <>
           <p className="muted">
@@ -136,9 +162,13 @@ export function SettlementSource({
               Courier file
             </button>
           </div>
-          {error ? <Alert>{error}</Alert> : null}
           {source === 'saved' ? (
             <>
+              <p className="caption">
+                Loads imported orders saved in Business Tracking, not previously
+                saved invoices. The default range is this month; adjust it to
+                match your courier report.
+              </p>
               <div className="form-grid">
                 <Field label="Brand">
                   <select
@@ -194,68 +224,80 @@ export function SettlementSource({
                   });
                 }}
               >
-                Load saved courier totals & allocated ads
+                {pending
+                  ? 'Loading saved totals…'
+                  : 'Load saved courier totals & allocated ads'}
               </button>
+              {error ? <Alert>{error}</Alert> : null}
             </>
           ) : null}
           {source === 'file' ? (
-            <Importer
-              brands={brands}
-              initialBrandId={brandId}
-              onBrandChange={onBrandChange}
-              onReviewed={(key, rows) => {
-                const values = {
-                  deliveredQty: 0,
-                  deliveredUnits: 0,
-                  productCost: 0,
-                  cancelledQty: 0,
-                  partialQty: 0,
-                  pendingQty: 0,
-                  deliveredAmount: 0,
-                  cancelledAmount: 0,
-                  partialAmount: 0,
-                  shipping: 0,
-                  codCharge: 0,
-                  deliveredCodCharge: 0,
-                  partialCodCharge: 0,
-                  ads: 0,
-                };
-                for (const row of rows) {
-                  if (row.status === 'Delivered') {
-                    values.deliveredQty++;
-                    values.deliveredUnits += row.quantity;
-                    values.deliveredAmount += row.codAmount;
-                    values.deliveredCodCharge += row.codCharge;
-                  } else if (row.status === 'Cancelled') {
-                    values.cancelledQty++;
-                    values.cancelledAmount += row.codAmount;
-                  } else if (row.status === 'Partial Delivered') {
-                    values.partialQty++;
-                    values.partialAmount += row.codAmount;
-                    values.partialCodCharge += row.codCharge;
-                  } else values.pendingQty++;
-                  if (row.status !== 'Pending') {
-                    values.shipping += row.shipping;
-                    values.codCharge += row.codCharge;
+            <>
+              <p className="muted">
+                Use courier results, not an order-ID-only list.
+              </p>
+              {error ? <Alert>{error}</Alert> : null}
+              <Importer
+                brands={brands}
+                initialBrandId={brandId}
+                onBrandChange={onBrandChange}
+                onReviewed={(key, rows) => {
+                  const values = {
+                    deliveredQty: 0,
+                    deliveredUnits: 0,
+                    productCost: 0,
+                    cancelledQty: 0,
+                    partialQty: 0,
+                    pendingQty: 0,
+                    deliveredAmount: 0,
+                    cancelledAmount: 0,
+                    partialAmount: 0,
+                    shipping: 0,
+                    codCharge: 0,
+                    deliveredCodCharge: 0,
+                    partialCodCharge: 0,
+                    ads: 0,
+                  };
+                  for (const row of rows) {
+                    if (row.status === 'Delivered') {
+                      values.deliveredQty++;
+                      values.deliveredUnits += row.quantity;
+                      values.deliveredAmount += row.codAmount;
+                      values.deliveredCodCharge += row.codCharge;
+                    } else if (row.status === 'Cancelled') {
+                      values.cancelledQty++;
+                      values.cancelledAmount += row.codAmount;
+                    } else if (row.status === 'Partial Delivered') {
+                      values.partialQty++;
+                      values.partialAmount += row.codAmount;
+                      values.partialCodCharge += row.codCharge;
+                    } else values.pendingQty++;
+                    if (row.status !== 'Pending') {
+                      values.shipping += row.shipping;
+                      values.codCharge += row.codCharge;
+                    }
                   }
-                }
-                const makingCost = brands.find(
-                  (brand) => brand.id === key,
-                )?.makingCost;
-                if (makingCost === null || makingCost === undefined) {
-                  setError(
-                    'Set this brand’s making cost before loading a courier file.',
-                  );
-                  return;
-                }
-                values.productCost = makingCost * values.deliveredUnits;
-                const dates = rows.map((row) => row.orderDate).sort();
-                const start = dates[0],
-                  end = dates.at(-1);
-                if (start !== undefined && end !== undefined)
-                  load(key, start, end, values);
-              }}
-            />
+                  const makingCost = brands.find(
+                    (brand) => brand.id === key,
+                  )?.makingCost;
+                  if (makingCost === null || makingCost === undefined) {
+                    setError(
+                      'Set this brand’s making cost before loading a courier file.',
+                    );
+                    return false;
+                  }
+                  values.productCost = makingCost * values.deliveredUnits;
+                  const dates = rows.map((row) => row.orderDate).sort();
+                  const start = dates[0],
+                    end = dates.at(-1);
+                  if (start !== undefined && end !== undefined) {
+                    load(key, start, end, values);
+                    return true;
+                  }
+                  return false;
+                }}
+              />
+            </>
           ) : null}
         </>
       ) : null}

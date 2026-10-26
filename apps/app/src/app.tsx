@@ -86,6 +86,24 @@ function ReportView({
         onBack={() => {
           navigate('/settlements');
         }}
+        onDelete={() => {
+          if (
+            !window.confirm(
+              `Permanently delete ${report.invoiceNumber} and all of its payment records?`,
+            )
+          )
+            return;
+          api(`/manage/settlements/${id}`, okSchema, {
+            method: 'DELETE',
+            body: { revision: report.revision },
+          })
+            .then(() => {
+              navigate('/settlements');
+            })
+            .catch((reason: unknown) => {
+              setError(ErrorMessage(reason));
+            });
+        }}
       />
       <PaymentsPanel
         target={{ kind: 'settlement', targetId: report.id }}
@@ -101,31 +119,6 @@ function ReportView({
           setPayments(result.payments);
         }}
       />
-      <div className="no-print">
-        <button
-          className="secondary danger-text"
-          onClick={() => {
-            if (
-              !window.confirm(
-                'Permanently delete this settlement and all of its payment records?',
-              )
-            )
-              return;
-            api(`/manage/settlements/${id}`, okSchema, {
-              method: 'DELETE',
-              body: { revision: report.revision },
-            })
-              .then(() => {
-                navigate('/settlements');
-              })
-              .catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              });
-          }}
-        >
-          Delete settlement
-        </button>
-      </div>
     </>
   );
 }
@@ -146,6 +139,26 @@ export function App() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [error, setError] = useState('');
   const [navOpen, setNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('hexa-sidebar-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isNarrow, setIsNarrow] = useState(
+    () => window.matchMedia('(max-width: 1024px)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1024px)');
+    const change = () => {
+      setIsNarrow(media.matches);
+    };
+    media.addEventListener('change', change);
+    return () => {
+      media.removeEventListener('change', change);
+    };
+  }, []);
   const [working, setWorking] = useState(false);
   useEffect(() => {
     const expireSession = () => {
@@ -297,7 +310,7 @@ export function App() {
   const reportId =
     parts[0] === 'settlements' && parts[1] !== 'new' ? parts[1] : undefined;
   return (
-    <div className="workspace">
+    <div className={`workspace ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <a
         href="#main"
         className="skip-link"
@@ -308,7 +321,12 @@ export function App() {
       >
         Skip to content
       </a>
-      <aside className={`sidebar ${navOpen ? 'is-open' : ''}`}>
+      <aside
+        id="workspace-sidebar"
+        className={`sidebar ${navOpen ? 'is-open' : ''}`}
+        inert={isNarrow ? !navOpen : sidebarCollapsed}
+        aria-hidden={isNarrow ? !navOpen : sidebarCollapsed}
+      >
         <a
           href="/settlements"
           className="wordmark"
@@ -380,6 +398,22 @@ export function App() {
       <div className="workspace-body">
         <header className="topbar no-print">
           <button
+            className="sidebar-toggle secondary compact"
+            aria-controls="workspace-sidebar"
+            aria-expanded={!sidebarCollapsed}
+            onClick={() => {
+              const next = !sidebarCollapsed;
+              setSidebarCollapsed(next);
+              try {
+                localStorage.setItem('hexa-sidebar-collapsed', String(next));
+              } catch {
+                /* Collapsing still works without storage. */
+              }
+            }}
+          >
+            {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          </button>
+          <button
             className="menu-toggle secondary compact"
             aria-expanded={navOpen}
             aria-label="Toggle navigation"
@@ -389,12 +423,8 @@ export function App() {
           >
             Menu
           </button>
-          <div className="breadcrumb">
-            Hexa Agency <span>/</span> Settlement workspace
-          </div>
           <div className="topbar-meta">
             <ThemePicker />
-            <span className="online-dot" /> D1 connected{' '}
             <span className="topbar-date">{today()}</span>
           </div>
         </header>

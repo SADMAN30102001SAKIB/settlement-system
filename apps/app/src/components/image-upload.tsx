@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { api, okSchema } from '../lib/api';
 import { Alert, ErrorMessage, Field } from './ui';
 import { prepareInvoiceImage } from '../lib/prepare-image';
+import { FilePicker } from './file-picker';
 
 export function ImageUpload({
   kind,
@@ -123,17 +124,13 @@ export function ImageUpload({
       <Field
         label={`${currentId ? 'Replace' : 'Upload'} ${kind} (PNG, JPEG or WebP)`}
       >
-        <input
-          type="file"
+        <FilePicker
           accept="image/png,image/jpeg,image/webp"
           disabled={pending}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file)
-              upload(file).catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              });
-            event.target.value = '';
+          onFile={(file) => {
+            upload(file).catch((reason: unknown) => {
+              setError(ErrorMessage(reason));
+            });
           }}
         />
       </Field>

@@ -11,6 +11,7 @@ import { api } from '../../lib/api';
 import type { Brand } from '../../lib/api';
 import { money } from '../../lib/format';
 import { readImport } from './import-file';
+import { FilePicker } from '../../components/file-picker';
 
 const labels = {
   id: 'Order ID',
@@ -32,7 +33,10 @@ export function Importer({
   initialBrandId?: string;
   onBrandChange?: (brandId: string) => void;
   onImported?: () => void;
-  onReviewed?: (brandId: string, rows: ReturnType<typeof mapOrder>[]) => void;
+  onReviewed?: (
+    brandId: string,
+    rows: ReturnType<typeof mapOrder>[],
+  ) => boolean;
 }) {
   const [brandId, setBrandId] = useState(initialBrandId);
   const [mode, setMode] = useState<'orders' | 'courier'>('courier');
@@ -54,14 +58,14 @@ export function Importer({
   });
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState('');
   const [blankCodChargeIsZero, setBlankCodChargeIsZero] = useState(false);
   const [blankCodAmountIsZero, setBlankCodAmountIsZero] = useState(false);
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [sourceName, setSourceName] = useState('Pasted spreadsheet');
   function loadRows(data: string[][]) {
     setRows(data);
     setHeader(0);
-    setReviewed(false);
     setBlankCodChargeIsZero(false);
     setBlankCodAmountIsZero(false);
     const aliases: Record<ImportColumn, string[]> = {
@@ -134,6 +138,23 @@ export function Importer({
     }
   });
   const invalid = preview.some((row) => row.error);
+  const blanks = (key: 'codAmount' | 'codCharge') =>
+    mapping[key] < 0
+      ? 0
+      : rows.slice(header + 1).filter((row) => !row[mapping[key]]?.trim())
+          .length;
+  const modeConflict =
+    mode === 'orders' &&
+    rows
+      .slice(header + 1)
+      .some((row) =>
+        [
+          mapping.status,
+          mapping.codAmount,
+          mapping.shipping,
+          mapping.codCharge,
+        ].some((index) => index >= 0 && Boolean(row[index]?.trim())),
+      );
   const valid = preview.flatMap((row) =>
     row.order === null ? [] : [row.order],
   );
@@ -149,9 +170,9 @@ export function Importer({
   async function upload(file: File) {
     setPending(true);
     setError('');
-    setReviewed(false);
     try {
       loadRows(await readImport(file));
+      setSourceName(file.name);
       setMessage(
         /\.pdf$/i.test(file.name)
           ? 'Verified-layout PDF extracted. Check every mapped column and blank amount before confirming.'
@@ -164,14 +185,24 @@ export function Importer({
     }
   }
   async function save() {
+    if (
+      pending ||
+      !brandId ||
+      invalid ||
+      modeConflict ||
+      !preview.length ||
+      preview.length > 2000
+    )
+      return;
     setPending(true);
     setError('');
     try {
       if (onReviewed !== undefined) {
-        onReviewed(
+        const loaded = onReviewed(
           brandId,
           preview.flatMap((row) => (row.order === null ? [] : [row.order])),
         );
+        if (!loaded) return;
         setMessage(
           'Verified rows loaded into the settlement form. Review and save the invoice below.',
         );
@@ -193,7 +224,6 @@ export function Importer({
       );
       setRows([]);
       setText('');
-      setReviewed(false);
       onImported?.();
     } catch (reason) {
       setError(ErrorMessage(reason));
@@ -202,7 +232,7 @@ export function Importer({
     }
   }
   return (
-    <section className="panel">
+    <section className="panel importer">
       <h2>Import orders & courier updates</h2>
       <p className="muted">
         Files are parsed in your browser. Nothing is saved until you review and
@@ -217,7 +247,6 @@ export function Importer({
             onChange={(event) => {
               setBrandId(event.target.value);
               onBrandChange?.(event.target.value);
-              setReviewed(false);
             }}
           >
             <option value="">Choose brand</option>
@@ -228,203 +257,267 @@ export function Importer({
             ))}
           </select>
         </Field>
-        <Field label="Import type">
-          <select
-            value={mode}
-            onChange={(event) => {
-              setMode(event.target.value === 'orders' ? 'orders' : 'courier');
-              setReviewed(false);
-            }}
-          >
-            <option value="courier">Courier update</option>
-            <option value="orders">
-              Daily order IDs (does not replace courier status)
-            </option>
-          </select>
-        </Field>
-        <Field label="CSV / XLSX / PDF">
-          <input
-            type="file"
-            accept=".csv,.tsv,.txt,.xlsx,.pdf"
-            disabled={pending}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file)
+        {onReviewed === undefined ? (
+          <Field label="Import type">
+            <select
+              value={mode}
+              onChange={(event) => {
+                setMode(event.target.value === 'orders' ? 'orders' : 'courier');
+              }}
+            >
+              <option value="courier">Courier update</option>
+              <option value="orders">
+                Daily order IDs (does not replace courier status)
+              </option>
+            </select>
+          </Field>
+        ) : (
+          <p className="muted">
+            Courier outcomes: preserve statuses and collection amounts.
+          </p>
+        )}
+        {!rows.length ? (
+          <Field label="CSV / XLSX / PDF">
+            <FilePicker
+              accept=".csv,.tsv,.txt,.xlsx,.pdf"
+              disabled={pending}
+              onFile={(file) => {
                 upload(file).catch((reason: unknown) => {
                   setError(ErrorMessage(reason));
                 });
-              event.target.value = '';
-            }}
-          />
-        </Field>
+              }}
+            />
+          </Field>
+        ) : null}
       </div>
-      <Field label="Or paste spreadsheet cells (including headers)">
-        <textarea
-          rows={5}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-          }}
-          placeholder={
-            'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
-          }
-        />
-      </Field>
-      <button
-        className="secondary"
-        disabled={pending || !text.trim()}
-        onClick={() => {
-          try {
-            loadRows(parseDelimited(text));
-            setReviewed(false);
-            setError('');
-          } catch (reason) {
-            setError(ErrorMessage(reason));
-          }
-        }}
-      >
-        Preview pasted rows
-      </button>
+      {!rows.length ? (
+        <>
+          <Field label="Or paste spreadsheet cells (including headers)">
+            <textarea
+              rows={5}
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value);
+              }}
+              placeholder={
+                'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
+              }
+            />
+          </Field>
+          <button
+            className="secondary"
+            disabled={pending || !text.trim()}
+            onClick={() => {
+              try {
+                loadRows(parseDelimited(text));
+                setSourceName('Pasted spreadsheet');
+                setError('');
+              } catch (reason) {
+                setError(ErrorMessage(reason));
+              }
+            }}
+          >
+            Preview pasted rows
+          </button>
+        </>
+      ) : (
+        <div className="import-source-bar">
+          <div>
+            <strong>{sourceName}</strong>
+            <small className="muted">
+              {rows.length - header - 1} source rows · review before confirming
+            </small>
+          </div>
+          <button
+            className="secondary compact"
+            disabled={pending}
+            onClick={() => {
+              setRows([]);
+              setError('');
+              setMessage('');
+            }}
+          >
+            Change source
+          </button>
+        </div>
+      )}
       {message ? <p role="status">{message}</p> : null}
       {error ? <Alert>{error}</Alert> : null}
       {rows.length ? (
         <>
           <section className="import-options">
-            <h3>Check date format & column mapping</h3>
-            <div className="form-grid">
-              <Field label="Source date format">
-                <select
-                  value={format}
-                  onChange={(event) => {
-                    setFormat(event.target.value === 'DMY' ? 'DMY' : 'ISO');
-                    setReviewed(false);
-                  }}
-                >
-                  <option value="ISO">
-                    YYYY-MM-DD (including Excel dates)
-                  </option>
-                  <option value="DMY">DD/MM/YYYY</option>
-                </select>
-              </Field>
-              <Field label="Header row">
-                <select
-                  value={header}
-                  onChange={(event) => {
-                    setHeader(Number(event.target.value));
-                    setReviewed(false);
-                  }}
-                >
-                  {rows.slice(0, 100).map((row, index) => (
-                    <option key={index} value={index}>
-                      Row {index + 1}: {row.join(' · ').slice(0, 120)}
+            <button
+              className="secondary"
+              aria-expanded={mappingOpen}
+              onClick={() => {
+                setMappingOpen(!mappingOpen);
+              }}
+            >
+              Check date format & column mapping
+            </button>
+            {mappingOpen ? (
+              <div className="form-grid">
+                <Field label="Source date format">
+                  <select
+                    value={format}
+                    onChange={(event) => {
+                      setFormat(event.target.value === 'DMY' ? 'DMY' : 'ISO');
+                    }}
+                  >
+                    <option value="ISO">
+                      YYYY-MM-DD (including Excel dates)
                     </option>
+                    <option value="DMY">DD/MM/YYYY</option>
+                  </select>
+                </Field>
+                <Field label="Header row">
+                  <select
+                    value={header}
+                    onChange={(event) => {
+                      setHeader(Number(event.target.value));
+                    }}
+                  >
+                    {rows.slice(0, 100).map((row, index) => (
+                      <option key={index} value={index}>
+                        Row {index + 1}: {row.join(' · ').slice(0, 120)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {importColumns
+                  .filter(
+                    (key) =>
+                      mode === 'courier' || key === 'id' || key === 'orderDate',
+                  )
+                  .map((key) => (
+                    <Field key={key} label={labels[key]}>
+                      <select
+                        value={mapping[key]}
+                        onChange={(event) => {
+                          setMapping((current) => ({
+                            ...current,
+                            [key]: Number(event.target.value),
+                          }));
+                        }}
+                      >
+                        <option value={-1}>Map a column</option>
+                        {rows[header]?.map((cell, index) => (
+                          <option key={index} value={index}>
+                            {index + 1}: {cell}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                   ))}
-                </select>
-              </Field>
-              {importColumns
-                .filter(
-                  (key) =>
-                    mode === 'courier' || key === 'id' || key === 'orderDate',
-                )
+                <Field
+                  label="Item quantity column (optional)"
+                  hint="Without a quantity column each parcel starts with one item. Correct multi-item orders before settling."
+                >
+                  <select
+                    value={mapping.quantity}
+                    onChange={(event) => {
+                      setMapping((current) => ({
+                        ...current,
+                        quantity: Number(event.target.value),
+                      }));
+                    }}
+                  >
+                    <option value={-1}>One item per parcel</option>
+                    {rows[header]?.map((cell, index) => (
+                      <option key={index} value={index}>
+                        {index + 1}: {cell}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            ) : null}
+          </section>
+          {modeConflict ? (
+            <Alert>
+              This file contains courier statuses or financial amounts. Daily
+              order-ID mode would ignore them.{' '}
+              <button
+                className="secondary"
+                onClick={() => {
+                  setMode('courier');
+                }}
+              >
+                Use courier update
+              </button>
+            </Alert>
+          ) : null}
+          {mode === 'courier' ? (
+            <div className="blank-decisions">
+              {(['codCharge', 'codAmount'] as const)
+                .filter((key) => blanks(key) > 0)
                 .map((key) => (
-                  <Field key={key} label={labels[key]}>
+                  <Field
+                    key={key}
+                    label={`${key === 'codCharge' ? 'Blank COD fees' : 'Blank COD collection'} · ${String(blanks(key))} rows`}
+                    hint="A blank is not automatically zero. Only choose zero if that is what this export means."
+                  >
                     <select
-                      value={mapping[key]}
+                      value={
+                        (
+                          key === 'codCharge'
+                            ? blankCodChargeIsZero
+                            : blankCodAmountIsZero
+                        )
+                          ? 'zero'
+                          : 'unresolved'
+                      }
                       onChange={(event) => {
-                        setMapping((current) => ({
-                          ...current,
-                          [key]: Number(event.target.value),
-                        }));
-                        setReviewed(false);
+                        (key === 'codCharge'
+                          ? setBlankCodChargeIsZero
+                          : setBlankCodAmountIsZero)(
+                          event.target.value === 'zero',
+                        );
                       }}
                     >
-                      <option value={-1}>Map a column</option>
-                      {rows[header]?.map((cell, index) => (
-                        <option key={index} value={index}>
-                          {index + 1}: {cell}
-                        </option>
-                      ))}
+                      <option value="unresolved">
+                        Keep unresolved — correct the source
+                      </option>
+                      <option value="zero">These blank cells mean ৳0</option>
                     </select>
                   </Field>
                 ))}
-              <Field
-                label="Item quantity column (optional)"
-                hint="Without a quantity column each parcel starts with one item. Correct multi-item orders before settling."
-              >
-                <select
-                  value={mapping.quantity}
-                  onChange={(event) => {
-                    setMapping((current) => ({
-                      ...current,
-                      quantity: Number(event.target.value),
-                    }));
-                    setReviewed(false);
-                  }}
-                >
-                  <option value={-1}>One item per parcel</option>
-                  {rows[header]?.map((cell, index) => (
-                    <option key={index} value={index}>
-                      {index + 1}: {cell}
-                    </option>
-                  ))}
-                </select>
-              </Field>
             </div>
+          ) : null}
+          <section
+            className="import-reconciliation"
+            aria-label="Source reconciliation"
+          >
+            <h3>Compare with your source</h3>
+            <p className="muted">
+              {valid.length} valid rows · {preview.length - valid.length} rows
+              need correction. Totals below include valid rows only; no rows are
+              silently discarded.
+            </p>
+            <dl className="summary-grid">
+              <div>
+                <dt>Source COD total</dt>
+                <dd>{money(reconciliation.cod)}</dd>
+              </div>
+              <div>
+                <dt>Source delivery charges</dt>
+                <dd>{money(reconciliation.shipping)}</dd>
+              </div>
+              <div>
+                <dt>Source COD charges</dt>
+                <dd>{money(reconciliation.codCharge)}</dd>
+              </div>
+              <div>
+                <dt>Item quantity</dt>
+                <dd>{reconciliation.quantity}</dd>
+              </div>
+            </dl>
           </section>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={blankCodChargeIsZero}
-              onChange={(event) => {
-                setBlankCodChargeIsZero(event.target.checked);
-                setReviewed(false);
-              }}
-            />
-            I explicitly confirm that blank COD-charge cells in this export mean
-            ৳0. Otherwise leave unchecked and correct the source file.
-          </label>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={blankCodAmountIsZero}
-              onChange={(event) => {
-                setBlankCodAmountIsZero(event.target.checked);
-                setReviewed(false);
-              }}
-            />
-            I explicitly confirm that blank COD-amount cells mean ৳0 collected.
-            Otherwise correct the source file.
-          </label>
-          <div className="table-scroll import-preview">
-            <section
-              className="import-reconciliation"
-              aria-label="Source reconciliation"
-            >
-              <h3>Compare with your source</h3>
-              <p className="muted">
-                {valid.length} valid rows · {preview.length - valid.length} rows
-                need correction. Totals below include valid rows only; no rows
-                are silently discarded.
-              </p>
-              <dl className="summary-grid">
-                <div>
-                  <dt>Source COD total</dt>
-                  <dd>{money(reconciliation.cod)}</dd>
-                </div>
-                <div>
-                  <dt>Source delivery charges</dt>
-                  <dd>{money(reconciliation.shipping)}</dd>
-                </div>
-                <div>
-                  <dt>Source COD charges</dt>
-                  <dd>{money(reconciliation.codCharge)}</dd>
-                </div>
-                <div>
-                  <dt>Item quantity</dt>
-                  <dd>{reconciliation.quantity}</dd>
-                </div>
-              </dl>
-            </section>
+          <div
+            className="table-scroll import-preview"
+            role="region"
+            aria-label="Imported order preview"
+          >
             <table>
               <thead>
                 <tr>
@@ -458,39 +551,34 @@ export function Importer({
               </tbody>
             </table>
           </div>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={reviewed}
-              onChange={(event) => {
-                setReviewed(event.target.checked);
+          <div className="import-footer">
+            <p className="muted">
+              Review the totals and rows above. Confirming updates existing IDs
+              without duplicating orders.
+            </p>
+            <button
+              className="primary"
+              disabled={
+                pending ||
+                !brandId ||
+                invalid ||
+                !preview.length ||
+                modeConflict ||
+                preview.length > 2000
+              }
+              onClick={() => {
+                save().catch((reason: unknown) => {
+                  setError(ErrorMessage(reason));
+                });
               }}
-            />
-            I checked the dates, IDs, status, item quantities and amounts
-            against the source.
-          </label>
-          <button
-            className="primary"
-            disabled={
-              pending ||
-              !brandId ||
-              invalid ||
-              !preview.length ||
-              !reviewed ||
-              preview.length > 2000
-            }
-            onClick={() => {
-              save().catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              });
-            }}
-          >
-            {pending
-              ? 'Importing…'
-              : onReviewed
-                ? 'Use verified rows in settlement'
-                : `Import ${String(preview.length)} orders`}
-          </button>
+            >
+              {pending
+                ? 'Importing…'
+                : onReviewed
+                  ? 'Confirm & use rows in settlement'
+                  : `Confirm & import ${String(preview.length)} orders`}
+            </button>
+          </div>
         </>
       ) : null}
     </section>

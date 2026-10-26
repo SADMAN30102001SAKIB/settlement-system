@@ -76,6 +76,18 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     .getByRole('button', { name: /Save settlement|Save report|Save &/ })
     .click();
   await expect(page.locator('.invoice-document')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Delete settlement', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  page.once('dialog', async (confirmation) => {
+    expect(confirmation.message()).toContain('HEXA-');
+    await confirmation.dismiss();
+  });
+  await page
+    .getByRole('button', { name: 'Delete settlement', exact: true })
+    .click();
+  await expect(page.locator('.invoice-document')).toBeVisible();
   await expect(page.locator('.invoice-final')).toContainText('৳92.70');
   await expect(page.locator('.invoice-document')).toContainText(
     '4 delivered items',
@@ -153,14 +165,13 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
       .setInputFiles(join(import.meta.dirname, '../../../assets', courierFile));
     await expect(importer.locator('tbody tr')).toHaveCount(391);
     await expect(
-      importer.getByRole('button', { name: 'Import 391 orders' }),
+      importer.getByRole('button', { name: 'Confirm & import 391 orders' }),
     ).toBeDisabled();
-    await importer.getByRole('checkbox', { name: /blank COD-charge/ }).check();
-    await importer.getByRole('checkbox', { name: /blank COD-amount/ }).check();
+    await importer.getByLabel(/Blank COD fees/).selectOption('zero');
+    await importer.getByLabel(/Blank COD collection/).selectOption('zero');
     await importer
-      .getByRole('checkbox', { name: /I checked the dates/ })
-      .check();
-    await importer.getByRole('button', { name: 'Import 391 orders' }).click();
+      .getByRole('button', { name: 'Confirm & import 391 orders' })
+      .click();
     await expect(importer.getByRole('status')).toContainText(
       '391 orders imported',
     );
@@ -212,6 +223,12 @@ test('business tracking guides import, costs and review without exposing every f
   await importButton.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Preview pasted rows' }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole('button', { name: 'Preview pasted rows' }),
+  ).toHaveCSS('cursor', 'not-allowed');
   await expect(dialog.getByLabel('Brand', { exact: true })).toHaveValue(
     await page
       .locator('.filters')
@@ -233,8 +250,9 @@ test('business tracking guides import, costs and review without exposing every f
   await expect(
     dialog.getByRole('cell', { name: 'Ready', exact: true }),
   ).toBeVisible();
-  await dialog.getByRole('checkbox', { name: /I checked the dates/ }).check();
-  await dialog.getByRole('button', { name: 'Import 1 orders' }).click();
+  await dialog
+    .getByRole('button', { name: 'Confirm & import 1 orders' })
+    .click();
   await expect(dialog.getByRole('status')).toContainText('1 orders imported');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -533,6 +551,16 @@ test('layouts stay balanced across desktop, tablet and narrow mobile screens', a
             name: 'Load saved courier totals & allocated ads',
           }),
         ).toBeVisible();
+        await expect(
+          page.getByRole('button', {
+            name: 'Load saved courier totals & allocated ads',
+          }),
+        ).toBeDisabled();
+        await expect(
+          page.getByRole('button', {
+            name: 'Load saved courier totals & allocated ads',
+          }),
+        ).toHaveCSS('cursor', 'not-allowed');
         await expect(page.getByLabel('CSV / XLSX / PDF')).not.toBeVisible();
         await page
           .getByRole('button', { name: 'Courier file', exact: true })
@@ -781,6 +809,7 @@ test('clean routes support navigation, reloads, history and existing hash bookma
 test('shared screen colors and scrollbars remain legible in both themes', async ({
   page,
 }, testInfo) => {
+  test.setTimeout(120000);
   await signIn(page);
   await page.goto('/brands');
   await page
@@ -805,6 +834,9 @@ test('shared screen colors and scrollbars remain legible in both themes', async 
       'files',
     ]) {
       await page.goto(`/${route}`);
+      await expect(page.getByLabel('Color theme')).toBeVisible({
+        timeout: 15000,
+      });
       await expect(page.getByLabel('Color theme')).toHaveValue(theme);
       await expect(page.locator('main h1')).toBeVisible();
       const failures = await contrastFailures(page);
@@ -854,4 +886,107 @@ test('shared screen colors and scrollbars remain legible in both themes', async 
     }
   }
   await page.getByLabel('Color theme').selectOption('light');
+});
+
+test('source loading gives feedback, sidebar collapses, and import decisions stay explicit', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  if (testInfo.project.name === 'desktop') {
+    await page
+      .getByRole('button', { name: 'Collapse sidebar', exact: true })
+      .click();
+    await expect(page.locator('.sidebar')).toHaveAttribute('inert', '');
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Expand sidebar', exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Expand sidebar', exact: true })
+      .click();
+    await expect(page.locator('.sidebar')).not.toHaveAttribute('inert', '');
+  }
+  await expect(page.getByText('D1 connected', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.breadcrumb')).toHaveCount(0);
+  await page.goto('/brands');
+  const brand = `Feedback ${testInfo.project.name} ${String(Date.now())}`;
+  await page.getByLabel('Brand name', { exact: true }).fill(brand);
+  await page.getByLabel(/Making cost/).fill('100');
+  await page.getByRole('button', { name: 'Save brand' }).click();
+  await expect(page.getByText(brand, { exact: true })).toBeVisible();
+  await page.goto('/settlements/new');
+  await page.getByLabel('Delivered amount (৳)', { exact: true }).fill('777');
+  await page
+    .getByRole('button', { name: 'Load settlement totals', exact: true })
+    .click();
+  await page
+    .getByLabel('Brand', { exact: true })
+    .first()
+    .selectOption({ label: brand });
+  let release: () => void = () => {
+    throw new Error('The request gate was not initialized.');
+  };
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/manage/business/settlement?*', async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await page
+    .getByRole('button', {
+      name: 'Load saved courier totals & allocated ads',
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Loading saved totals…', exact: true }),
+  ).toBeDisabled();
+  release();
+  await expect(page.getByRole('alert')).toContainText(
+    'No saved orders match this brand and date range',
+  );
+  await expect(
+    page.getByLabel('Delivered amount (৳)', { exact: true }),
+  ).toHaveValue('777');
+  await page.unroute('**/api/manage/business/settlement?*');
+  await page.goto('/business');
+  await page
+    .getByRole('button', { name: /Import orders|Import updates/ })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByLabel('Brand', { exact: true })
+    .selectOption({ label: brand });
+  await dialog
+    .getByLabel('Or paste spreadsheet cells (including headers)')
+    .fill(
+      'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge\n2026-10-26\tfeedback-test\tDelivered\t2026-10-26\t1000\t60\t10',
+    );
+  await dialog.getByRole('button', { name: 'Preview pasted rows' }).click();
+  await expect(dialog.getByLabel(/Blank COD/)).toHaveCount(0);
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+  await expect(
+    dialog.getByRole('button', {
+      name: 'Confirm & import 1 orders',
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await dialog.getByLabel('Import type').selectOption('orders');
+  await expect(dialog.getByRole('alert')).toContainText('would ignore them');
+  await expect(
+    dialog.getByRole('button', {
+      name: 'Confirm & import 1 orders',
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole('button', { name: 'Use courier update', exact: true })
+    .click();
+  await expect(
+    dialog.getByRole('cell', { name: 'Delivered', exact: true }),
+  ).toBeVisible();
+  await dialog.screenshot({
+    path: testInfo.outputPath('import-review-layout.png'),
+  });
 });

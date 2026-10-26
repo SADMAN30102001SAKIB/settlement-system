@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { calculateSettlement } from '@settlement/domain/settlement';
 import type { AdInvoice, Report, Settings } from '../../lib/api';
 import { dateLabel, money } from '../../lib/format';
@@ -9,12 +9,35 @@ export function Invoice({
   settings,
   onEdit,
   onBack,
+  onDelete,
 }: {
   report: Report | AdInvoice;
   settings: Settings;
   onEdit: () => void;
   onBack: () => void;
+  onDelete: () => void;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const more = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !more.current?.contains(event.target))
+        setMoreOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMoreOpen(false);
+        more.current?.querySelector('button')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [moreOpen]);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const documentRef = useRef<HTMLElement>(null);
@@ -157,6 +180,33 @@ export function Invoice({
               <button className="secondary" onClick={print}>
                 Print
               </button>
+              <div className="invoice-more" ref={more}>
+                <button
+                  className="secondary"
+                  aria-expanded={moreOpen}
+                  onClick={() => {
+                    setMoreOpen(!moreOpen);
+                  }}
+                >
+                  More actions
+                </button>
+                {moreOpen ? (
+                  <div className="invoice-action-popover">
+                    <p className="caption">Invoice management</p>
+                    <button
+                      className="text-button danger-text"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onDelete();
+                      }}
+                    >
+                      {'campaigns' in report
+                        ? 'Delete invoice'
+                        : 'Delete settlement'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <button
                 className="primary"
                 disabled={downloading}

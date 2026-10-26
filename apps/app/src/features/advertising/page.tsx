@@ -264,7 +264,7 @@ function Detail({
     if (
       data === null ||
       !window.confirm(
-        'Delete this invoice and its direct payments? Account payments will be reallocated to the remaining invoices.',
+        `Delete ${data.item.invoiceNumber} and its direct payments? Account payments will be reallocated to the remaining invoices.`,
       )
     )
       return;
@@ -303,6 +303,11 @@ function Detail({
         onBack={() => {
           navigate('/advertising');
         }}
+        onDelete={() => {
+          remove().catch((reason: unknown) => {
+            setError(ErrorMessage(reason));
+          });
+        }}
       />
       <PaymentsPanel
         target={{ kind: 'ads', targetId: id }}
@@ -318,16 +323,6 @@ function Detail({
           Paid includes account payments allocated oldest-first. History above
           shows payments recorded directly on this invoice.
         </p>
-        <button
-          className="secondary danger-text"
-          onClick={() => {
-            remove().catch((reason: unknown) => {
-              setError(ErrorMessage(reason));
-            });
-          }}
-        >
-          Delete invoice
-        </button>
       </div>
     </>
   );
