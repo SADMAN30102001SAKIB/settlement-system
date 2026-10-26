@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirmation } from '../../components/confirmation-context';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 
@@ -19,6 +20,7 @@ const noteListSchema = z.object({
 });
 
 export function Notes({ brands }: { brands: Brand[] }) {
+  const confirm = useConfirmation();
   const [items, setItems] = useState<Note[]>([]);
   const [editing, setEditing] = useState<Note | null>(null);
   const [error, setError] = useState('');
@@ -88,7 +90,12 @@ export function Notes({ brands }: { brands: Brand[] }) {
   }
   async function remove(note: Note) {
     if (
-      !window.confirm(`Delete the note for ${note.brandName} (${note.period})?`)
+      !(await confirm({
+        title: 'Delete note?',
+        message: `Delete the note for ${note.brandName} (${note.period})? This cannot be undone.`,
+        action: 'Delete note',
+        destructive: true,
+      }))
     )
       return;
     setPending(true);

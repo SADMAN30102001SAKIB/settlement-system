@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirmation } from '../../components/confirmation-context';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import { parseMoney, sumMoney } from '@settlement/domain/money';
@@ -239,6 +240,7 @@ function Detail({
   settings: Settings;
   navigate: (path: string) => void;
 }) {
+  const confirm = useConfirmation();
   const [data, setData] = useState<z.infer<typeof adDetailSchema> | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -263,9 +265,12 @@ function Detail({
   async function remove() {
     if (
       data === null ||
-      !window.confirm(
-        `Delete ${data.item.invoiceNumber} and its direct payments? Account payments will be reallocated to the remaining invoices.`,
-      )
+      !(await confirm({
+        title: 'Delete advertising invoice?',
+        message: `Delete ${data.item.invoiceNumber} and its direct payments? Account payments will be reallocated to the remaining invoices.`,
+        action: 'Delete invoice',
+        destructive: true,
+      }))
     )
       return;
     try {

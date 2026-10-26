@@ -24,6 +24,7 @@ import {
 import type { Brand, Report, Settings as SettingsData } from './lib/api';
 import { today } from './lib/format';
 import { ThemePicker } from './components/theme-picker';
+import { useConfirmation } from './components/confirmation-context';
 
 function ReportView({
   id,
@@ -38,6 +39,7 @@ function ReportView({
   edit: boolean;
   navigate: (path: string) => void;
 }) {
+  const confirm = useConfirmation();
   const [report, setReport] = useState<Report | null>(null);
   const [payments, setPayments] = useState<
     z.infer<typeof reportDetailSchema>['payments']
@@ -59,6 +61,23 @@ function ReportView({
       controller.abort();
     };
   }, [id]);
+  async function remove() {
+    if (
+      report === null ||
+      !(await confirm({
+        title: 'Delete settlement?',
+        message: `Permanently delete ${report.invoiceNumber} and all of its payment records? This cannot be undone.`,
+        action: 'Delete settlement',
+        destructive: true,
+      }))
+    )
+      return;
+    await api(`/manage/settlements/${id}`, okSchema, {
+      method: 'DELETE',
+      body: { revision: report.revision },
+    });
+    navigate('/settlements');
+  }
   if (error) return <Alert>{error}</Alert>;
   if (report === null) return <p role="status">Loading report…</p>;
   return edit ? (
@@ -87,22 +106,9 @@ function ReportView({
           navigate('/settlements');
         }}
         onDelete={() => {
-          if (
-            !window.confirm(
-              `Permanently delete ${report.invoiceNumber} and all of its payment records?`,
-            )
-          )
-            return;
-          api(`/manage/settlements/${id}`, okSchema, {
-            method: 'DELETE',
-            body: { revision: report.revision },
-          })
-            .then(() => {
-              navigate('/settlements');
-            })
-            .catch((reason: unknown) => {
-              setError(ErrorMessage(reason));
-            });
+          remove().catch((reason: unknown) => {
+            setError(ErrorMessage(reason));
+          });
         }}
       />
       <PaymentsPanel

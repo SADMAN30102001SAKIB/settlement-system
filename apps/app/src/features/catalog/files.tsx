@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { Alert, ErrorMessage, PageHeading } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
+import { useConfirmation } from '../../components/confirmation-context';
 const fileList = z.object({
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
   items: z.array(
@@ -16,6 +17,7 @@ const fileList = z.object({
 });
 
 export function Files({ refresh }: { refresh: () => Promise<void> }) {
+  const confirm = useConfirmation();
   const [items, setItems] = useState<z.infer<typeof fileList>['items']>([]);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
@@ -47,9 +49,12 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
   }, [reload, cursor]);
   async function remove(id: string) {
     if (
-      !window.confirm(
-        'Permanently delete this private file? Any linked payment proof or invoice image will be removed from the app too.',
-      )
+      !(await confirm({
+        title: 'Delete private file?',
+        message: `Permanently delete ${items.find((item) => item.id === id)?.filename ?? 'this file'}? Any linked payment proof or invoice image will be removed from the app too. This cannot be undone.`,
+        action: 'Delete file',
+        destructive: true,
+      }))
     )
       return;
     setPending(true);

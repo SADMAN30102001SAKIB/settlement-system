@@ -9,6 +9,7 @@ import { api, okSchema, paymentSchema } from '../../lib/api';
 import type { Payment } from '../../lib/api';
 import { dateLabel, formText, money, today } from '../../lib/format';
 import { ImageUpload } from '../../components/image-upload';
+import { useConfirmation } from '../../components/confirmation-context';
 
 export function PaymentsPanel({
   target,
@@ -23,6 +24,7 @@ export function PaymentsPanel({
   payments: Payment[];
   refresh: () => Promise<void>;
 }) {
+  const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
@@ -87,9 +89,12 @@ export function PaymentsPanel({
   }
   async function remove(payment: Payment) {
     if (
-      !window.confirm(
-        `Remove the ${money(payment.amount)} payment from ${dateLabel(payment.date)}?`,
-      )
+      !(await confirm({
+        title: 'Remove payment?',
+        message: `Remove the ${money(payment.amount)} payment from ${dateLabel(payment.date)}? The outstanding balance will be updated.`,
+        action: 'Remove payment',
+        destructive: true,
+      }))
     )
       return;
     setPending(true);

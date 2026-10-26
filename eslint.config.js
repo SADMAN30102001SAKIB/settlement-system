@@ -66,6 +66,7 @@ export default tseslint.config(
     ],
     languageOptions: { globals: globals.browser },
     rules: {
+      'no-alert': 'error',
       'no-restricted-imports': [
         'error',
         {

@@ -15,6 +15,7 @@ import { amountInput, formText, money, today } from '../../lib/format';
 import { businessReportSchema, orderListSchema } from './contracts';
 import type { Order } from './contracts';
 import { Importer } from './importer';
+import { useConfirmation } from '../../components/confirmation-context';
 
 export function Business({
   brands,
@@ -23,6 +24,7 @@ export function Business({
   brands: Brand[];
   settings: Settings;
 }) {
+  const confirm = useConfirmation();
   const now = today();
   const [from, setFrom] = useState(`${now.slice(0, 7)}-01`),
     [to, setTo] = useState(now),
@@ -860,12 +862,19 @@ export function Business({
                   className="text-button danger-text"
                   disabled={pending}
                   onClick={() => {
-                    if (window.confirm('Delete this expense?'))
-                      mutate(`/expenses/${expense.id}`, {}, 'DELETE').catch(
-                        (reason: unknown) => {
-                          setError(ErrorMessage(reason));
-                        },
-                      );
+                    confirm({
+                      title: 'Delete expense?',
+                      message: `Delete ${expense.description} (${money(expense.amount)})? This cannot be undone.`,
+                      action: 'Delete expense',
+                      destructive: true,
+                    })
+                      .then(async (confirmed) => {
+                        if (confirmed)
+                          await mutate(`/expenses/${expense.id}`, {}, 'DELETE');
+                      })
+                      .catch((reason: unknown) => {
+                        setError(ErrorMessage(reason));
+                      });
                   }}
                 >
                   Delete
@@ -898,19 +907,24 @@ export function Business({
               onSubmit={(event) => {
                 event.preventDefault();
                 const form = new FormData(event.currentTarget);
-                if (
-                  window.confirm(
-                    'Permanently remove these orders and their daily advertising allocation?',
-                  )
-                )
-                  mutate(
-                    '/day',
-                    {
-                      brandId: formText(form, 'brandId'),
-                      date: formText(form, 'date'),
-                    },
-                    'DELETE',
-                  ).catch((reason: unknown) => {
+                confirm({
+                  title: 'Remove imported day?',
+                  message: `Permanently remove the orders and daily advertising allocation for ${formText(form, 'date')}? Saved settlement invoices will not be deleted.`,
+                  action: 'Remove day',
+                  destructive: true,
+                })
+                  .then(async (confirmed) => {
+                    if (!confirmed) return;
+                    await mutate(
+                      '/day',
+                      {
+                        brandId: formText(form, 'brandId'),
+                        date: formText(form, 'date'),
+                      },
+                      'DELETE',
+                    );
+                  })
+                  .catch((reason: unknown) => {
                     setError(ErrorMessage(reason));
                   });
               }}

@@ -370,7 +370,12 @@ button {
   font-weight: 600;
   min-height: 42px;
   padding: 10px 16px;
-  transition: background 0.15s;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
 input,
 select,
@@ -386,10 +391,183 @@ input[readonly] {
   background: #f2f5f1;
 }
 input[type='checkbox'] {
-  width: 18px;
-  min-height: 18px;
-  height: 18px;
-  accent-color: var(--accent);
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+  border: 1.5px solid var(--muted);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+}
+input[type='checkbox']::after {
+  content: '';
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  margin-top: -2px;
+}
+input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+input[type='checkbox']:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.confirmation-dialog {
+  width: min(460px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 28px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
+}
+.confirmation-dialog::backdrop {
+  background: rgb(7 22 17 / 64%);
+  backdrop-filter: blur(4px);
+}
+.confirmation-dialog h2 {
+  font-size: 23px;
+  margin-bottom: 12px;
+}
+.confirmation-dialog .muted {
+  line-height: 1.65;
+}
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+.danger-button {
+  background: #a83226;
+  border-color: #a83226;
+  color: white;
+}
+.settings-reset-row,
+.image-restore-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 20px;
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.settings-reset-row > div {
+  flex: 1 1 240px;
+}
+.settings-reset-row h3 {
+  margin-bottom: 6px;
+}
+.settings-reset-row p,
+.image-restore-row p {
+  margin: 0;
+}
+.image-restore-row button {
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  .file-picker,
+  input,
+  select,
+  textarea,
+  .sidebar a,
+  tbody tr {
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+  input[type='checkbox']::after {
+    transition: transform 140ms ease;
+  }
+  button:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  input:focus,
+  textarea:focus,
+  select:focus,
+  .file-picker:focus-within {
+    border-color: var(--focus-ring);
+  }
+  .sidebar,
+  .workspace-body {
+    transition:
+      transform 200ms ease,
+      margin-left 200ms ease;
+  }
+  .confirmation-dialog[open],
+  .business-dialog[open],
+  .invoice-action-popover,
+  .page-heading,
+  .page-content > .panel,
+  .page-content > .settings-layout,
+  .empty,
+  .alert,
+  .success {
+    animation: surface-enter 180ms ease-out;
+  }
+  .confirmation-dialog[open]::backdrop,
+  .business-dialog[open]::backdrop {
+    animation: backdrop-enter 180ms ease-out;
+  }
+  @media (hover: hover) {
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 10px rgb(0 0 0 / 10%);
+    }
+    .file-picker:not(.is-disabled):hover {
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+  }
+}
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (forced-colors: active) {
+  input[type='checkbox'] {
+    appearance: auto;
+  }
+  input[type='checkbox']::after {
+    display: none;
+  }
 }
 :focus-visible {
   outline: 3px solid var(--focus-ring);
@@ -1922,6 +2100,12 @@ article.invoice-advertising {
   * {
     scroll-behavior: auto !important;
     transition: none !important;
+    animation: none !important;
+  }
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
   }
 }
 @media (max-width: 640px) {

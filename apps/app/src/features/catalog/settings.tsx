@@ -8,6 +8,7 @@ import { api, settingsSchema } from '../../lib/api';
 import type { Settings as SettingsData } from '../../lib/api';
 import { formText } from '../../lib/format';
 import { ImageUpload } from '../../components/image-upload';
+import { useConfirmation } from '../../components/confirmation-context';
 
 export function Settings({
   settings,
@@ -16,15 +17,19 @@ export function Settings({
   settings: SettingsData;
   refresh: () => Promise<void>;
 }) {
+  const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [formVersion, setFormVersion] = useState(0);
   async function reset() {
     if (
-      !window.confirm(
-        'Restore the original Hexa company details? Your agency percentage and invoice images will not change.',
-      )
+      !(await confirm({
+        title: 'Restore company details?',
+        message:
+          'Your company name, contact details and signature label will return to the original Hexa defaults. Your agency percentage and invoice images will not change.',
+        action: 'Restore details',
+      }))
     )
       return;
     setPending(true);
@@ -157,29 +162,38 @@ export function Settings({
               <p className="muted">
                 Saved reports retain their calculation inputs.
               </p>
-              <button
-                type="button"
-                className="secondary"
-                disabled={pending}
-                onClick={() => {
-                  reset().catch((reason: unknown) => {
-                    setError(ErrorMessage(reason));
-                  });
-                }}
-              >
-                Restore company defaults
-              </button>
               <button className="primary" disabled={pending}>
                 {pending ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </form>
+          <div className="settings-reset-row">
+            <div>
+              <h3>Company defaults</h3>
+              <p className="caption">
+                Start again with the original company details. Saved invoices
+                stay unchanged.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={() => {
+                reset().catch((reason: unknown) => {
+                  setError(ErrorMessage(reason));
+                });
+              }}
+            >
+              Restore company defaults
+            </button>
+          </div>
         </section>
         <section className="panel">
           <h2>Invoice images</h2>
           <p className="muted">
-            Custom images are private. Removing them restores the invoice’s
-            plain background and signature line.
+            Replace or restore your invoice artwork here. Manage and delete
+            uploaded files in <a href="/files">Private files</a>.
           </p>
           <div className="invoice-images-grid">
             <article className="invoice-image-card">

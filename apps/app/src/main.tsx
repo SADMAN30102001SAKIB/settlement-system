@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './app';
+import { ConfirmationProvider } from './components/confirmation-provider';
 import { applyTheme, readTheme } from './lib/theme';
 import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/manrope';
@@ -13,6 +14,8 @@ if (!root) throw new Error('Missing application root');
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <ConfirmationProvider>
+      <App />
+    </ConfirmationProvider>
   </StrictMode>,
 );

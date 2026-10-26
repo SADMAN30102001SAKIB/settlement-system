@@ -4,6 +4,7 @@ import { api, okSchema } from '../lib/api';
 import { Alert, ErrorMessage, Field } from './ui';
 import { prepareInvoiceImage } from '../lib/prepare-image';
 import { FilePicker } from './file-picker';
+import { useConfirmation } from './confirmation-context';
 
 export function ImageUpload({
   kind,
@@ -16,6 +17,7 @@ export function ImageUpload({
   onChange: (id: string | null) => Promise<void>;
   onPendingChange?: (pending: boolean) => void;
 }) {
+  const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [removeBackground, setRemoveBackground] = useState(false);
@@ -64,33 +66,13 @@ export function ImageUpload({
       onPendingChange?.(false);
     }
   }
-  async function remove() {
-    if (
-      currentId === null ||
-      !window.confirm(`Permanently delete this ${kind} image?`)
-    )
-      return;
-    setPending(true);
-    onPendingChange?.(true);
-    setError('');
-    try {
-      await api(`/manage/files/${currentId}`, okSchema, {
-        method: 'DELETE',
-        body: {},
-      });
-      await onChange(null);
-    } catch (reason) {
-      setError(ErrorMessage(reason));
-    } finally {
-      setPending(false);
-      onPendingChange?.(false);
-    }
-  }
   async function restore() {
     if (
-      !window.confirm(
-        `Replace the current ${kind} with the original default? The previous file remains available in Private files.`,
-      )
+      !(await confirm({
+        title: `Restore default ${kind}?`,
+        message: `The original Hexa ${kind} will replace the current artwork. Your previous file will remain available in Private files.`,
+        action: 'Restore image',
+      }))
     )
       return;
     setPending(true);
@@ -151,33 +133,22 @@ export function ImageUpload({
             For dark logos or signatures on a light background. Leave off to
             preserve original colors and transparency.
           </p>
-          <button
-            type="button"
-            className="secondary"
-            disabled={pending}
-            onClick={() => {
-              restore().catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              });
-            }}
-          >
-            Restore default {kind}
-          </button>
+          <div className="image-restore-row">
+            <p className="caption">Prefer the original Hexa artwork?</p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={() => {
+                restore().catch((reason: unknown) => {
+                  setError(ErrorMessage(reason));
+                });
+              }}
+            >
+              Restore default {kind}
+            </button>
+          </div>
         </>
-      ) : null}
-      {currentId ? (
-        <button
-          type="button"
-          className="text-button danger-text"
-          disabled={pending}
-          onClick={() => {
-            remove().catch((reason: unknown) => {
-              setError(ErrorMessage(reason));
-            });
-          }}
-        >
-          Delete image
-        </button>
       ) : null}
       {pending ? <p role="status">Updating image…</p> : null}
       {error ? <Alert>{error}</Alert> : null}

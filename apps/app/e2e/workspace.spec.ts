@@ -80,12 +80,13 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     page.getByRole('button', { name: 'Delete settlement', exact: true }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'More actions', exact: true }).click();
-  page.once('dialog', async (confirmation) => {
-    expect(confirmation.message()).toContain('HEXA-');
-    await confirmation.dismiss();
-  });
   await page
     .getByRole('button', { name: 'Delete settlement', exact: true })
+    .click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation).toContainText('HEXA-');
+  await confirmation
+    .getByRole('button', { name: 'Cancel', exact: true })
     .click();
   await expect(page.locator('.invoice-document')).toBeVisible();
   await expect(page.locator('.invoice-final')).toContainText('৳92.70');
@@ -323,10 +324,11 @@ test('business tracking guides import, costs and review without exposing every f
       .inputValue(),
   );
   await dialog.getByLabel('Order date', { exact: true }).fill('2026-10-26');
-  page.once('dialog', async (confirmation) => {
-    await confirmation.dismiss();
-  });
   await dialog.getByRole('button', { name: 'Delete day', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(
     page.getByRole('cell', { name: new RegExp(orderId) }),
@@ -389,11 +391,12 @@ test('advertising invoice, payment proof and invoice image controls work end to 
     page.getByRole('img', { name: 'signature preview' }),
   ).toBeVisible();
   for (const kind of ['watermark', 'signature']) {
-    page.once('dialog', async (confirmation) => {
-      await confirmation.accept();
-    });
     await page
       .getByRole('button', { name: `Restore default ${kind}`, exact: true })
+      .click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Restore image', exact: true })
       .click();
     await expect(
       page.getByRole('img', { name: `${kind} preview` }),
@@ -441,11 +444,12 @@ test('advertising invoice, payment proof and invoice image controls work end to 
         }),
     )
     .toEqual([255, 0]);
-  page.once('dialog', async (confirmation) => {
-    await confirmation.accept();
-  });
   await page
     .getByRole('button', { name: 'Restore default signature', exact: true })
+    .click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Restore image', exact: true })
     .click();
   await expect
     .poll(async () =>
@@ -989,4 +993,113 @@ test('source loading gives feedback, sidebar collapses, and import decisions sta
   await dialog.screenshot({
     path: testInfo.outputPath('import-review-layout.png'),
   });
+});
+
+test('settings use themed confirmations, custom checkboxes and reduced-motion preferences', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto('/settings');
+  await expect(
+    page.getByRole('button', { name: 'Delete image', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('.form-footer')).not.toContainText(
+    'Restore company defaults',
+  );
+  const restore = page.getByRole('button', {
+    name: 'Restore company defaults',
+    exact: true,
+  });
+  for (const theme of ['light', 'dark']) {
+    await page.getByLabel('Color theme').selectOption(theme);
+    await restore.click();
+    const confirmation = page.getByRole('alertdialog', {
+      name: 'Restore company details?',
+    });
+    await expect(confirmation).toBeVisible();
+    await expect(
+      confirmation.getByRole('button', { name: 'Cancel', exact: true }),
+    ).toBeFocused();
+    expect(await contrastFailures(page)).toEqual([]);
+    await confirmation.screenshot({
+      path: testInfo.outputPath(`confirmation-${theme}.png`),
+    });
+    await page.keyboard.press('Shift+Tab');
+    await expect(
+      confirmation.getByRole('button', {
+        name: 'Restore details',
+        exact: true,
+      }),
+    ).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(confirmation).toHaveCount(0);
+    await expect(restore).toBeFocused();
+  }
+  const checkbox = page
+    .getByRole('checkbox', {
+      name: 'Remove light background and convert artwork to black',
+      exact: true,
+    })
+    .first();
+  await expect(checkbox).toHaveCSS('appearance', 'none');
+  await checkbox.focus();
+  await page.keyboard.press('Space');
+  await expect(checkbox).toBeChecked();
+  await page.keyboard.press('Space');
+  await expect(checkbox).not.toBeChecked();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await restore.click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation).toHaveCSS('animation-name', 'none');
+  await expect(
+    confirmation.getByRole('button', { name: 'Cancel', exact: true }),
+  ).toHaveCSS('transition-duration', '0s');
+  await confirmation
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await page
+    .getByLabel('Company name', { exact: true })
+    .fill('Temporary company details');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Settings saved');
+  await restore.click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Restore details', exact: true })
+    .click();
+  await expect(page.getByLabel('Company name', { exact: true })).toHaveValue(
+    'Hexa Agency Ltd.',
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('settings-refined.png'),
+    fullPage: true,
+  });
+  const filename = `delete-confirmation-${testInfo.project.name}.png`;
+  const upload = await page.request.post('/api/manage/files/proof', {
+    headers: {
+      Origin: 'http://127.0.0.1:5174',
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': filename,
+    },
+    data: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jx9sAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  });
+  expect(upload.ok()).toBe(true);
+  await page.goto('/files');
+  const file = page.getByRole('row').filter({ hasText: filename });
+  await file.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toContainText(filename);
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(file).toBeVisible();
+  await file.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete file', exact: true })
+    .click();
+  await expect(file).toHaveCount(0);
 });
