@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
@@ -344,12 +344,14 @@ export function Advertising({
   settings: Settings;
   navigate: (path: string) => void;
 }) {
+  const accountPanel = useRef<HTMLElement>(null);
   const [brandId, setBrandId] = useState(brands[0]?.id ?? '');
   const [data, setData] = useState<z.infer<typeof adAccountSchema> | null>(
     null,
   );
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [reloading, setReloading] = useState(false);
   const [from, setFrom] = useState(''),
     [to, setTo] = useState('');
   const [overview, setOverview] = useState<
@@ -358,13 +360,18 @@ export function Advertising({
   const parts = path.split('/');
   const listing = !parts[2];
   async function reloadAccount() {
-    const [account, all] = await Promise.all([
-      api(`/manage/advertising/account/${brandId}`, adAccountSchema),
-      api('/manage/advertising/overview', accountOverviewSchema),
-    ]);
-    setData(account);
-    setOverview(all.items);
+    setReloading(true);
     setError('');
+    try {
+      const [account, all] = await Promise.all([
+        api(`/manage/advertising/account/${brandId}`, adAccountSchema),
+        api('/manage/advertising/overview', accountOverviewSchema),
+      ]);
+      setData(account);
+      setOverview(all.items);
+    } finally {
+      setReloading(false);
+    }
   }
   useEffect(() => {
     if (!listing) return;
@@ -469,11 +476,25 @@ export function Advertising({
                   <td>
                     <button
                       className="secondary compact"
+                      disabled={reloading}
                       onClick={() => {
                         if (brandId !== account.id) {
                           setBrandId(account.id);
                           setData(null);
                         }
+                        setError('');
+                        setQuery('');
+                        setFrom('');
+                        setTo('');
+                        accountPanel.current?.focus({ preventScroll: true });
+                        accountPanel.current?.scrollIntoView({
+                          behavior: window.matchMedia(
+                            '(prefers-reduced-motion: reduce)',
+                          ).matches
+                            ? 'instant'
+                            : 'smooth',
+                          block: 'start',
+                        });
                       }}
                     >
                       Open account
@@ -485,11 +506,43 @@ export function Advertising({
           </table>
         </div>
       </section>
-      <section className="panel">
+      <section
+        className="panel advertising-account-panel"
+        ref={accountPanel}
+        tabIndex={-1}
+        aria-labelledby="advertising-account-heading"
+      >
+        <div className="section-heading">
+          <div>
+            <h2 id="advertising-account-heading">
+              {brands.find((brand) => brand.id === brandId)?.name ?? 'Brand'}{' '}
+              account
+            </h2>
+            <p className="muted">
+              Review this brand’s invoices, balance and payments below. Account
+              totals include all dates; filters apply to the invoice ledger
+              only.
+            </p>
+          </div>
+          {brandId ? (
+            <button
+              className="secondary compact"
+              disabled={reloading}
+              onClick={() => {
+                reloadAccount().catch((reason: unknown) => {
+                  setError(ErrorMessage(reason));
+                });
+              }}
+            >
+              {reloading ? 'Reloading account…' : 'Reload account'}
+            </button>
+          ) : null}
+        </div>
         <div className="form-grid">
           <Field label="Brand account">
             <select
               value={brandId}
+              disabled={reloading}
               onChange={(event) => {
                 setBrandId(event.target.value);
                 setData(null);
@@ -535,18 +588,6 @@ export function Advertising({
         </div>
       </section>
       {error ? <Alert>{error}</Alert> : null}
-      {brandId ? (
-        <button
-          className="secondary"
-          onClick={() => {
-            reloadAccount().catch((reason: unknown) => {
-              setError(ErrorMessage(reason));
-            });
-          }}
-        >
-          Reload account
-        </button>
-      ) : null}
       {!brandId ? (
         <Empty title="Add your first brand">
           Create a brand before recording advertising costs.

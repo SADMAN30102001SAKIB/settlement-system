@@ -352,7 +352,7 @@ export function App() {
             ['/brands', 'Brands & costs', '02'],
             ['/settings', 'Invoice settings', '03'],
             ['/notes', 'Notes & progress', '04'],
-            ['/advertising', 'Advertising & accounts', '05'],
+            ['/advertising', 'Advertising', '05'],
             ['/business', 'Business tracking', '06'],
             ['/files', 'Private files', '07'],
           ].map(([href, label, marker]) => (

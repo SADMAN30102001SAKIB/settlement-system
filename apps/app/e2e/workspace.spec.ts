@@ -467,12 +467,85 @@ test('advertising invoice, payment proof and invoice image controls work end to 
     fullPage: true,
   });
   await page.goto('/advertising');
-  await page
-    .getByLabel('Brand account', { exact: true })
-    .selectOption({ label: brand });
+  const openAccount = page
+    .getByRole('row')
+    .filter({
+      has: page.getByRole('cell', { name: brand, exact: true }),
+    })
+    .getByRole('button', { name: 'Open account', exact: true });
+  await openAccount.click();
+  const accountPanel = page.getByRole('region', {
+    name: `${brand} account`,
+    exact: true,
+  });
+  await expect(accountPanel).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: `${brand} account`, exact: true }),
+  ).toBeInViewport();
   await expect(
     page.getByRole('heading', { name: 'Invoice ledger' }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: 'Campaign verification', exact: true }),
+  ).toBeVisible();
+  const selectedBrandId = await page
+    .getByLabel('Brand account', { exact: true })
+    .inputValue();
+  let repeatRequests = 0;
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname ===
+      `/api/manage/advertising/account/${selectedBrandId}`
+    )
+      repeatRequests++;
+  });
+  await page
+    .getByLabel('Search invoices', { exact: true })
+    .fill('no matching invoice');
+  await openAccount.click();
+  await expect(accountPanel).toBeFocused();
+  await expect(
+    page.getByRole('heading', { name: `${brand} account`, exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByLabel('Search invoices', { exact: true })).toHaveValue(
+    '',
+  );
+  await expect(
+    page.getByRole('cell', { name: 'Campaign verification', exact: true }),
+  ).toBeVisible();
+  expect(repeatRequests).toBe(0);
+  await expect(page.locator('.sidebar a[href="/advertising"]')).toContainText(
+    'Advertising',
+  );
+  await expect(
+    page.locator('.sidebar a[href="/advertising"]'),
+  ).not.toContainText('accounts');
+  let releaseReload: () => void = () => {
+    throw new Error('Reload gate was not initialized');
+  };
+  const reloadGate = new Promise<void>((resolve) => {
+    releaseReload = resolve;
+  });
+  const accountUrl = `**/api/manage/advertising/account/${selectedBrandId}`;
+  await page.route(accountUrl, async (route) => {
+    await reloadGate;
+    await route.continue();
+  });
+  await accountPanel
+    .getByRole('button', { name: 'Reload account', exact: true })
+    .click();
+  await expect(
+    accountPanel.getByRole('button', {
+      name: 'Reloading account…',
+      exact: true,
+    }),
+  ).toBeDisabled();
+  releaseReload();
+  await expect(
+    accountPanel.getByRole('button', { name: 'Reload account', exact: true }),
+  ).toBeEnabled();
+  expect(repeatRequests).toBe(1);
+  await page.unroute(accountUrl);
   await page.getByLabel('Amount (৳)', { exact: true }).fill('60');
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByText(/Paid ৳100/)).toBeVisible();
