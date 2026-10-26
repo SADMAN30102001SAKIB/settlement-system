@@ -17,6 +17,7 @@
     "format:check": "prettier . --check",
     "deadcode": "fallow dead-code --fail-on-issues",
     "test": "vitest run",
+    "test:e2e": "pnpm --filter @settlement/app test:e2e",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm deadcode && pnpm test && pnpm build",
     "db:generate": "pnpm --filter @settlement/database generate",
     "db:migrate:local": "pnpm --filter @settlement/app db:migrate:local"

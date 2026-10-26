@@ -1,0 +1,15 @@
+{
+  "name": "@settlement/domain",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./money": "./src/money.ts",
+    "./settlement": "./src/settlement.ts",
+    "./profit": "./src/profit.ts",
+    "./payments": "./src/payments.ts",
+    "./imports": "./src/imports.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

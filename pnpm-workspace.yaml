@@ -7,5 +7,6 @@ strictPeerDependencies: true
 minimumReleaseAge: 1440
 
 allowBuilds:
+  core-js: false
   esbuild: true
   workerd: true

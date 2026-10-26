@@ -9,6 +9,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     ignores: [
+      'assets/**',
       '**/node_modules/**',
       '**/dist/**',
       '**/.cloudflare/**',
@@ -31,7 +32,9 @@ export default tseslint.config(
           './apps/app/tsconfig.json',
           './apps/app/tsconfig.server.json',
           './apps/app/tsconfig.tools.json',
+          './apps/app/tsconfig.e2e.json',
           './packages/database/tsconfig.json',
+          './packages/domain/tsconfig.json',
         ],
         tsconfigRootDir: import.meta.dirname,
       },

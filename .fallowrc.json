@@ -5,5 +5,10 @@
     "apps/app/cloudflare.config.ts",
     "packages/database/drizzle.config.ts"
   ],
-  "ignorePatterns": ["**/.cloudflare/**", "**/.wrangler/**", "**/dist/**"]
+  "ignorePatterns": [
+    "assets/**",
+    "**/.cloudflare/**",
+    "**/.wrangler/**",
+    "**/dist/**"
+  ]
 }
