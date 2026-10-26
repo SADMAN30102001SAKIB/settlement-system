@@ -66,14 +66,22 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     .fill('10');
   await page.getByLabel('Partial COD charges (৳)', { exact: true }).fill('2');
   await page.getByLabel('Advertising cost (৳)', { exact: true }).fill('100');
+  await page.getByLabel('Delivered item quantity', { exact: true }).fill('4');
+  await page.getByLabel('Shipping charges (৳)', { exact: true }).fill('60');
   await expect(
     page.getByLabel('Product cost (৳)', { exact: true }),
-  ).toHaveValue('200');
+  ).toHaveValue('400');
   await page
     .getByRole('button', { name: /Save settlement|Save report|Save &/ })
     .click();
   await expect(page.locator('.invoice-document')).toBeVisible();
-  await expect(page.locator('.invoice-final')).toContainText('৳131.70');
+  await expect(page.locator('.invoice-final')).toContainText('৳92.70');
+  await expect(page.locator('.invoice-document')).toContainText(
+    '4 delivered items',
+  );
+  await expect(page.locator('.invoice-document')).toContainText(
+    'Less: delivery charges',
+  );
   await expect(page.locator('.invoice-document')).toContainText(
     'advertising VAT (10%)',
   );
@@ -610,4 +618,123 @@ test('a 50-campaign invoice exports readable multiple A4 pages rather than shrin
   } finally {
     await task.destroy();
   }
+});
+
+test('themes persist, follow the system, and keep compact advertising invoices printable', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.getByLabel('Color theme').selectOption('dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(page.getByLabel('Color theme')).toHaveValue('dark');
+  for (const route of ['settings', 'business', 'settlements/new']) {
+    await page.goto(`/#/${route}`);
+    await expect(page.getByLabel('Color theme')).toHaveValue('dark');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      ),
+    ).toBe(false);
+    await page.screenshot({
+      path: testInfo.outputPath(`dark-${route.replace('/', '-')}.png`),
+      fullPage: true,
+    });
+  }
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const brand = await page.request.post('/api/manage/brands', {
+    headers,
+    data: {
+      name: `Compact ${testInfo.project.name} ${String(Date.now())}`,
+      makingCost: 100000,
+    },
+  });
+  const brandId = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await brand.json()).item.id;
+  const imported = await page.request.post('/api/manage/business/import', {
+    headers,
+    data: {
+      brandId,
+      rows: [
+        {
+          id: `guided-quantity-${testInfo.project.name}-${String(Date.now())}`,
+          orderDate: '2026-10-26',
+          deliveryDate: '2026-10-26',
+          status: 'Delivered',
+          quantity: 4,
+          partialQuantity: null,
+          salesOverride: null,
+          codAmount: 1000000,
+          shipping: 60000,
+          codCharge: 10000,
+        },
+      ],
+    },
+  });
+  expect(imported.status()).toBe(200);
+  await page.goto('/#/settlements/new');
+  await page.reload();
+  await page
+    .getByRole('button', { name: 'Load settlement totals', exact: true })
+    .click();
+  await page.getByLabel('Brand', { exact: true }).first().selectOption(brandId);
+  await page
+    .getByRole('button', {
+      name: 'Load saved courier totals & allocated ads',
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByLabel('Delivered item quantity', { exact: true }),
+  ).toHaveValue('4');
+  await expect(
+    page.getByLabel('Product cost (৳)', { exact: true }),
+  ).toHaveValue('400');
+  await expect(
+    page.getByLabel('Shipping charges (৳)', { exact: true }),
+  ).toHaveValue('60');
+  const response = await page.request.post('/api/manage/advertising', {
+    headers,
+    data: {
+      brandId,
+      date: '2026-10-26',
+      period: 'Compact invoice check',
+      campaigns: [{ name: 'One campaign', amount: 100000 }],
+    },
+  });
+  expect(response.status()).toBe(201);
+  const id = z.object({ id: z.string() }).parse(await response.json()).id;
+  await page.goto(`/#/advertising/${id}`);
+  await expect(page.locator('.invoice-advertising')).toBeVisible();
+  await expect(page.locator('.invoice-document')).toHaveCSS(
+    'color',
+    'rgb(34, 52, 44)',
+  );
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download PDF' }).click();
+  const file = testInfo.outputPath('compact-advertising.pdf');
+  await (await download).saveAs(file);
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task = getDocument({ data: new Uint8Array(readFileSync(file)) });
+  try {
+    const document = await task.promise;
+    expect(document.numPages).toBe(1);
+    const pdfPage = await document.getPage(1);
+    const viewport = pdfPage.getViewport({ scale: 1 });
+    expect(viewport.width).toBeCloseTo((210 * 72) / 25.4, 0);
+    expect(viewport.height).toBeLessThan((280 * 72) / 25.4);
+  } finally {
+    await task.destroy();
+  }
+  await page.screenshot({
+    path: testInfo.outputPath('compact-invoice-dark.png'),
+    fullPage: true,
+  });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.getByLabel('Color theme').selectOption('system');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByLabel('Color theme').selectOption('light');
 });

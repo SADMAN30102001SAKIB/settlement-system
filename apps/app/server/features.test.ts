@@ -257,10 +257,10 @@ it('keeps imports idempotent, advertising conserved, making costs snapshotted, a
       revenue: 495000,
       ads: 110000,
       productCost: 100000,
-      shipping: 30000,
+      shipping: 20000,
       codCharge: 5000,
-      net: 285000,
-      commission: 42750,
+      net: 265000,
+      commission: 39750,
     },
   });
   const plan = await fixture.env.DB.prepare(
@@ -357,9 +357,9 @@ it('uses v3 by default, preserves saved rules, and reports automatic completion'
     .parse(await response.json()).item;
   expect(saved).toMatchObject({
     rule: 'v3',
-    gross: 1188000,
-    net: 878000,
-    commission: 131700,
+    gross: 988000,
+    net: 678000,
+    commission: 101700,
   });
   expect(
     (
@@ -473,8 +473,8 @@ it('excludes workspace expenses from brand reports and safely reallocates reassi
   );
   expect(selected.totals).toEqual({
     otherExpenses: 0,
-    net: 680000,
-    productCost: 200000,
+    net: -40000,
+    productCost: 800000,
   });
   const all = reportSchema.parse(await (await request(filter)).json());
   expect(all.totals.otherExpenses).toBe(10000);

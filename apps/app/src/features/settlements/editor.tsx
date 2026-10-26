@@ -31,6 +31,7 @@ const initial = {
   period: '',
   brandId: '',
   deliveredQty: '0',
+  deliveredUnits: '',
   cancelledQty: '0',
   partialQty: '0',
   pendingQty: '0',
@@ -67,6 +68,8 @@ export function ReportEditor({
           period: report.period,
           brandId: report.brandId,
           deliveredQty: String(report.deliveredQty),
+          deliveredUnits:
+            report.deliveredUnits === null ? '' : String(report.deliveredUnits),
           cancelledQty: String(report.cancelledQty),
           partialQty: String(report.partialQty),
           pendingQty: String(report.pendingQty),
@@ -98,6 +101,7 @@ export function ReportEditor({
   const brand = brands.find((item) => item.id === values.brandId);
   const rule = report?.rule ?? 'v3';
   const isV3 = rule === 'v3';
+  const deductShipping = report?.deductShipping ?? true;
   function input() {
     const count = (value: string) => {
       const parsed = Number(value);
@@ -113,6 +117,10 @@ export function ReportEditor({
       cancelledQty = count(values.cancelledQty),
       partialQty = count(values.partialQty);
     const makingCost = brand?.makingCost ?? null;
+    const deliveredUnits =
+      values.deliveredUnits === ''
+        ? deliveredQty
+        : count(values.deliveredUnits);
     if (autoCost && makingCost === null)
       throw new Error(
         'Set this brand’s making cost or enter product cost manually.',
@@ -121,7 +129,7 @@ export function ReportEditor({
       autoCost && makingCost !== null
         ? settlementProductCost(
             makingCost,
-            deliveredQty,
+            isV3 ? deliveredUnits : deliveredQty,
             isV3 ? 0 : cancelledQty,
             isV3 ? 0 : partialQty,
           )
@@ -133,6 +141,8 @@ export function ReportEditor({
       period: values.period,
       rule,
       deliveredQty,
+      deliveredUnits: isV3 ? deliveredUnits : (report?.deliveredUnits ?? null),
+      deductShipping,
       cancelledQty,
       partialQty,
       pendingQty: count(values.pendingQty),
@@ -207,7 +217,7 @@ export function ReportEditor({
           }}
           onLoad={(source) => {
             setValues((current) => ({ ...current, ...source }));
-            setAutoCost(true);
+            setAutoCost(false);
             setError('');
           }}
         />
@@ -296,10 +306,29 @@ export function ReportEditor({
               ))}
             </div>
             <div className="form-grid settlement-amounts">
+              {isV3 ? (
+                <Field
+                  label="Delivered item quantity"
+                  hint="Total pieces delivered, not money. Blank uses delivered parcels; enter the actual total for multi-item orders."
+                >
+                  <input
+                    inputMode="numeric"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={values.deliveredUnits}
+                    onChange={(event) => {
+                      update('deliveredUnits', event.target.value);
+                    }}
+                  />
+                </Field>
+              ) : null}
               {moneyFields
                 .filter(
                   ([key]) =>
-                    !isV3 || (key !== 'shipping' && key !== 'codCharge'),
+                    !isV3 ||
+                    (key !== 'codCharge' &&
+                      (key !== 'shipping' || deductShipping)),
                 )
                 .map(([key, label]) => (
                   <Field key={key} label={`${label} (৳)`}>
@@ -365,9 +394,15 @@ export function ReportEditor({
               />{' '}
               Calculate product cost from brand making cost
             </label>
+            {!autoCost ? (
+              <p className="caption">
+                Manual or loaded product cost stays fixed until you edit it or
+                enable automatic calculation.
+              </p>
+            ) : null}
             <p className="muted">
               {isV3
-                ? 'Making cost × delivered parcels only. Partial, cancelled and pending parcels have no product-cost deduction.'
+                ? 'Making cost per item × delivered item quantity. Partial, cancelled and pending orders have no product-cost deduction.'
                 : 'Making cost × delivered, cancelled and partial parcel counts. Pending parcels are excluded.'}
             </p>
             <div className="form-grid">
@@ -435,7 +470,7 @@ export function ReportEditor({
                   {values.partialAmount ? `৳${values.partialAmount}` : '—'}
                 </dd>
               </div>
-              {!isV3 ? (
+              {!isV3 || deductShipping ? (
                 <div>
                   <dt>Shipping</dt>
                   <dd>−৳{values.shipping || '0'}</dd>
@@ -502,7 +537,9 @@ export function ReportEditor({
           </button>
           <p className="caption">
             {isV3
-              ? 'Advertising VAT is applied once. Shipping is already included in courier collection; it is not deducted again.'
+              ? deductShipping
+                ? 'Delivered + partial collection − delivery charges − COD fees − advertising including VAT − delivered-item making cost.'
+                : 'This older report retains its saved rule: shipping is not deducted separately.'
               : 'No VAT is added under this saved calculation version.'}
           </p>
         </aside>

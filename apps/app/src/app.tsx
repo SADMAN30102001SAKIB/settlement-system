@@ -23,6 +23,7 @@ import {
 } from './lib/api';
 import type { Brand, Report, Settings as SettingsData } from './lib/api';
 import { today } from './lib/format';
+import { ThemePicker } from './components/theme-picker';
 
 function ReportView({
   id,
@@ -345,6 +346,7 @@ export function App() {
             Hexa Agency <span>/</span> Settlement workspace
           </div>
           <div className="topbar-meta">
+            <ThemePicker />
             <span className="online-dot" /> D1 connected{' '}
             <span className="topbar-date">{today()}</span>
           </div>

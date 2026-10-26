@@ -1,6 +1,37 @@
 import { expect, it } from 'vitest';
 import { importDate, mapOrder, parseDelimited } from './imports';
 
+it('imports explicit item quantities without guessing invalid or missing mapped values', () => {
+  const mapping = {
+    orderDate: 0,
+    id: 1,
+    status: 2,
+    deliveryDate: 3,
+    codAmount: 4,
+    shipping: 5,
+    codCharge: 6,
+    quantity: 7,
+  };
+  const row = [
+    '2026-10-26',
+    '0001',
+    'Delivered',
+    '2026-10-27',
+    '1000',
+    '60',
+    '10',
+    '4',
+  ];
+  expect(mapOrder(row, mapping, 'ISO', 'courier').quantity).toBe(4);
+  expect(
+    mapOrder(row, { ...mapping, quantity: -1 }, 'ISO', 'courier').quantity,
+  ).toBe(1);
+  for (const value of ['', '0', '1.5', '10001'])
+    expect(() =>
+      mapOrder([...row.slice(0, 7), value], mapping, 'ISO', 'courier'),
+    ).toThrow('Quantity');
+});
+
 it('preserves quoted money, newlines, escaped quotes and leading-zero IDs', () => {
   expect(
     parseDelimited('ID,Amount,Note\r\n001,"1,234.56","line 1\nline ""2"""'),

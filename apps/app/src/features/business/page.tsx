@@ -346,9 +346,9 @@ export function Business({
           <section className="panel business-breakdown">
             <h2>Cost breakdown & daily totals</h2>
             <p className="muted">
-              V3: delivered-parcel making cost, advertising plus 10% VAT, and
-              eligible COD fees. Shipping is informational and is not deducted
-              again.
+              Delivered item quantity × saved making cost, advertising plus 10%
+              VAT, delivery charges and eligible COD fees. Pending orders have
+              no delivery-charge deduction.
             </p>
             <div className="metrics">
               <Metric

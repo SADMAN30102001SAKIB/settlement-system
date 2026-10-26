@@ -76,6 +76,17 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
       )
       .all();
     await migrate('0002_brief_whiplash.sql');
+    await migrate('0003_mean_zarek.sql');
+    expect(
+      (
+        await db
+          .prepare('SELECT delivered_units,deduct_shipping FROM settlements')
+          .all()
+      ).results,
+    ).toEqual([
+      { delivered_units: null, deduct_shipping: 0 },
+      { delivered_units: null, deduct_shipping: 0 },
+    ]);
     expect(
       (await db.prepare('SELECT * FROM payments ORDER BY id').all()).results,
     ).toEqual(before.results);

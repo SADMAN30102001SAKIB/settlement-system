@@ -43,7 +43,7 @@ const filterFields = z.object({
 });
 const finalized = sql`${orders.status} IN ('Delivered','Partial Delivered')`;
 const revenue = sql<number>`CASE WHEN ${finalized} THEN COALESCE(${orders.salesOverride}, ${orders.codAmount}) ELSE 0 END`;
-const product = sql<number>`CASE WHEN ${orders.status} = 'Delivered' THEN COALESCE(${orders.costPerPiece}, 0) ELSE 0 END`;
+const product = sql<number>`CASE WHEN ${orders.status} = 'Delivered' THEN COALESCE(${orders.costPerPiece}, 0) * ${orders.quantity} ELSE 0 END`;
 
 // Recompute only the touched brand/day, in the same transaction as each import.
 function reallocate(binding: D1Database, brandId: string, orderDate: string) {
@@ -78,13 +78,16 @@ export const businessRoutes = new Hono<AppEnvironment>()
       .get('database')()
       .select({
         deliveredQty: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' THEN 1 ELSE 0 END), 0)`,
+        deliveredUnits: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' THEN ${orders.quantity} ELSE 0 END), 0)`,
         cancelledQty: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Cancelled' THEN 1 ELSE 0 END), 0)`,
         partialQty: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN 1 ELSE 0 END), 0)`,
         pendingQty: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Pending' THEN 1 ELSE 0 END), 0)`,
         deliveredAmount: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' THEN ${revenue} ELSE 0 END), 0)`,
         cancelledAmount: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Cancelled' THEN ${orders.codAmount} ELSE 0 END), 0)`,
         partialAmount: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN ${revenue} ELSE 0 END), 0)`,
-        shipping: sql<number>`COALESCE(SUM(CASE WHEN ${finalized} THEN ${orders.shipping} ELSE 0 END), 0)`,
+        shipping: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} != 'Pending' THEN ${orders.shipping} ELSE 0 END), 0)`,
+        productCost: sql<number>`COALESCE(SUM(${product}), 0)`,
+        missingCosts: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' AND ${orders.costPerPiece} IS NULL THEN 1 ELSE 0 END), 0)`,
         codCharge: sql<number>`COALESCE(SUM(CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END), 0)`,
         deliveredCodCharge: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' THEN ${orders.codCharge} ELSE 0 END), 0)`,
         partialCodCharge: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN ${orders.codCharge} ELSE 0 END), 0)`,
@@ -98,6 +101,11 @@ export const businessRoutes = new Hono<AppEnvironment>()
           lte(column, query.to),
         ),
       );
+    if ((result?.missingCosts ?? 0) > 0)
+      throw new HTTPException(422, {
+        message:
+          'Correct missing making costs in Business Tracking before loading a settlement.',
+      });
     return context.json(result);
   })
   .get('/report', async (context) => {
@@ -127,7 +135,7 @@ export const businessRoutes = new Hono<AppEnvironment>()
           revenue: sql<number>`SUM(${revenue} - CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END)`,
           ads: sql<number>`SUM(${orders.ads})`,
           productCost: sql<number>`SUM(${product})`,
-          shipping: sql<number>`SUM(${orders.shipping})`,
+          shipping: sql<number>`SUM(CASE WHEN ${orders.status} != 'Pending' THEN ${orders.shipping} ELSE 0 END)`,
           codCharge: sql<number>`SUM(CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END)`,
           missingCosts: sql<number>`SUM(CASE WHEN ${orders.status} = 'Delivered' AND ${orders.costPerPiece} IS NULL THEN 1 ELSE 0 END)`,
           codAmount: sql<number>`SUM(${orders.codAmount})`,
@@ -183,7 +191,7 @@ export const businessRoutes = new Hono<AppEnvironment>()
       });
     const brandDays = grouped.map((day) => {
       const ads = toPaisaPrecision(day.ads + percentage(day.ads, 1000));
-      const net = day.revenue - ads - day.productCost;
+      const net = day.revenue - day.shipping - ads - day.productCost;
       return {
         ...day,
         ads,
@@ -248,7 +256,12 @@ export const businessRoutes = new Hono<AppEnvironment>()
     const days = [...byDate.values()]
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
       .map((day) => {
-        const net = day.revenue - day.ads - day.productCost - day.otherExpenses;
+        const net =
+          day.revenue -
+          day.shipping -
+          day.ads -
+          day.productCost -
+          day.otherExpenses;
         return {
           ...day,
           net,
@@ -298,7 +311,12 @@ export const businessRoutes = new Hono<AppEnvironment>()
       query.brandId === undefined
         ? otherExpenses.reduce((sum, item) => sum + item.amount, 0)
         : 0;
-    const net = totals.revenue - totals.ads - totals.productCost - expenseTotal;
+    const net =
+      totals.revenue -
+      totals.shipping -
+      totals.ads -
+      totals.productCost -
+      expenseTotal;
     return context.json({
       days,
       brandDays,

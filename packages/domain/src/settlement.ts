@@ -5,6 +5,7 @@ export interface SettlementInput {
   deliveredCodCharge?: number;
   partialCodCharge?: number;
   vatBasisPoints?: number;
+  deductShipping?: boolean;
   deliveredAmount: number;
   cancelledAmount: number;
   partialAmount: number;
@@ -32,7 +33,7 @@ export function calculateSettlement(input: SettlementInput) {
     input.deliveredAmount,
     input.partialAmount,
     input.rule === 'legacy' ? -input.cancelledAmount : 0,
-    input.rule === 'v3' ? 0 : -input.shipping,
+    input.rule === 'v3' && !input.deductShipping ? 0 : -input.shipping,
     input.rule === 'v3' ? -(input.deliveredCodCharge ?? 0) : -input.codCharge,
     input.rule === 'v3' ? -(input.partialCodCharge ?? 0) : 0,
   ]);

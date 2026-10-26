@@ -93,6 +93,32 @@ describe('decimal-safe money', () => {
 });
 
 describe('saved settlement rules', () => {
+  it('deducts delivery once for revised reports and preserves old v3 behavior', () => {
+    const input = {
+      ...settlement,
+      rule: 'v3' as const,
+      deliveredAmount: 1000000,
+      partialAmount: 200000,
+      deliveredCodCharge: 10000,
+      partialCodCharge: 2000,
+      shipping: 60000,
+      productCost: 400000,
+      ads: 100000,
+    };
+    expect(
+      calculateSettlement({ ...input, deductShipping: true }),
+    ).toMatchObject({
+      gross: 1128000,
+      vat: 10000,
+      adsTotal: 110000,
+      net: 618000,
+      commission: 92700,
+    });
+    expect(calculateSettlement({ ...input, deductShipping: false }).gross).toBe(
+      1188000,
+    );
+    expect(settlementProductCost(100000, 4, 0, 0)).toBe(400000);
+  });
   it('matches screenshots 05–06 without adding VAT', () => {
     expect(calculateSettlement(settlement)).toEqual({
       gross: parseMoney('1893624.08'),

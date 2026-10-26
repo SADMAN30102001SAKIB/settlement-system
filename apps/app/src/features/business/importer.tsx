@@ -40,7 +40,10 @@ export function Importer({
   const [text, setText] = useState('');
   const [rows, setRows] = useState<string[][]>([]);
   const [header, setHeader] = useState(0);
-  const [mapping, setMapping] = useState<Record<ImportColumn, number>>({
+  const [mapping, setMapping] = useState<
+    Record<ImportColumn, number> & { quantity: number }
+  >({
+    quantity: -1,
     id: -1,
     orderDate: -1,
     deliveryDate: -1,
@@ -71,6 +74,12 @@ export function Importer({
       codCharge: ['cod charge'],
     };
     setMapping({
+      quantity:
+        data[0]?.findIndex((cell) =>
+          ['quantity', 'qty', 'item quantity'].includes(
+            cell.toLowerCase().trim(),
+          ),
+        ) ?? -1,
       id:
         data[0]?.findIndex((cell) =>
           aliases.id.includes(cell.toLowerCase().trim()),
@@ -125,6 +134,18 @@ export function Importer({
     }
   });
   const invalid = preview.some((row) => row.error);
+  const valid = preview.flatMap((row) =>
+    row.order === null ? [] : [row.order],
+  );
+  const reconciliation = valid.reduce(
+    (sum, row) => ({
+      cod: sum.cod + row.codAmount,
+      shipping: sum.shipping + row.shipping,
+      codCharge: sum.codCharge + row.codCharge,
+      quantity: sum.quantity + row.quantity,
+    }),
+    { cod: 0, shipping: 0, codCharge: 0, quantity: 0 },
+  );
   async function upload(file: File) {
     setPending(true);
     setError('');
@@ -245,7 +266,7 @@ export function Importer({
             setText(event.target.value);
           }}
           placeholder={
-            'Order ID\tOrder Date\tDelivery Date\tStatus\tCOD Amount\tShipping Charge\tCOD Charge'
+            'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
           }
         />
       </Field>
@@ -326,6 +347,28 @@ export function Importer({
                     </select>
                   </Field>
                 ))}
+              <Field
+                label="Item quantity column (optional)"
+                hint="Without a quantity column each parcel starts with one item. Correct multi-item orders before settling."
+              >
+                <select
+                  value={mapping.quantity}
+                  onChange={(event) => {
+                    setMapping((current) => ({
+                      ...current,
+                      quantity: Number(event.target.value),
+                    }));
+                    setReviewed(false);
+                  }}
+                >
+                  <option value={-1}>One item per parcel</option>
+                  {rows[header]?.map((cell, index) => (
+                    <option key={index} value={index}>
+                      {index + 1}: {cell}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </section>
           <label className="checkbox-field">
@@ -353,16 +396,47 @@ export function Importer({
             Otherwise correct the source file.
           </label>
           <div className="table-scroll import-preview">
+            <section
+              className="import-reconciliation"
+              aria-label="Source reconciliation"
+            >
+              <h3>Compare with your source</h3>
+              <p className="muted">
+                {valid.length} valid rows · {preview.length - valid.length} rows
+                need correction. Totals below include valid rows only; no rows
+                are silently discarded.
+              </p>
+              <dl className="summary-grid">
+                <div>
+                  <dt>Source COD total</dt>
+                  <dd>{money(reconciliation.cod)}</dd>
+                </div>
+                <div>
+                  <dt>Source delivery charges</dt>
+                  <dd>{money(reconciliation.shipping)}</dd>
+                </div>
+                <div>
+                  <dt>Source COD charges</dt>
+                  <dd>{money(reconciliation.codCharge)}</dd>
+                </div>
+                <div>
+                  <dt>Item quantity</dt>
+                  <dd>{reconciliation.quantity}</dd>
+                </div>
+              </dl>
+            </section>
             <table>
               <thead>
                 <tr>
                   <th>Source row</th>
-                  <th>Order ID</th>
                   <th>Order date</th>
+                  <th>Order ID</th>
                   <th>Status</th>
+                  <th>Delivery time</th>
                   <th>COD</th>
                   <th>Shipping</th>
                   <th>COD charge</th>
+                  <th>Item quantity</th>
                   <th>Validation</th>
                 </tr>
               </thead>
@@ -370,12 +444,14 @@ export function Importer({
                 {preview.map((row) => (
                   <tr key={row.row}>
                     <td>{row.row}</td>
-                    <td>{row.order?.id ?? '—'}</td>
                     <td>{row.order?.orderDate ?? '—'}</td>
+                    <td>{row.order?.id ?? '—'}</td>
                     <td>{row.order?.status ?? '—'}</td>
+                    <td>{row.order?.deliveryDate ?? '—'}</td>
                     <td>{row.order ? money(row.order.codAmount) : '—'}</td>
                     <td>{row.order ? money(row.order.shipping) : '—'}</td>
                     <td>{row.order ? money(row.order.codCharge) : '—'}</td>
+                    <td>{row.order?.quantity ?? '—'}</td>
                     <td>{row.error || 'Ready'}</td>
                   </tr>
                 ))}
@@ -390,7 +466,8 @@ export function Importer({
                 setReviewed(event.target.checked);
               }}
             />
-            I checked the dates, IDs, status and amounts against the source.
+            I checked the dates, IDs, status, item quantities and amounts
+            against the source.
           </label>
           <button
             className="primary"

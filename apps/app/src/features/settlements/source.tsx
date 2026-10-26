@@ -9,6 +9,8 @@ import { Importer } from '../business/importer';
 const amount = z.number().int();
 const totals = z.object({
   deliveredQty: amount,
+  deliveredUnits: amount,
+  productCost: amount,
   cancelledQty: amount,
   partialQty: amount,
   pendingQty: amount,
@@ -55,6 +57,8 @@ export function SettlementSource({
       date: end,
       period: start === end ? start : `${start} – ${end}`,
       deliveredQty: String(values.deliveredQty),
+      deliveredUnits: String(values.deliveredUnits),
+      productCost: amountInput(values.productCost),
       cancelledQty: String(values.cancelledQty),
       partialQty: String(values.partialQty),
       pendingQty: String(values.pendingQty),
@@ -132,6 +136,7 @@ export function SettlementSource({
               Courier file
             </button>
           </div>
+          {error ? <Alert>{error}</Alert> : null}
           {source === 'saved' ? (
             <>
               <div className="form-grid">
@@ -191,7 +196,6 @@ export function SettlementSource({
               >
                 Load saved courier totals & allocated ads
               </button>
-              {error ? <Alert>{error}</Alert> : null}
             </>
           ) : null}
           {source === 'file' ? (
@@ -202,6 +206,8 @@ export function SettlementSource({
               onReviewed={(key, rows) => {
                 const values = {
                   deliveredQty: 0,
+                  deliveredUnits: 0,
+                  productCost: 0,
                   cancelledQty: 0,
                   partialQty: 0,
                   pendingQty: 0,
@@ -217,6 +223,7 @@ export function SettlementSource({
                 for (const row of rows) {
                   if (row.status === 'Delivered') {
                     values.deliveredQty++;
+                    values.deliveredUnits += row.quantity;
                     values.deliveredAmount += row.codAmount;
                     values.deliveredCodCharge += row.codCharge;
                   } else if (row.status === 'Cancelled') {
@@ -232,6 +239,16 @@ export function SettlementSource({
                     values.codCharge += row.codCharge;
                   }
                 }
+                const makingCost = brands.find(
+                  (brand) => brand.id === key,
+                )?.makingCost;
+                if (makingCost === null || makingCost === undefined) {
+                  setError(
+                    'Set this brand’s making cost before loading a courier file.',
+                  );
+                  return;
+                }
+                values.productCost = makingCost * values.deliveredUnits;
                 const dates = rows.map((row) => row.orderDate).sort();
                 const start = dates[0],
                   end = dates.at(-1);

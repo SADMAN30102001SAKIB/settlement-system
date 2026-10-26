@@ -216,6 +216,10 @@ export const settlements = sqliteTable(
       .notNull()
       .default('v2'),
     deliveredQty: integer('delivered_qty').notNull(),
+    deliveredUnits: integer('delivered_units'),
+    deductShipping: integer('deduct_shipping', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     deliveredAmount: integer('delivered_amount').notNull(),
     cancelledQty: integer('cancelled_qty').notNull(),
     cancelledAmount: integer('cancelled_amount').notNull(),

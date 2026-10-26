@@ -30,6 +30,8 @@ export const reportSchema = z.object({
   partialCodCharge: integer,
   vatBasisPoints: integer,
   deliveredQty: integer,
+  deliveredUnits: integer.nullable(),
+  deductShipping: z.boolean(),
   deliveredAmount: integer,
   cancelledQty: integer,
   cancelledAmount: integer,

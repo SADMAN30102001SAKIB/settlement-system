@@ -63,10 +63,10 @@ export function importDate(input: string, format: 'ISO' | 'DMY'): string {
 }
 
 export const importColumns = [
-  'id',
   'orderDate',
-  'deliveryDate',
+  'id',
   'status',
+  'deliveryDate',
   'codAmount',
   'shipping',
   'codCharge',
@@ -74,12 +74,21 @@ export const importColumns = [
 export type ImportColumn = (typeof importColumns)[number];
 export function mapOrder(
   row: readonly string[],
-  mapping: Readonly<Record<ImportColumn, number>>,
+  mapping: Readonly<Record<ImportColumn, number>> & {
+    readonly quantity?: number;
+  },
   format: 'ISO' | 'DMY',
   mode: 'orders' | 'courier',
   blankCodChargeIsZero = false,
   blankCodAmountIsZero = false,
 ) {
+  const mapped = (
+    mode === 'orders'
+      ? [mapping.id, mapping.orderDate, mapping.quantity]
+      : [...importColumns.map((key) => mapping[key]), mapping.quantity]
+  ).filter((index): index is number => index !== undefined && index >= 0);
+  if (new Set(mapped).size !== mapped.length)
+    throw new Error('Map each field to a different source column.');
   const get = (key: ImportColumn) => row[mapping[key]]?.trim() ?? '';
   const id = get('id');
   if (!id || id.length > 100) throw new Error('Missing or invalid order ID.');
@@ -120,7 +129,17 @@ export function mapOrder(
         ? null
         : importDate(get('deliveryDate'), format),
     status,
-    quantity: 1,
+    quantity: (() => {
+      const value =
+        mapping.quantity === undefined || mapping.quantity < 0
+          ? '1'
+          : (row[mapping.quantity]?.trim() ?? '');
+      if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10000)
+        throw new Error(
+          'Quantity must be a whole number between 1 and 10,000.',
+        );
+      return Number(value);
+    })(),
     partialQuantity: null,
     salesOverride: null,
     codAmount: mode === 'orders' ? 0 : amount('codAmount'),

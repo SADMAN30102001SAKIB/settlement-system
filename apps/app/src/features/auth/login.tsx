@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Alert, ErrorMessage, Field } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import { formText } from '../../lib/format';
+import { ThemePicker } from '../../components/theme-picker';
 
 export function Login({
   initialized,
@@ -49,6 +50,9 @@ export function Login({
   }
   return (
     <div className="auth-layout">
+      <div className="auth-theme">
+        <ThemePicker />
+      </div>
       <section className="auth-story">
         <div className="wordmark">
           <span className="brand-mark">H</span> HEXA

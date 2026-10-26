@@ -132,7 +132,7 @@ export function History({
             ['Partial parcels', String(totals.partialQty)],
             ['Partial amount', money(totals.partialAmount)],
             ['Pending parcels', String(totals.pendingQty)],
-            ['Shipping deducted (older rules)', money(totals.shipping)],
+            ['Delivery charges deducted', money(totals.shipping)],
             ['COD deducted', money(totals.codCharge)],
             ['Advertising incl. applicable VAT', money(totals.ads)],
             ['Product cost', money(totals.productCost)],
