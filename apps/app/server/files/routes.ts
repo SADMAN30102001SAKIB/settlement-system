@@ -1,10 +1,56 @@
 import { files, settings } from '@settlement/database/schema';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AppEnvironment } from '../environment';
 import { id } from '../validation';
+import defaultImages from './default-images.json';
+
+async function storeImage(
+  context: Context<AppEnvironment>,
+  kind: 'proof' | 'watermark' | 'signature',
+  filename: string,
+  data: ArrayBuffer,
+) {
+  const mime = imageMime(new Uint8Array(data));
+  const key = crypto.randomUUID();
+  const objectKey = `images/${key}`;
+  await context.env.FILES.put(objectKey, data, {
+    httpMetadata: { contentType: mime },
+  });
+  try {
+    const database = context.get('database')();
+    const insert = database.insert(files).values({
+      id: key,
+      objectKey,
+      filename,
+      mime,
+      size: data.byteLength,
+      kind,
+      createdAt: Date.now(),
+    });
+    if (kind === 'proof') await insert;
+    else
+      await database.batch([
+        insert,
+        database
+          .update(settings)
+          .set({
+            ...(kind === 'watermark'
+              ? { watermarkFileId: key }
+              : { signatureFileId: key }),
+            updatedAt: Date.now(),
+          })
+          .where(eq(settings.id, 1)),
+      ]);
+  } catch (error) {
+    await context.env.FILES.delete(objectKey);
+    throw error;
+  }
+  return context.json({ id: key }, 201);
+}
 
 function imageMime(bytes: Uint8Array) {
   if (
@@ -93,6 +139,15 @@ export const fileRoutes = new Hono<AppEnvironment>()
       },
     });
   })
+  .post('/defaults/:kind', async (context) => {
+    const kind = z
+      .enum(['watermark', 'signature'])
+      .parse(context.req.param('kind'));
+    const bytes = Uint8Array.from(atob(defaultImages[kind]), (character) =>
+      character.charCodeAt(0),
+    );
+    return storeImage(context, kind, `default-${kind}.png`, bytes.buffer);
+  })
   .post('/:kind', async (context) => {
     const kind = z
       .enum(['proof', 'watermark', 'signature'])
@@ -108,42 +163,7 @@ export const fileRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(422, {
         message: 'Choose an image between 1 byte and 3 MB.',
       });
-    const mime = imageMime(new Uint8Array(data));
-    const key = crypto.randomUUID();
-    const objectKey = `images/${key}`;
-    await context.env.FILES.put(objectKey, data, {
-      httpMetadata: { contentType: mime },
-    });
-    try {
-      const database = context.get('database')();
-      const insert = database.insert(files).values({
-        id: key,
-        objectKey,
-        filename,
-        mime,
-        size: data.byteLength,
-        kind,
-        createdAt: Date.now(),
-      });
-      if (kind === 'proof') await insert;
-      else
-        await database.batch([
-          insert,
-          database
-            .update(settings)
-            .set({
-              ...(kind === 'watermark'
-                ? { watermarkFileId: key }
-                : { signatureFileId: key }),
-              updatedAt: Date.now(),
-            })
-            .where(eq(settings.id, 1)),
-        ]);
-    } catch (error) {
-      await context.env.FILES.delete(objectKey);
-      throw error;
-    }
-    return context.json({ id: key }, 201);
+    return storeImage(context, kind, filename, data);
   })
   .delete('/:id', async (context) => {
     const key = id.parse(context.req.param('id'));

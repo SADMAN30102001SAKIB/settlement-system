@@ -95,6 +95,17 @@ export const settlementRoutes = new Hono<AppEnvironment>()
           net: sql<number>`COALESCE(SUM(${settlements.net}), 0)`,
           commission: sql<number>`COALESCE(SUM(${settlements.commission}), 0)`,
           paid: sql<number>`COALESCE(SUM(${paidTotal}), 0)`,
+          deliveredQty: sql<number>`COALESCE(SUM(${settlements.deliveredQty}), 0)`,
+          deliveredAmount: sql<number>`COALESCE(SUM(${settlements.deliveredAmount}), 0)`,
+          cancelledQty: sql<number>`COALESCE(SUM(${settlements.cancelledQty}), 0)`,
+          cancelledAmount: sql<number>`COALESCE(SUM(CASE WHEN ${settlements.rule} = 'legacy' THEN ${settlements.cancelledAmount} ELSE 0 END), 0)`,
+          partialQty: sql<number>`COALESCE(SUM(${settlements.partialQty}), 0)`,
+          partialAmount: sql<number>`COALESCE(SUM(${settlements.partialAmount}), 0)`,
+          pendingQty: sql<number>`COALESCE(SUM(${settlements.pendingQty}), 0)`,
+          shipping: sql<number>`COALESCE(SUM(CASE WHEN ${settlements.rule} = 'v3' THEN 0 ELSE ${settlements.shipping} END), 0)`,
+          codCharge: sql<number>`COALESCE(SUM(CASE WHEN ${settlements.rule} = 'v3' THEN ${settlements.deliveredCodCharge} + ${settlements.partialCodCharge} ELSE ${settlements.codCharge} END), 0)`,
+          ads: sql<number>`COALESCE(SUM(${settlements.ads} + CASE WHEN ${settlements.rule} = 'v3' THEN (((${settlements.ads} * ${settlements.vatBasisPoints} + 5000) / 10000 + 5) / 10) * 10 ELSE 0 END), 0)`,
+          productCost: sql<number>`COALESCE(SUM(${settlements.productCost}), 0)`,
         })
         .from(settlements)
         .where(filters),
@@ -180,6 +191,16 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       .extend({ revision })
       .parse(await context.req.json<unknown>());
     const database = context.get('database')();
+    const [existing] = await database
+      .select({ rule: settlements.rule })
+      .from(settlements)
+      .where(eq(settlements.id, key))
+      .limit(1);
+    if (existing?.rule !== input.rule)
+      throw new HTTPException(409, {
+        message:
+          'Saved calculation rules cannot be changed. Create a new report instead.',
+      });
     const [brand] = await database
       .select({ name: brands.name })
       .from(brands)

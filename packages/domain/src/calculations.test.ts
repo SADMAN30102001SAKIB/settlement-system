@@ -99,6 +99,8 @@ describe('saved settlement rules', () => {
       net: parseMoney('806918.08'),
       commission: parseMoney('121037.712'),
       payable: parseMoney('121037.71'),
+      vat: 0,
+      adsTotal: settlement.ads,
     });
   });
   it('preserves legacy cancellation deductions', () => {
@@ -110,6 +112,37 @@ describe('saved settlement rules', () => {
     expect(result.gross).toBe(parseMoney('1491031.08'));
     expect(result.net).toBe(parseMoney('404325.08'));
     expect(result.commission).toBe(parseMoney('60648.762'));
+  });
+  it('applies v3 COD charges and VAT once without deducting shipping', () => {
+    const result = calculateSettlement({
+      ...settlement,
+      rule: 'v3',
+      deliveredAmount: 1000000,
+      partialAmount: 200000,
+      deliveredCodCharge: 10000,
+      partialCodCharge: 2000,
+      ads: 100000,
+      productCost: 450000,
+      vatBasisPoints: 1000,
+    });
+    expect(result).toEqual({
+      gross: 1188000,
+      vat: 10000,
+      adsTotal: 110000,
+      net: 628000,
+      commission: 94200,
+      payable: 94200,
+    });
+    expect(
+      calculateSettlement({
+        ...settlement,
+        rule: 'v3',
+        deliveredAmount: 0,
+        partialAmount: 0,
+        ads: 100000,
+        productCost: 0,
+      }).commission,
+    ).toBe(-16500);
   });
   it('preserves the negative historical settlement commission', () => {
     const result = calculateSettlement({

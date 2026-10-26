@@ -1,11 +1,17 @@
-import { brands, notes, settings } from '@settlement/database/schema';
+import {
+  adInvoices,
+  brands,
+  notes,
+  settings,
+  settlements,
+} from '@settlement/database/schema';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 
 import type { AppEnvironment } from '../environment';
-import { id, money, name, rate } from '../validation';
+import { date, id, money, name, rate } from '../validation';
 
 const brandFields = z.object({ name, makingCost: money.nullable() }).strict();
 const settingFields = z
@@ -138,6 +144,24 @@ export const catalogRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(409, { message: 'Complete admin setup first.' });
     return context.json({ item });
   })
+  .post('/settings/reset', async (context) => {
+    const [item] = await context
+      .get('database')()
+      .update(settings)
+      .set({
+        companyName: 'Hexa Agency Ltd.',
+        address: 'Binodpur Bazar, Rajshahi',
+        phone: '01404989709',
+        email: 'zargon.bd@gmail.com',
+        signatureLabel: 'Authorized Signature',
+        updatedAt: Date.now(),
+      })
+      .where(eq(settings.id, 1))
+      .returning();
+    if (item === undefined)
+      throw new HTTPException(409, { message: 'Complete admin setup first.' });
+    return context.json({ item });
+  })
   .get('/notes', async (context) => {
     const query = z
       .object({
@@ -183,6 +207,51 @@ export const catalogRoutes = new Hono<AppEnvironment>()
       next:
         items.length > 200 && last !== undefined
           ? { before: last.createdAt, beforeId: last.id }
+          : null,
+    });
+  })
+  .get('/progress', async (context) => {
+    const query = z
+      .object({
+        kind: z.enum(['settlements', 'advertising']),
+        brandId: id.optional(),
+        before: date.optional(),
+        beforeId: id.optional(),
+      })
+      .parse(context.req.query());
+    const table = query.kind === 'settlements' ? settlements : adInvoices;
+    const items = await context
+      .get('database')()
+      .select({
+        id: table.id,
+        brandId: table.brandId,
+        brandName: table.brandName,
+        period: table.period,
+        date: table.date,
+        invoiceNumber: table.invoiceNumber,
+      })
+      .from(table)
+      .where(
+        and(
+          query.brandId === undefined
+            ? undefined
+            : eq(table.brandId, query.brandId),
+          query.before === undefined || query.beforeId === undefined
+            ? undefined
+            : or(
+                lt(table.date, query.before),
+                and(eq(table.date, query.before), lt(table.id, query.beforeId)),
+              ),
+        ),
+      )
+      .orderBy(desc(table.date), desc(table.id))
+      .limit(51);
+    const last = items[49];
+    return context.json({
+      items: items.slice(0, 50),
+      next:
+        items.length > 50 && last !== undefined
+          ? { before: last.date, beforeId: last.id }
           : null,
     });
   })

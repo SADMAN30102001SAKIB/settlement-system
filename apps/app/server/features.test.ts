@@ -254,13 +254,13 @@ it('keeps imports idempotent, advertising conserved, making costs snapshotted, a
   ).toEqual({
     totals: {
       count: 3,
-      revenue: 500000,
-      ads: 100000,
-      productCost: 200000,
-      shipping: 20000,
-      codCharge: 10000,
-      net: 170000,
-      commission: 25500,
+      revenue: 495000,
+      ads: 110000,
+      productCost: 100000,
+      shipping: 30000,
+      codCharge: 5000,
+      net: 285000,
+      commission: 42750,
     },
   });
   const plan = await fixture.env.DB.prepare(
@@ -316,4 +316,244 @@ it('stores private images in R2, enforces authentication, and removes database r
       ).first<{ watermark_file_id: string | null }>()
     )?.watermark_file_id,
   ).toBeNull();
+});
+
+it('uses v3 by default, preserves saved rules, and reports automatic completion', async () => {
+  const brandId = await brand('V3 invoice');
+  const input = {
+    brandId,
+    date: '2026-10-20',
+    period: 'V3 period',
+    deliveredQty: 2,
+    cancelledQty: 1,
+    partialQty: 1,
+    pendingQty: 1,
+    deliveredAmount: 1000000,
+    cancelledAmount: 500000,
+    partialAmount: 200000,
+    shipping: 200000,
+    codCharge: 99999,
+    deliveredCodCharge: 10000,
+    partialCodCharge: 2000,
+    vatBasisPoints: 1000,
+    ads: 100000,
+    productCost: 200000,
+    costPerPiece: 100000,
+    agencyBasisPoints: 1500,
+  };
+  const response = await request('/api/manage/settlements', 'POST', input);
+  expect(response.status).toBe(201);
+  const saved = z
+    .object({
+      item: z.object({
+        id: z.string(),
+        rule: z.string(),
+        gross: z.number(),
+        net: z.number(),
+        commission: z.number(),
+        revision: z.number(),
+      }),
+    })
+    .parse(await response.json()).item;
+  expect(saved).toMatchObject({
+    rule: 'v3',
+    gross: 1188000,
+    net: 878000,
+    commission: 131700,
+  });
+  expect(
+    (
+      await request('/api/manage/settlements', 'POST', {
+        ...input,
+        period: 'Fractional VAT',
+        ads: 45,
+      })
+    ).status,
+  ).toBe(201);
+  const summary = z
+    .object({ summary: z.object({ ads: z.number() }) })
+    .parse(
+      await (
+        await request(`/api/manage/settlements?brandId=${brandId}`)
+      ).json(),
+    );
+  expect(summary.summary.ads).toBe(110055);
+  expect(
+    (
+      await request(`/api/manage/settlements/${saved.id}`, 'PUT', {
+        ...input,
+        rule: 'v2',
+        revision: saved.revision,
+      })
+    ).status,
+  ).toBe(409);
+  const progress = await request(
+    `/api/manage/progress?kind=settlements&brandId=${brandId}`,
+  );
+  expect(progress.status).toBe(200);
+  expect(
+    z
+      .object({ items: z.array(z.object({ id: z.string() })) })
+      .parse(await progress.json()).items,
+  ).toContainEqual({ id: saved.id });
+});
+
+it('excludes workspace expenses from brand reports and safely reallocates reassigned orders', async () => {
+  const first = await brand('Reassign source'),
+    second = await brand('Reassign target');
+  const date = '2026-09-15';
+  const row = {
+    orderDate: date,
+    deliveryDate: date,
+    status: 'Delivered',
+    quantity: 4,
+    partialQuantity: null,
+    salesOverride: null,
+    codAmount: 500000,
+    shipping: 60000,
+    codCharge: 5000,
+  };
+  for (const [brandId, amount] of [
+    [first, 100000],
+    [second, 200000],
+  ] as const) {
+    expect(
+      (
+        await request('/api/manage/business/ads', 'PUT', {
+          brandId,
+          date,
+          amount,
+        })
+      ).status,
+    ).toBe(200);
+  }
+  expect(
+    (
+      await request('/api/manage/business/import', 'POST', {
+        brandId: first,
+        rows: [
+          { ...row, id: 'move-a' },
+          { ...row, id: 'move-b' },
+        ],
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request('/api/manage/business/import', 'POST', {
+        brandId: second,
+        rows: [{ ...row, id: 'move-c' }],
+      })
+    ).status,
+  ).toBe(200);
+  await request(`/api/manage/brands/${second}`, 'PUT', {
+    name: 'Reassign target',
+    makingCost: 150000,
+  });
+  expect(
+    (
+      await request('/api/manage/business/expenses', 'POST', {
+        date,
+        amount: 10000,
+        description: 'Workspace only',
+      })
+    ).status,
+  ).toBe(201);
+  const reportSchema = z.object({
+    totals: z.object({
+      otherExpenses: z.number(),
+      net: z.number(),
+      productCost: z.number(),
+    }),
+    days: z.array(z.object({ net: z.number(), commission: z.number() })),
+  });
+  const filter = `/api/manage/business/report?from=${date}&to=${date}&basis=order&agencyBasisPoints=1500`;
+  const selected = reportSchema.parse(
+    await (await request(`${filter}&brandId=${first}`)).json(),
+  );
+  expect(selected.totals).toEqual({
+    otherExpenses: 0,
+    net: 680000,
+    productCost: 200000,
+  });
+  const all = reportSchema.parse(await (await request(filter)).json());
+  expect(all.totals.otherExpenses).toBe(10000);
+  const edit = {
+    brandId: second,
+    revision: 1,
+    quantity: 4,
+    partialQuantity: null,
+    salesOverride: null,
+    costPerPiece: 100000,
+  };
+  expect(
+    (await request('/api/manage/business/orders/move-a', 'PUT', edit)).status,
+  ).toBe(200);
+  const after = await fixture.env.DB.prepare(
+    "SELECT id,brand_id,cost_per_piece,ads,revision FROM orders WHERE id IN ('move-a','move-b','move-c') ORDER BY id",
+  ).all();
+  expect(after.results).toEqual([
+    {
+      id: 'move-a',
+      brand_id: second,
+      cost_per_piece: 150000,
+      ads: 100000,
+      revision: 2,
+    },
+    {
+      id: 'move-b',
+      brand_id: first,
+      cost_per_piece: 100000,
+      ads: 100000,
+      revision: 1,
+    },
+    {
+      id: 'move-c',
+      brand_id: second,
+      cost_per_piece: 100000,
+      ads: 100000,
+      revision: 1,
+    },
+  ]);
+  expect(
+    (
+      await request('/api/manage/business/orders/move-a', 'PUT', {
+        ...edit,
+        brandId: first,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await fixture.env.DB.prepare(
+        "SELECT id,brand_id,cost_per_piece,ads,revision FROM orders WHERE id IN ('move-a','move-b','move-c') ORDER BY id",
+      ).all()
+    ).results,
+  ).toEqual(after.results);
+});
+
+it('restores original image assets privately and resets only company identity', async () => {
+  for (const kind of ['watermark', 'signature']) {
+    const response = await request(
+      `/api/manage/files/defaults/${kind}`,
+      'POST',
+      {},
+    );
+    expect(response.status).toBe(201);
+    const image = z.object({ id: z.string() }).parse(await response.json());
+    const download = await request(`/api/manage/files/${image.id}`);
+    expect(download.headers.get('Content-Type')).toBe('image/png');
+    expect((await download.arrayBuffer()).byteLength).toBeGreaterThan(30000);
+  }
+  const before = await fixture.env.DB.prepare(
+    'SELECT watermark_file_id,signature_file_id,agency_basis_points FROM settings',
+  ).first();
+  expect((await request('/api/manage/settings/reset', 'POST', {})).status).toBe(
+    200,
+  );
+  expect(
+    await fixture.env.DB.prepare(
+      'SELECT watermark_file_id,signature_file_id,agency_basis_points FROM settings',
+    ).first(),
+  ).toEqual(before);
 });

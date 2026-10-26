@@ -34,6 +34,17 @@ export function History({
     net: 0,
     commission: 0,
     paid: 0,
+    deliveredQty: 0,
+    deliveredAmount: 0,
+    cancelledQty: 0,
+    cancelledAmount: 0,
+    partialQty: 0,
+    partialAmount: 0,
+    pendingQty: 0,
+    shipping: 0,
+    codCharge: 0,
+    ads: 0,
+    productCost: 0,
   });
   const [next, setNext] = useState<{ before: string; beforeId: string } | null>(
     null,
@@ -110,6 +121,29 @@ export function History({
           detail="Against matching settlements"
         />
       </div>
+      <section className="panel report-totals" aria-label="Settlement totals">
+        <h2>Delivery & cost totals</h2>
+        <dl className="summary-grid">
+          {[
+            ['Delivered parcels', String(totals.deliveredQty)],
+            ['Delivered amount', money(totals.deliveredAmount)],
+            ['Cancelled parcels', String(totals.cancelledQty)],
+            ['Cancelled amount (legacy)', money(totals.cancelledAmount)],
+            ['Partial parcels', String(totals.partialQty)],
+            ['Partial amount', money(totals.partialAmount)],
+            ['Pending parcels', String(totals.pendingQty)],
+            ['Shipping deducted (older rules)', money(totals.shipping)],
+            ['COD deducted', money(totals.codCharge)],
+            ['Advertising incl. applicable VAT', money(totals.ads)],
+            ['Product cost', money(totals.productCost)],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <section className="panel">
         <div className="section-heading">
           <div>

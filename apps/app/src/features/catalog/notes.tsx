@@ -12,6 +12,7 @@ import {
 import { api, noteSchema, okSchema } from '../../lib/api';
 import type { Brand, Note } from '../../lib/api';
 import { formText } from '../../lib/format';
+import { Progress } from './progress';
 const noteListSchema = z.object({
   items: z.array(noteSchema),
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
@@ -113,26 +114,29 @@ export function Notes({ brands }: { brands: Brand[] }) {
         title="Keep the work moving"
         description="Record what’s finished, what’s sent, and what needs your attention."
       />
+      <section className="panel">
+        <Field label="Filter work by brand">
+          <select
+            value={brandFilter}
+            onChange={(event) => {
+              setBrandFilter(event.target.value);
+              setCursor(null);
+              setItems([]);
+            }}
+          >
+            <option value="">All brands</option>
+            {brands.map((brand) => (
+              <option key={brand.id} value={brand.id}>
+                {brand.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </section>
+      <Progress key={brandFilter} brandId={brandFilter} />
       <div className="split-layout">
         <section className="panel">
           <h2>Work notes</h2>
-          <Field label="Filter notes by brand">
-            <select
-              value={brandFilter}
-              onChange={(event) => {
-                setBrandFilter(event.target.value);
-                setCursor(null);
-                setItems([]);
-              }}
-            >
-              <option value="">All brands</option>
-              {brands.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
-          </Field>
           {items.length ? (
             items.map((note) => (
               <article key={note.id} className="note-item">

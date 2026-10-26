@@ -19,6 +19,30 @@ export function Settings({
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
+  const [formVersion, setFormVersion] = useState(0);
+  async function reset() {
+    if (
+      !window.confirm(
+        'Restore the original Hexa company details? Your agency percentage and invoice images will not change.',
+      )
+    )
+      return;
+    setPending(true);
+    setError('');
+    try {
+      await api('/manage/settings/reset', z.object({ item: settingsSchema }), {
+        method: 'POST',
+        body: {},
+      });
+      await refresh();
+      setFormVersion((version) => version + 1);
+      setSaved(true);
+    } catch (reason) {
+      setError(ErrorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  }
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -57,6 +81,7 @@ export function Settings({
       <div className="settings-layout">
         <section className="panel">
           <form
+            key={formVersion}
             onSubmit={(event) => {
               save(event).catch((reason: unknown) => {
                 setError(ErrorMessage(reason));
@@ -132,6 +157,18 @@ export function Settings({
               <p className="muted">
                 Saved reports retain their calculation inputs.
               </p>
+              <button
+                type="button"
+                className="secondary"
+                disabled={pending}
+                onClick={() => {
+                  reset().catch((reason: unknown) => {
+                    setError(ErrorMessage(reason));
+                  });
+                }}
+              >
+                Restore company defaults
+              </button>
               <button className="primary" disabled={pending}>
                 {pending ? 'Saving…' : 'Save changes'}
               </button>

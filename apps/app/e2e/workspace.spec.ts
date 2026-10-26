@@ -6,6 +6,13 @@ import { z } from 'zod';
 
 async function signIn(page: Page) {
   await page.goto('/');
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    'href',
+    '/favicon.svg',
+  );
+  const favicon = await page.request.get('/favicon.svg');
+  expect(favicon.status()).toBe(200);
+  expect(favicon.headers()['content-type']).toContain('image/svg+xml');
   await page.getByLabel('Username', { exact: true }).fill('browser-admin');
   await page
     .getByLabel('Password', { exact: true })
@@ -49,12 +56,30 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     .getByLabel('Settlement period', { exact: true })
     .fill('Browser verification');
   await page.getByLabel('Delivered parcels', { exact: true }).fill('2');
+  await page.getByLabel('Cancelled parcels', { exact: true }).fill('5');
+  await page.getByLabel('Partial parcels', { exact: true }).fill('3');
+  await page.getByLabel('Pending parcels', { exact: true }).fill('4');
   await page.getByLabel('Delivered amount (৳)', { exact: true }).fill('1000');
+  await page.getByLabel('Partial collection (৳)', { exact: true }).fill('200');
+  await page
+    .getByLabel('Delivered COD charges (৳)', { exact: true })
+    .fill('10');
+  await page.getByLabel('Partial COD charges (৳)', { exact: true }).fill('2');
+  await page.getByLabel('Advertising cost (৳)', { exact: true }).fill('100');
+  await expect(
+    page.getByLabel('Product cost (৳)', { exact: true }),
+  ).toHaveValue('200');
   await page
     .getByRole('button', { name: /Save settlement|Save report|Save &/ })
     .click();
   await expect(page.locator('.invoice-document')).toBeVisible();
-  await expect(page.locator('.invoice-final')).toContainText('৳120');
+  await expect(page.locator('.invoice-final')).toContainText('৳131.70');
+  await expect(page.locator('.invoice-document')).toContainText(
+    'advertising VAT (10%)',
+  );
+  await expect(page.locator('.invoice-document')).not.toContainText(
+    'Less: shipping charges',
+  );
   await page.getByLabel('Amount (৳)', { exact: true }).fill('50');
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByText('Bank transfer')).toHaveCount(0);
@@ -64,10 +89,24 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toMatch(/^HEXA-.*\.pdf$/);
   await download.saveAs(testInfo.outputPath('settlement.pdf'));
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = getDocument({
+    data: new Uint8Array(readFileSync(testInfo.outputPath('settlement.pdf'))),
+  });
+  try {
+    expect((await pdf.promise).numPages).toBe(1);
+  } finally {
+    await pdf.destroy();
+  }
   await page.screenshot({
     path: testInfo.outputPath('invoice.png'),
     fullPage: true,
   });
+  await page.goto('/#/notes');
+  await page.getByLabel('Filter work by brand').selectOption({ label: brand });
+  await expect(
+    page.getByRole('cell', { name: 'Browser verification', exact: true }),
+  ).toBeVisible();
   await page.goto('/#/business');
   await expect(
     page.getByRole('heading', { name: 'Understand every order’s outcome' }),
@@ -200,8 +239,8 @@ test('business tracking guides import, costs and review without exposing every f
     page.getByRole('link', { name: 'Create settlement', exact: true }),
   ).toHaveCSS('min-height', '42px');
   await expect(
-    page.getByText('Allocated advertising', { exact: true }),
-  ).not.toBeVisible();
+    page.getByText('Advertising incl. 10% VAT', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Add ad spend', exact: true }).click();
   await expect(dialog.getByLabel('Brand', { exact: true })).toHaveValue(
     await page
@@ -240,7 +279,7 @@ test('business tracking guides import, costs and review without exposing every f
     .getByText('Cost breakdown & daily totals', { exact: true })
     .click();
   await expect(
-    page.getByText('Allocated advertising', { exact: true }),
+    page.getByText('Advertising incl. 10% VAT', { exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('business-review.png'),
@@ -322,6 +361,76 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   await expect(
     page.getByRole('img', { name: 'signature preview' }),
   ).toBeVisible();
+  for (const kind of ['watermark', 'signature']) {
+    page.once('dialog', async (confirmation) => {
+      await confirmation.accept();
+    });
+    await page
+      .getByRole('button', { name: `Restore default ${kind}`, exact: true })
+      .click();
+    await expect(
+      page.getByRole('img', { name: `${kind} preview` }),
+    ).toBeVisible();
+  }
+  const artwork = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    if (context === null) throw new Error('Canvas unavailable');
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, 1, 1);
+    context.fillStyle = 'white';
+    context.fillRect(1, 0, 1, 1);
+    return canvas.toDataURL('image/png').split(',')[1] ?? '';
+  });
+  await page
+    .getByRole('checkbox', {
+      name: 'Remove light background and convert artwork to black',
+      exact: true,
+    })
+    .last()
+    .check();
+  await page.getByLabel(/^(Upload|Replace) signature/).setInputFiles({
+    name: 'artwork.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(artwork, 'base64'),
+  });
+  await expect
+    .poll(async () =>
+      page
+        .getByRole('img', { name: 'signature preview' })
+        .evaluate(async (node) => {
+          if (!(node instanceof HTMLImageElement)) return [];
+          await node.decode();
+          const canvas = document.createElement('canvas');
+          canvas.width = 2;
+          canvas.height = 1;
+          const context = canvas.getContext('2d');
+          if (context === null) return [];
+          context.drawImage(node, 0, 0);
+          const data = context.getImageData(0, 0, 2, 1).data;
+          return [data[3], data[7]];
+        }),
+    )
+    .toEqual([255, 0]);
+  page.once('dialog', async (confirmation) => {
+    await confirmation.accept();
+  });
+  await page
+    .getByRole('button', { name: 'Restore default signature', exact: true })
+    .click();
+  await expect
+    .poll(async () =>
+      page
+        .getByRole('img', { name: 'signature preview' })
+        .evaluate(async (node) => {
+          if (!(node instanceof HTMLImageElement)) return 0;
+          await node.decode();
+          return node.naturalWidth;
+        }),
+    )
+    .toBeGreaterThan(100);
   await page.screenshot({
     path: testInfo.outputPath('settings.png'),
     fullPage: true,
@@ -408,7 +517,7 @@ test('layouts stay balanced across desktop, tablet and narrow mobile screens', a
         if (identity && editor && width > 1100)
           expect(identity.width).toBeGreaterThan(editor.width * 0.85);
         await page
-          .getByText('Load settlement totals (optional)', { exact: true })
+          .getByRole('button', { name: 'Load settlement totals', exact: true })
           .click();
         await expect(
           page.getByRole('button', {
@@ -429,13 +538,11 @@ test('layouts stay balanced across desktop, tablet and narrow mobile screens', a
           .getByRole('button', { name: 'Business Tracking', exact: true })
           .click();
         await page
-          .getByText('Load settlement totals (optional)', { exact: true })
+          .getByRole('button', { name: 'Close data source', exact: true })
           .click();
-        await page.getByText('Calculation breakdown', { exact: true }).click();
         await expect(
           page.getByText('Gross settlement', { exact: true }),
         ).toBeVisible();
-        await page.getByText('Calculation breakdown', { exact: true }).click();
       }
       if (width <= 1024)
         await expect(

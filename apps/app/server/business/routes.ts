@@ -41,9 +41,9 @@ const filterFields = z.object({
   brandId: id.optional(),
   basis: z.enum(['order', 'delivery']).default('order'),
 });
-const finalized = sql`${orders.status} != 'Pending'`;
-const revenue = sql<number>`CASE WHEN ${orders.status} IN ('Delivered','Partial Delivered') THEN COALESCE(${orders.salesOverride}, ${orders.codAmount}) ELSE 0 END`;
-const product = sql<number>`CASE WHEN ${finalized} THEN COALESCE(${orders.costPerPiece}, 0) * CASE WHEN ${orders.status} = 'Partial Delivered' THEN COALESCE(${orders.partialQuantity}, 0) ELSE ${orders.quantity} END ELSE 0 END`;
+const finalized = sql`${orders.status} IN ('Delivered','Partial Delivered')`;
+const revenue = sql<number>`CASE WHEN ${finalized} THEN COALESCE(${orders.salesOverride}, ${orders.codAmount}) ELSE 0 END`;
+const product = sql<number>`CASE WHEN ${orders.status} = 'Delivered' THEN COALESCE(${orders.costPerPiece}, 0) ELSE 0 END`;
 
 // Recompute only the touched brand/day, in the same transaction as each import.
 function reallocate(binding: D1Database, brandId: string, orderDate: string) {
@@ -86,6 +86,8 @@ export const businessRoutes = new Hono<AppEnvironment>()
         partialAmount: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN ${revenue} ELSE 0 END), 0)`,
         shipping: sql<number>`COALESCE(SUM(CASE WHEN ${finalized} THEN ${orders.shipping} ELSE 0 END), 0)`,
         codCharge: sql<number>`COALESCE(SUM(CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END), 0)`,
+        deliveredCodCharge: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Delivered' THEN ${orders.codCharge} ELSE 0 END), 0)`,
+        partialCodCharge: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN ${orders.codCharge} ELSE 0 END), 0)`,
         ads: sql<number>`COALESCE(SUM(${orders.ads}), 0)`,
       })
       .from(orders)
@@ -112,21 +114,22 @@ export const businessRoutes = new Hono<AppEnvironment>()
     const database = context.get('database')();
     const column =
       query.basis === 'order' ? orders.orderDate : orders.deliveryDate;
-    const [days, otherExpenses, advertising] = await database.batch([
+    const [grouped, otherExpenses, advertising] = await database.batch([
       database
         .select({
           date: column,
+          brandId: orders.brandId,
           count: sql<number>`COUNT(*)`,
           delivered: sql<number>`SUM(CASE WHEN ${orders.status} = 'Delivered' THEN 1 ELSE 0 END)`,
           cancelled: sql<number>`SUM(CASE WHEN ${orders.status} = 'Cancelled' THEN 1 ELSE 0 END)`,
           partial: sql<number>`SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN 1 ELSE 0 END)`,
           pending: sql<number>`SUM(CASE WHEN ${orders.status} = 'Pending' THEN 1 ELSE 0 END)`,
-          revenue: sql<number>`SUM(${revenue})`,
+          revenue: sql<number>`SUM(${revenue} - CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END)`,
           ads: sql<number>`SUM(${orders.ads})`,
           productCost: sql<number>`SUM(${product})`,
-          shipping: sql<number>`SUM(CASE WHEN ${finalized} THEN ${orders.shipping} ELSE 0 END)`,
+          shipping: sql<number>`SUM(${orders.shipping})`,
           codCharge: sql<number>`SUM(CASE WHEN ${finalized} THEN ${orders.codCharge} ELSE 0 END)`,
-          missingCosts: sql<number>`SUM(CASE WHEN ${finalized} AND (${orders.costPerPiece} IS NULL OR (${orders.status} = 'Partial Delivered' AND ${orders.partialQuantity} IS NULL)) THEN 1 ELSE 0 END)`,
+          missingCosts: sql<number>`SUM(CASE WHEN ${orders.status} = 'Delivered' AND ${orders.costPerPiece} IS NULL THEN 1 ELSE 0 END)`,
           codAmount: sql<number>`SUM(${orders.codAmount})`,
         })
         .from(orders)
@@ -139,9 +142,9 @@ export const businessRoutes = new Hono<AppEnvironment>()
               : eq(orders.brandId, query.brandId),
           ),
         )
-        .groupBy(column)
+        .groupBy(column, orders.brandId)
         .orderBy(desc(column))
-        .limit(367),
+        .limit(1001),
       database
         .select({
           id: expenses.id,
@@ -174,6 +177,86 @@ export const businessRoutes = new Hono<AppEnvironment>()
         .orderBy(desc(dailyAds.orderDate), dailyAds.brandId)
         .limit(1001),
     ]);
+    if (grouped.length > 1000)
+      throw new HTTPException(422, {
+        message: 'Narrow the filter to at most 1,000 brand/day groups.',
+      });
+    const brandDays = grouped.map((day) => {
+      const ads = toPaisaPrecision(day.ads + percentage(day.ads, 1000));
+      const net = day.revenue - ads - day.productCost;
+      return {
+        ...day,
+        ads,
+        net,
+        commission: toPaisaPrecision(
+          percentage(Math.max(0, net), query.agencyBasisPoints),
+        ),
+      };
+    });
+    const byDate = new Map<
+      string,
+      Omit<(typeof brandDays)[number], 'brandId'> & { otherExpenses: number }
+    >();
+    for (const day of brandDays) {
+      if (day.date === null) continue;
+      const current = byDate.get(day.date);
+      if (current === undefined)
+        byDate.set(day.date, { ...day, otherExpenses: 0 });
+      else
+        for (const key of [
+          'count',
+          'delivered',
+          'cancelled',
+          'partial',
+          'pending',
+          'revenue',
+          'ads',
+          'productCost',
+          'shipping',
+          'codCharge',
+          'missingCosts',
+          'codAmount',
+        ] as const)
+          current[key] += day[key];
+    }
+    if (query.brandId === undefined)
+      for (const expense of otherExpenses) {
+        let day = byDate.get(expense.date);
+        if (day === undefined) {
+          day = {
+            date: expense.date,
+            count: 0,
+            delivered: 0,
+            cancelled: 0,
+            partial: 0,
+            pending: 0,
+            revenue: 0,
+            ads: 0,
+            productCost: 0,
+            shipping: 0,
+            codCharge: 0,
+            missingCosts: 0,
+            codAmount: 0,
+            net: 0,
+            commission: 0,
+            otherExpenses: 0,
+          };
+          byDate.set(expense.date, day);
+        }
+        day.otherExpenses += expense.amount;
+      }
+    const days = [...byDate.values()]
+      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+      .map((day) => {
+        const net = day.revenue - day.ads - day.productCost - day.otherExpenses;
+        return {
+          ...day,
+          net,
+          commission: toPaisaPrecision(
+            percentage(Math.max(0, net), query.agencyBasisPoints),
+          ),
+        };
+      });
     if (otherExpenses.length > 1000)
       throw new HTTPException(422, {
         message: 'Narrow the range to include at most 1,000 other expenses.',
@@ -211,19 +294,14 @@ export const businessRoutes = new Hono<AppEnvironment>()
         missingCosts: 0,
       },
     );
-    const expenseTotal = otherExpenses.reduce(
-      (sum, item) => sum + item.amount,
-      0,
-    );
-    const net =
-      totals.revenue -
-      totals.ads -
-      totals.productCost -
-      totals.shipping -
-      totals.codCharge -
-      expenseTotal;
+    const expenseTotal =
+      query.brandId === undefined
+        ? otherExpenses.reduce((sum, item) => sum + item.amount, 0)
+        : 0;
+    const net = totals.revenue - totals.ads - totals.productCost - expenseTotal;
     return context.json({
       days,
+      brandDays,
       advertising,
       expenses: otherExpenses,
       totals: {
@@ -380,6 +458,7 @@ export const businessRoutes = new Hono<AppEnvironment>()
     const input = z
       .object({
         revision,
+        brandId: id.optional(),
         quantity: z.number().int().min(1).max(10000),
         partialQuantity: z.number().int().min(0).nullable(),
         salesOverride: money.nullable(),
@@ -393,13 +472,59 @@ export const businessRoutes = new Hono<AppEnvironment>()
         { message: 'Partial quantity cannot exceed quantity.' },
       )
       .parse(await context.req.json<unknown>());
-    const [item] = await context
-      .get('database')()
-      .update(orders)
-      .set({ ...input, revision: input.revision + 1, updatedAt: Date.now() })
-      .where(and(eq(orders.id, key), eq(orders.revision, input.revision)))
-      .returning({ id: orders.id });
-    if (item === undefined)
+    const database = context.get('database')();
+    const [existing] = await database
+      .select({ brandId: orders.brandId, date: orders.orderDate })
+      .from(orders)
+      .where(eq(orders.id, key))
+      .limit(1);
+    if (existing === undefined)
+      throw new HTTPException(409, {
+        message: 'Order not found. Reload before editing.',
+      });
+    const brandId = input.brandId ?? existing.brandId;
+    const [brand] = await database
+      .select({ cost: brands.makingCost })
+      .from(brands)
+      .where(eq(brands.id, brandId))
+      .limit(1);
+    if (brand === undefined)
+      throw new HTTPException(422, { message: 'Select an existing brand.' });
+    const binding = context.env.DB;
+    let changed = 0;
+    try {
+      const results = await binding.batch([
+        binding
+          .prepare(
+            'UPDATE orders SET brand_id = CASE WHEN revision = ? THEN ? ELSE NULL END, quantity = ?, partial_quantity = ?, sales_override = ?, cost_per_piece = ?, revision = revision + 1, updated_at = ? WHERE id = ?',
+          )
+          .bind(
+            input.revision,
+            brandId,
+            input.quantity,
+            input.partialQuantity,
+            input.salesOverride,
+            brandId === existing.brandId ? input.costPerPiece : brand.cost,
+            Date.now(),
+            key,
+          ),
+        reallocate(binding, existing.brandId, existing.date),
+        ...(brandId === existing.brandId
+          ? []
+          : [reallocate(binding, brandId, existing.date)]),
+      ]);
+      changed = results[0]?.meta.changes ?? 0;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('NOT NULL constraint failed: orders.brand_id')
+      )
+        throw new HTTPException(409, {
+          message: 'This order changed. Reload before editing.',
+        });
+      throw error;
+    }
+    if (changed === 0)
       throw new HTTPException(409, {
         message: 'This order changed. Reload before editing.',
       });

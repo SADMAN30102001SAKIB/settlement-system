@@ -268,8 +268,8 @@ export function Importer({
       {error ? <Alert>{error}</Alert> : null}
       {rows.length ? (
         <>
-          <details className="import-options">
-            <summary>Check date format & column mapping</summary>
+          <section className="import-options">
+            <h3>Check date format & column mapping</h3>
             <div className="form-grid">
               <Field label="Source date format">
                 <select
@@ -327,7 +327,7 @@ export function Importer({
                   </Field>
                 ))}
             </div>
-          </details>
+          </section>
           <label className="checkbox-field">
             <input
               type="checkbox"

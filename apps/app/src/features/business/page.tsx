@@ -143,6 +143,7 @@ export function Business({
           method: 'PUT',
           body: {
             revision: editing.revision,
+            brandId: formText(form, 'brandId'),
             quantity: Number(formText(form, 'quantity')),
             partialQuantity:
               formText(form, 'partialQuantity') === ''
@@ -291,8 +292,7 @@ export function Business({
               actions.
             </p>
           )}
-          <details open={hasOrders}>
-            <summary>Cost actions</summary>
+          <div>
             <div className="actions">
               <button
                 className="secondary"
@@ -312,7 +312,7 @@ export function Business({
                 Add expense
               </button>
             </div>
-          </details>
+          </div>
         </div>
       ) : null}
       {report && hasActivity ? (
@@ -324,7 +324,7 @@ export function Business({
               detail={`${String(report.totals.delivered)} delivered · ${String(report.totals.cancelled)} cancelled · ${String(report.totals.partial)} partial · ${String(report.totals.pending)} pending`}
             />
             <Metric
-              label="Eligible revenue"
+              label="Collection after COD fees"
               value={money(report.totals.revenue)}
             />
             <Metric
@@ -339,16 +339,20 @@ export function Business({
           </div>
           {report.totals.missingCosts > 0 ? (
             <Alert>
-              {report.totals.missingCosts} finalized orders have missing making
-              costs or partial quantities. Profit is provisional until you
-              correct them.
+              {report.totals.missingCosts} delivered orders have missing making
+              costs. Profit is provisional until you correct them.
             </Alert>
           ) : null}
-          <details className="panel business-breakdown">
-            <summary>Cost breakdown & daily totals</summary>
+          <section className="panel business-breakdown">
+            <h2>Cost breakdown & daily totals</h2>
+            <p className="muted">
+              V3: delivered-parcel making cost, advertising plus 10% VAT, and
+              eligible COD fees. Shipping is informational and is not deducted
+              again.
+            </p>
             <div className="metrics">
               <Metric
-                label="Allocated advertising"
+                label="Advertising incl. 10% VAT"
                 value={money(report.totals.ads)}
               />
               <Metric
@@ -356,13 +360,17 @@ export function Business({
                 value={money(report.totals.productCost)}
               />
               <Metric
-                label="Shipping / COD charges"
-                value={money(report.totals.shipping + report.totals.codCharge)}
+                label="COD fees already deducted"
+                value={money(report.totals.codCharge)}
               />
               <Metric
                 label="Other expenses"
                 value={money(report.totals.otherExpenses)}
-                detail="Workspace expenses for this date range, not brand-specific"
+                detail={
+                  filters.brandId
+                    ? 'Excluded from a single-brand report'
+                    : 'Workspace expenses for this date range'
+                }
               />
             </div>
             <div className="table-scroll">
@@ -377,6 +385,9 @@ export function Business({
                     <th>Product</th>
                     <th>Shipping</th>
                     <th>COD fee</th>
+                    <th>Expenses</th>
+                    <th>Net profit / loss</th>
+                    <th>Agency share</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -393,12 +404,52 @@ export function Business({
                       <td>{money(day.productCost)}</td>
                       <td>{money(day.shipping)}</td>
                       <td>{money(day.codCharge)}</td>
+                      <td>{money(day.otherExpenses)}</td>
+                      <td>{money(day.net)}</td>
+                      <td>{money(day.commission)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </details>
+          </section>
+          <section className="panel">
+            <h2>Brand-wise daily summary</h2>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Brand</th>
+                    <th>Orders</th>
+                    <th>Delivered / cancelled / partial / pending</th>
+                    <th>Advertising incl. VAT</th>
+                    <th>Net profit / loss</th>
+                    <th>Agency share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.brandDays.map((day) => (
+                    <tr key={`${day.brandId}-${day.date}`}>
+                      <td>{day.date}</td>
+                      <td>
+                        {brands.find((brand) => brand.id === day.brandId)
+                          ?.name ?? 'Brand'}
+                      </td>
+                      <td>{day.count}</td>
+                      <td>
+                        {day.delivered} / {day.cancelled} / {day.partial} /{' '}
+                        {day.pending}
+                      </td>
+                      <td>{money(day.ads)}</td>
+                      <td>{money(day.net)}</td>
+                      <td>{money(day.commission)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
       ) : null}
       {items.length > 0 ? (
@@ -505,6 +556,18 @@ export function Business({
             }}
           >
             <div className="form-grid">
+              <Field
+                label="Order brand"
+                hint="Moving an order snapshots the new brand’s making cost and reallocates both brands’ daily advertising."
+              >
+                <select name="brandId" defaultValue={editing.brandId} required>
+                  {brands.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Ordered quantity">
                 <input
                   name="quantity"
@@ -557,8 +620,8 @@ export function Business({
           </form>
         </section>
       ) : null}
-      <details className="business-maintenance">
-        <summary>Data management</summary>
+      <section className="business-maintenance">
+        <h2>Data management</h2>
         <p className="muted">
           Removing imported data is permanent. This does not delete saved
           settlement invoices.
@@ -571,7 +634,7 @@ export function Business({
         >
           Remove an imported day
         </button>
-      </details>
+      </section>
       <dialog
         ref={dialog}
         className="business-dialog"
@@ -688,8 +751,8 @@ export function Business({
                 Save / replace daily spend
               </button>
             </form>
-            <details className="import-options">
-              <summary>How allocation works</summary>
+            <section className="import-options">
+              <h3>How allocation works</h3>
               <p className="muted">
                 Spend is reallocated across all unique orders, including pending
                 and cancelled. Later imports re-split the same total without
@@ -700,9 +763,9 @@ export function Business({
                 basis above. A budget without imported orders stays saved until
                 those orders arrive.
               </p>
-            </details>
-            <details>
-              <summary>Saved daily spend</summary>
+            </section>
+            <section>
+              <h3>Saved daily spend</h3>
               <div className="table-scroll">
                 <table>
                   <thead>
@@ -741,7 +804,7 @@ export function Business({
                   </tbody>
                 </table>
               </div>
-            </details>
+            </section>
           </section>
         ) : null}
         {action === 'expense' ? (

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { calculateSettlement } from '@settlement/domain/settlement';
 import type { AdInvoice, Report, Settings } from '../../lib/api';
 import { dateLabel, money } from '../../lib/format';
 import { Alert, ErrorMessage, PageHeading } from '../../components/ui';
@@ -275,10 +276,31 @@ export function Invoice({
                     ? row('Less: cancelled amount', -report.cancelledAmount)
                     : null}
                   {row('Add: partial collection', report.partialAmount)}
-                  {row('Less: shipping charges', -report.shipping)}
-                  {row('Less: COD charges', -report.codCharge)}
+                  {report.rule === 'v3' ? (
+                    <>
+                      {row(
+                        'Less: delivered COD charges',
+                        -report.deliveredCodCharge,
+                      )}
+                      {row(
+                        'Less: partial COD charges',
+                        -report.partialCodCharge,
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {row('Less: shipping charges', -report.shipping)}
+                      {row('Less: COD charges', -report.codCharge)}
+                    </>
+                  )}
                   {row('Gross settlement', report.gross, true)}
                   {row('Less: advertising cost', -report.ads)}
+                  {report.rule === 'v3'
+                    ? row(
+                        `Less: advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
+                        -calculateSettlement(report).vat,
+                      )
+                    : null}
                   {row('Less: product cost', -report.productCost)}
                   {row('Net amount', report.net, true)}
                 </tbody>

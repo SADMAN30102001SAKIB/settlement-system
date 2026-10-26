@@ -39,6 +39,9 @@ const initial = {
   partialAmount: '0',
   shipping: '0',
   codCharge: '0',
+  deliveredCodCharge: '0',
+  partialCodCharge: '0',
+  vatPercentage: '10',
   ads: '0',
   productCost: '0',
   percentage: '15',
@@ -72,6 +75,9 @@ export function ReportEditor({
           partialAmount: amountInput(report.partialAmount),
           shipping: amountInput(report.shipping),
           codCharge: amountInput(report.codCharge),
+          deliveredCodCharge: amountInput(report.deliveredCodCharge),
+          partialCodCharge: amountInput(report.partialCodCharge),
+          vatPercentage: String(report.vatBasisPoints / 100),
           ads: amountInput(report.ads),
           productCost: amountInput(report.productCost),
           percentage: String(report.agencyBasisPoints / 100),
@@ -90,6 +96,8 @@ export function ReportEditor({
     setError('');
   }
   const brand = brands.find((item) => item.id === values.brandId);
+  const rule = report?.rule ?? 'v3';
+  const isV3 = rule === 'v3';
   function input() {
     const count = (value: string) => {
       const parsed = Number(value);
@@ -114,8 +122,8 @@ export function ReportEditor({
         ? settlementProductCost(
             makingCost,
             deliveredQty,
-            cancelledQty,
-            partialQty,
+            isV3 ? 0 : cancelledQty,
+            isV3 ? 0 : partialQty,
           )
         : parseMoney(values.productCost);
     const agencyBasisPoints = parsePercentage(values.percentage);
@@ -123,7 +131,7 @@ export function ReportEditor({
       brandId: values.brandId,
       date: values.date,
       period: values.period,
-      rule: report?.rule ?? 'v2',
+      rule,
       deliveredQty,
       cancelledQty,
       partialQty,
@@ -133,6 +141,9 @@ export function ReportEditor({
       partialAmount: parseMoney(values.partialAmount),
       shipping: parseMoney(values.shipping),
       codCharge: parseMoney(values.codCharge),
+      deliveredCodCharge: parseMoney(values.deliveredCodCharge),
+      partialCodCharge: parseMoney(values.partialCodCharge),
+      vatBasisPoints: parsePercentage(values.vatPercentage),
       ads: parseMoney(values.ads),
       productCost,
       costPerPiece: autoCost ? makingCost : (report?.costPerPiece ?? null),
@@ -215,7 +226,7 @@ export function ReportEditor({
               <h2>
                 <span className="step">01</span> Brand & period
               </h2>
-              <span className="pill">{report?.rule ?? 'v2'} calculation</span>
+              <span className="pill">{rule} calculation</span>
             </div>
             <div className="form-grid settlement-identity">
               <Field label="Brand">
@@ -285,18 +296,46 @@ export function ReportEditor({
               ))}
             </div>
             <div className="form-grid settlement-amounts">
-              {moneyFields.map(([key, label]) => (
-                <Field key={key} label={`${label} (৳)`}>
-                  <input
-                    inputMode="decimal"
-                    required
-                    value={values[key]}
-                    onChange={(event) => {
-                      update(key, event.target.value);
-                    }}
-                  />
-                </Field>
-              ))}
+              {moneyFields
+                .filter(
+                  ([key]) =>
+                    !isV3 || (key !== 'shipping' && key !== 'codCharge'),
+                )
+                .map(([key, label]) => (
+                  <Field key={key} label={`${label} (৳)`}>
+                    <input
+                      inputMode="decimal"
+                      required
+                      value={values[key]}
+                      onChange={(event) => {
+                        update(key, event.target.value);
+                      }}
+                    />
+                  </Field>
+                ))}
+              {isV3
+                ? (['deliveredCodCharge', 'partialCodCharge'] as const).map(
+                    (key) => (
+                      <Field
+                        key={key}
+                        label={
+                          key === 'deliveredCodCharge'
+                            ? 'Delivered COD charges (৳)'
+                            : 'Partial COD charges (৳)'
+                        }
+                      >
+                        <input
+                          inputMode="decimal"
+                          required
+                          value={values[key]}
+                          onChange={(event) => {
+                            update(key, event.target.value);
+                          }}
+                        />
+                      </Field>
+                    ),
+                  )
+                : null}
               {report?.rule === 'legacy' ? (
                 <Field label="Cancelled amount (৳)">
                   <input
@@ -327,8 +366,9 @@ export function ReportEditor({
               Calculate product cost from brand making cost
             </label>
             <p className="muted">
-              Making cost × delivered, cancelled and partial parcel counts.
-              Pending parcels are excluded.
+              {isV3
+                ? 'Making cost × delivered parcels only. Partial, cancelled and pending parcels have no product-cost deduction.'
+                : 'Making cost × delivered, cancelled and partial parcel counts. Pending parcels are excluded.'}
             </p>
             <div className="form-grid">
               <Field label="Product cost (৳)">
@@ -357,14 +397,31 @@ export function ReportEditor({
                   }}
                 />
               </Field>
+              {isV3 ? (
+                <Field label="Advertising VAT (%)">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    required
+                    value={values.vatPercentage}
+                    onChange={(event) => {
+                      update('vatPercentage', event.target.value);
+                    }}
+                  />
+                </Field>
+              ) : null}
             </div>
           </section>
         </div>
         <aside className="panel calculation">
           <p className="eyebrow">LIVE CALCULATION</p>
           <h2>Review & save</h2>
-          <details className="calculation-breakdown">
-            <summary>Calculation breakdown</summary>
+          <section
+            className="calculation-breakdown"
+            aria-label="Calculation breakdown"
+          >
             <dl>
               <div>
                 <dt>Delivered</dt>
@@ -378,14 +435,29 @@ export function ReportEditor({
                   {values.partialAmount ? `৳${values.partialAmount}` : '—'}
                 </dd>
               </div>
-              <div>
-                <dt>Shipping</dt>
-                <dd>−৳{values.shipping || '0'}</dd>
-              </div>
-              <div>
-                <dt>COD charges</dt>
-                <dd>−৳{values.codCharge || '0'}</dd>
-              </div>
+              {!isV3 ? (
+                <div>
+                  <dt>Shipping</dt>
+                  <dd>−৳{values.shipping || '0'}</dd>
+                </div>
+              ) : null}
+              {!isV3 ? (
+                <div>
+                  <dt>COD charges</dt>
+                  <dd>−৳{values.codCharge || '0'}</dd>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <dt>Delivered COD charges</dt>
+                    <dd>−৳{values.deliveredCodCharge || '0'}</dd>
+                  </div>
+                  <div>
+                    <dt>Partial COD charges</dt>
+                    <dd>−৳{values.partialCodCharge || '0'}</dd>
+                  </div>
+                </>
+              )}
               <div className="total-row">
                 <dt>Gross settlement</dt>
                 <dd>{calculation ? money(calculation.gross) : '—'}</dd>
@@ -398,12 +470,18 @@ export function ReportEditor({
                 <dt>Product cost</dt>
                 <dd>{calculation ? money(-productCost) : '—'}</dd>
               </div>
+              {isV3 ? (
+                <div>
+                  <dt>Advertising VAT · {values.vatPercentage}%</dt>
+                  <dd>{calculation ? money(-calculation.vat) : '—'}</dd>
+                </div>
+              ) : null}
               <div className="total-row">
                 <dt>Net amount</dt>
                 <dd>{calculation ? money(calculation.net) : '—'}</dd>
               </div>
             </dl>
-          </details>
+          </section>
           <div className="commission">
             <span>Agency share · {values.percentage}%</span>
             <strong>{calculation ? money(calculation.commission) : '—'}</strong>
@@ -423,7 +501,9 @@ export function ReportEditor({
             <span aria-hidden="true">→</span>
           </button>
           <p className="caption">
-            No VAT is added under these agreed calculation rules.
+            {isV3
+              ? 'Advertising VAT is applied once. Shipping is already included in courier collection; it is not deducted again.'
+              : 'No VAT is added under this saved calculation version.'}
           </p>
         </aside>
       </form>

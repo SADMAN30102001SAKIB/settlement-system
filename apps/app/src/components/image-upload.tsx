@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { z } from 'zod';
 import { api, okSchema } from '../lib/api';
 import { Alert, ErrorMessage, Field } from './ui';
+import { prepareInvoiceImage } from '../lib/prepare-image';
 
 export function ImageUpload({
   kind,
@@ -16,6 +17,7 @@ export function ImageUpload({
 }) {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [removeBackground, setRemoveBackground] = useState(false);
   async function upload(file: File) {
     setPending(true);
     onPendingChange?.(true);
@@ -23,14 +25,22 @@ export function ImageUpload({
     try {
       if (file.size > 3_000_000)
         throw new Error('Choose an image smaller than 3 MB.');
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type))
+        throw new Error('Choose a PNG, JPEG or WebP image.');
+      const body =
+        kind !== 'proof' && removeBackground
+          ? await prepareInvoiceImage(file)
+          : file;
       const response = await fetch(`/api/manage/files/${kind}`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'X-File-Name': encodeURIComponent(file.name),
+          'X-File-Name': encodeURIComponent(
+            body === file ? file.name : `${file.name}.png`,
+          ),
         },
-        body: file,
+        body,
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -75,6 +85,28 @@ export function ImageUpload({
       onPendingChange?.(false);
     }
   }
+  async function restore() {
+    if (
+      !window.confirm(
+        `Replace the current ${kind} with the original default? The previous file remains available in Private files.`,
+      )
+    )
+      return;
+    setPending(true);
+    setError('');
+    try {
+      const result = await api(
+        `/manage/files/defaults/${kind}`,
+        z.object({ id: z.string() }),
+        { method: 'POST', body: {} },
+      );
+      await onChange(result.id);
+    } catch (reason) {
+      setError(ErrorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  }
   return (
     <div className="image-upload">
       {currentId ? (
@@ -105,6 +137,37 @@ export function ImageUpload({
           }}
         />
       </Field>
+      {kind !== 'proof' ? (
+        <>
+          <label className="check-field">
+            <input
+              type="checkbox"
+              checked={removeBackground}
+              disabled={pending}
+              onChange={(event) => {
+                setRemoveBackground(event.target.checked);
+              }}
+            />{' '}
+            Remove light background and convert artwork to black
+          </label>
+          <p className="caption">
+            For dark logos or signatures on a light background. Leave off to
+            preserve original colors and transparency.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={pending}
+            onClick={() => {
+              restore().catch((reason: unknown) => {
+                setError(ErrorMessage(reason));
+              });
+            }}
+          >
+            Restore default {kind}
+          </button>
+        </>
+      ) : null}
       {currentId ? (
         <button
           type="button"

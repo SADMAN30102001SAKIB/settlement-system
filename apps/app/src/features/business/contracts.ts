@@ -43,7 +43,24 @@ export const businessReportSchema = z.object({
     net: integer,
     commission: integer,
   }),
-  days: z.array(figures.extend({ date: z.string(), codAmount: integer })),
+  days: z.array(
+    figures.extend({
+      date: z.string(),
+      codAmount: integer,
+      net: integer,
+      commission: integer,
+      otherExpenses: integer,
+    }),
+  ),
+  brandDays: z.array(
+    figures.extend({
+      date: z.string(),
+      brandId: z.string(),
+      codAmount: integer,
+      net: integer,
+      commission: integer,
+    }),
+  ),
   expenses: z.array(
     z.object({
       id: z.string(),

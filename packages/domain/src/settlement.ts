@@ -1,7 +1,10 @@
 import { assertMoney, percentage, sumMoney, toPaisaPrecision } from './money';
 
 export interface SettlementInput {
-  rule: 'legacy' | 'v2';
+  rule: 'legacy' | 'v2' | 'v3';
+  deliveredCodCharge?: number;
+  partialCodCharge?: number;
+  vatBasisPoints?: number;
   deliveredAmount: number;
   cancelledAmount: number;
   partialAmount: number;
@@ -29,12 +32,35 @@ export function calculateSettlement(input: SettlementInput) {
     input.deliveredAmount,
     input.partialAmount,
     input.rule === 'legacy' ? -input.cancelledAmount : 0,
-    -input.shipping,
-    -input.codCharge,
+    input.rule === 'v3' ? 0 : -input.shipping,
+    input.rule === 'v3' ? -(input.deliveredCodCharge ?? 0) : -input.codCharge,
+    input.rule === 'v3' ? -(input.partialCodCharge ?? 0) : 0,
   ]);
-  const net = sumMoney([gross, -input.ads, -input.productCost]);
-  const commission = percentage(net, input.agencyBasisPoints);
-  return { gross, net, commission, payable: toPaisaPrecision(commission) };
+  for (const charge of [
+    input.deliveredCodCharge ?? 0,
+    input.partialCodCharge ?? 0,
+  ]) {
+    if (assertMoney(charge) < 0)
+      throw new RangeError('COD charges cannot be negative.');
+  }
+  const vat =
+    input.rule === 'v3'
+      ? toPaisaPrecision(percentage(input.ads, input.vatBasisPoints ?? 1000))
+      : 0;
+  const adsTotal = sumMoney([input.ads, vat]);
+  const net = sumMoney([gross, -adsTotal, -input.productCost]);
+  const commission =
+    input.rule === 'v3'
+      ? toPaisaPrecision(percentage(net, input.agencyBasisPoints))
+      : percentage(net, input.agencyBasisPoints);
+  return {
+    gross,
+    net,
+    commission,
+    vat,
+    adsTotal,
+    payable: toPaisaPrecision(commission),
+  };
 }
 
 export function settlementProductCost(

@@ -212,7 +212,7 @@ export const settlements = sqliteTable(
     brandName: text('brand_name').notNull(),
     date: text().notNull(),
     period: text().notNull(),
-    rule: text({ enum: ['legacy', 'v2'] })
+    rule: text({ enum: ['legacy', 'v2', 'v3'] })
       .notNull()
       .default('v2'),
     deliveredQty: integer('delivered_qty').notNull(),
@@ -224,6 +224,9 @@ export const settlements = sqliteTable(
     pendingQty: integer('pending_qty').notNull().default(0),
     shipping: integer().notNull(),
     codCharge: integer('cod_charge').notNull(),
+    deliveredCodCharge: integer('delivered_cod_charge').notNull().default(0),
+    partialCodCharge: integer('partial_cod_charge').notNull().default(0),
+    vatBasisPoints: integer('vat_basis_points').notNull().default(1000),
     ads: integer().notNull(),
     productCost: integer('product_cost').notNull(),
     costPerPiece: integer('cost_per_piece'),
@@ -241,7 +244,7 @@ export const settlements = sqliteTable(
   (table) => [
     index('settlements_brand_date_idx').on(table.brandId, table.date, table.id),
     index('settlements_date_idx').on(table.date, table.id),
-    check('settlements_valid_rule', sql`${table.rule} IN ('legacy','v2')`),
+    check('settlements_valid_rule', sql`${table.rule} IN ('legacy','v2','v3')`),
     check(
       'settlements_valid_rate',
       sql`${table.agencyBasisPoints} BETWEEN 0 AND 10000`,
