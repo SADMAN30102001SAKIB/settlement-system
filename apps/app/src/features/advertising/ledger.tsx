@@ -185,7 +185,7 @@ export function AdvertisingLedger({
         <Field label="Invoice date to">
           <input name="to" type="date" />
         </Field>
-        <button className="secondary" disabled={loading}>
+        <button className="secondary form-submit" disabled={loading}>
           Apply invoice filters
         </button>
       </form>
@@ -194,14 +194,14 @@ export function AdvertisingLedger({
         <SkeletonTable rows={3} columns={7} />
       ) : (
         <div className="table-scroll">
-          <table>
+          <table className="invoice-ledger-table">
             <thead>
               <tr>
                 {[
                   'Invoice / date',
                   'Brand',
                   'Period',
-                  'Total incl. applicable VAT',
+                  'Total incl. VAT',
                   'Paid',
                   'Status',
                   'Actions',
@@ -213,16 +213,28 @@ export function AdvertisingLedger({
             <tbody>
               {data?.items.map((item) => (
                 <tr key={item.id}>
-                  <td>
-                    {item.invoiceNumber}
+                  <td data-label="Invoice / date" className="ledger-identity">
+                    <strong>{item.invoiceNumber}</strong>
                     <small>{dateLabel(item.date)}</small>
                   </td>
-                  <td>{item.brandName}</td>
-                  <td>{item.period}</td>
-                  <td>{money(item.total)}</td>
-                  <td>{money(item.paid)}</td>
-                  <td>{paymentStatus(item.total, item.paid).status}</td>
-                  <td>
+                  <td data-label="Brand" className="ledger-brand">
+                    {item.brandName}
+                  </td>
+                  <td data-label="Period" className="ledger-period">
+                    {item.period}
+                  </td>
+                  <td data-label="Total incl. VAT" className="numeric">
+                    {money(item.total)}
+                  </td>
+                  <td data-label="Paid" className="numeric">
+                    {money(item.paid)}
+                  </td>
+                  <td data-label="Status">
+                    <span className="invoice-status">
+                      {paymentStatus(item.total, item.paid).status}
+                    </span>
+                  </td>
+                  <td data-label="Actions" className="ledger-actions">
                     <div className="invoice-row-actions">
                       {(
                         ['View', 'Edit', 'Payment', 'PDF', 'Delete'] as const

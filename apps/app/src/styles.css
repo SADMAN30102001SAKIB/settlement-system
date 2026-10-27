@@ -1812,13 +1812,213 @@ article.invoice-advertising {
   margin: 4px 0 9px;
 }
 .invoice-row-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
   gap: 6px;
-  min-width: 230px;
+}
+.advertising-ledger {
+  container-type: inline-size;
 }
 .ledger-filters {
-  margin-bottom: 24px;
+  grid-template-columns:
+    minmax(130px, 1fr) minmax(160px, 1.3fr) repeat(2, minmax(140px, 1fr))
+    auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+.ledger-filters .field,
+.ledger-filters .form-submit {
+  margin: 0;
+}
+.invoice-ledger-table {
+  min-width: 1000px;
+}
+.invoice-ledger-table th,
+.invoice-ledger-table td {
+  padding-inline: 14px;
+}
+.invoice-ledger-table .ledger-identity {
+  min-width: 165px;
+  white-space: nowrap;
+}
+.invoice-ledger-table .ledger-brand {
+  min-width: 120px;
+}
+.invoice-ledger-table .ledger-period {
+  min-width: 140px;
+}
+.invoice-ledger-table td[data-label='Status'] {
+  white-space: nowrap;
+}
+.invoice-status,
+.order-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--ink);
+  border-radius: 6px;
+  font-size: 11px;
+}
+@container (max-width: 1000px) {
+  .ledger-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .advertising-ledger > .table-scroll {
+    overflow: visible;
+    margin: 0;
+  }
+  .invoice-ledger-table,
+  .invoice-ledger-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .invoice-ledger-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .invoice-ledger-table tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 16px;
+  }
+  .invoice-ledger-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .invoice-ledger-table td,
+  .invoice-ledger-table .ledger-identity,
+  .invoice-ledger-table .ledger-brand,
+  .invoice-ledger-table .ledger-period {
+    display: block;
+    padding: 0;
+    min-width: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .invoice-ledger-table td::before {
+    content: attr(data-label) / '';
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .invoice-ledger-table .ledger-identity,
+  .invoice-ledger-table .ledger-actions {
+    grid-column: 1 / -1;
+  }
+  .invoice-ledger-table .ledger-actions {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+}
+@container (max-width: 520px) {
+  .ledger-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.business-tracking .page-heading {
+  margin-bottom: 20px;
+}
+.business-tracking .page-heading h1 {
+  font-size: clamp(24px, 3vw, 30px);
+}
+.business-tracking > .panel,
+.business-tracking .importer {
+  padding: 20px;
+}
+.business-tracking .section-heading {
+  margin-bottom: 14px;
+}
+.business-tracking > .panel + .panel {
+  margin-top: 20px;
+}
+.business-tracking .table-scroll {
+  margin-inline: -20px;
+}
+.business-tracking .field {
+  margin-bottom: 12px;
+}
+.business-ads-form,
+.business-tracking .importer > .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.business-ads-form .field,
+.business-summary-filters .field,
+.business-ads-form .form-submit,
+.business-summary-filters .form-submit {
+  margin: 0;
+}
+.business-ads-form .form-submit {
+  grid-column: 1 / -1;
+}
+.business-summary-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.business-daily-table,
+.business-orders-table {
+  width: 100%;
+  white-space: nowrap;
+}
+.business-daily-table th,
+.business-daily-table td,
+.business-orders-table th,
+.business-orders-table td {
+  padding: 12px;
+}
+.business-orders-table input {
+  width: 120px;
+}
+.business-orders-table {
+  min-width: 1450px;
+}
+.business-orders-table td:first-child {
+  min-width: 110px;
+}
+.business-orders-table select {
+  width: 155px;
+}
+.business-orders-table input,
+.business-orders-table select {
+  min-height: 38px;
+  font-size: 12px;
+}
+.business-orders-table .order-id {
+  min-width: 155px;
+  max-width: 220px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.order-row-actions {
+  display: flex;
+  gap: 6px;
+}
+@media (max-width: 900px) {
+  .business-ads-form,
+  .business-tracking .importer > .form-grid,
+  .business-summary-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .business-ads-form,
+  .business-tracking .importer > .form-grid,
+  .business-summary-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .pagination-actions {
   display: flex;

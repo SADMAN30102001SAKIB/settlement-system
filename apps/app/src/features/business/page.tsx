@@ -16,6 +16,7 @@ import { amountInput, formText, money, today } from '../../lib/format';
 import { orderListSchema } from './contracts';
 import type { Order } from './contracts';
 import { Importer } from './importer';
+import { OrderRow } from './order-row';
 
 const dailySchema = z.object({
   days: z.array(
@@ -161,11 +162,11 @@ export function Business({ brands }: { brands: Brand[] }) {
     }
   }
   return (
-    <>
+    <div className="business-tracking">
       <PageHeading
         eyebrow="OPERATIONS / BUSINESS TRACKING"
-        title="Daily orders. Clear advertising costs."
-        description="Import brand-wise orders, enter each day’s advertising budget, and review the allocation per order."
+        title="Business Tracking"
+        description="Steadfast daily import, brand-wise advertising and saved orders."
         action={
           <a
             className="primary business-settlement-link"
@@ -196,7 +197,7 @@ export function Business({ brands }: { brands: Brand[] }) {
         </div>
         <form
           ref={adsForm}
-          className="form-grid"
+          className="form-grid business-ads-form"
           onSubmit={(event) => {
             event.preventDefault();
             saveAds().catch((reason: unknown) => {
@@ -272,7 +273,7 @@ export function Business({ brands }: { brands: Brand[] }) {
           </div>
         </div>
         <form
-          className="form-grid"
+          className="form-grid business-summary-filters"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
@@ -289,6 +290,16 @@ export function Business({ brands }: { brands: Brand[] }) {
             setPrevious([]);
           }}
         >
+          <Field label="Summary brand">
+            <select name="brandId">
+              <option value="">All brands</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="From">
             <input
               name="from"
@@ -300,22 +311,12 @@ export function Business({ brands }: { brands: Brand[] }) {
           <Field label="To">
             <input name="to" type="date" required defaultValue={filters.to} />
           </Field>
-          <Field label="Summary brand">
-            <select name="brandId">
-              <option value="">All brands</option>
-              {brands.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
-          </Field>
           <button className="secondary form-submit" disabled={loading}>
             Apply filters
           </button>
         </form>
         <div className="table-scroll">
-          <table>
+          <table className="business-daily-table">
             <thead>
               <tr>
                 {[
@@ -453,18 +454,21 @@ export function Business({ brands }: { brands: Brand[] }) {
           <SkeletonTable rows={4} columns={8} />
         ) : (
           <div className="table-scroll">
-            <table>
+            <table className="business-orders-table">
               <thead>
                 <tr>
                   {[
-                    'Order / date',
+                    'Date',
+                    'Order ID',
+                    'Ads cost',
                     'Brand',
+                    'Sales amount',
                     'Status',
                     'Delivery date',
                     'COD',
-                    'Shipping / COD fee',
-                    'Ads allocation',
-                    'Quantity',
+                    'Shipping',
+                    'COD charge',
+                    'Product cost',
                     'Action',
                   ].map((label) => (
                     <th key={label}>{label}</th>
@@ -473,41 +477,30 @@ export function Business({ brands }: { brands: Brand[] }) {
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      {item.id}
-                      <small>{item.orderDate}</small>
-                    </td>
-                    <td>{name(item.brandId)}</td>
-                    <td>{item.status}</td>
-                    <td>{item.deliveryDate ?? '—'}</td>
-                    <td>{money(item.codAmount)}</td>
-                    <td>
-                      {money(item.shipping)} / {money(item.codCharge)}
-                    </td>
-                    <td>{money(item.ads)}</td>
-                    <td>{item.quantity}</td>
-                    <td>
-                      <button
-                        className="secondary compact"
-                        onClick={() => {
-                          setEditing(item);
-                        }}
-                      >
-                        Edit order
-                      </button>
-                    </td>
-                  </tr>
+                  <OrderRow
+                    key={item.id + ':' + String(item.revision)}
+                    item={item}
+                    brands={brands}
+                    onSaved={refresh}
+                    onEdit={() => {
+                      setEditing(item);
+                    }}
+                  />
                 ))}
                 {!items.length ? (
                   <tr>
-                    <td colSpan={9}>No orders match this view.</td>
+                    <td colSpan={12}>No orders match this view.</td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
         )}
+        <p className="caption">
+          Edit Brand or Sales amount in the row, then save changes. Blank sales
+          uses COD. Product cost uses delivered item quantity and the saved
+          making cost; “Edit order” manages quantities and cost corrections.
+        </p>
         <div className="pagination-actions">
           <button
             className="secondary"
@@ -648,6 +641,6 @@ export function Business({ brands }: { brands: Brand[] }) {
           </form>
         ) : null}
       </dialog>
-    </>
+    </div>
   );
 }

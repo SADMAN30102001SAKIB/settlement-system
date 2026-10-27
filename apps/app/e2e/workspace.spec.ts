@@ -59,10 +59,7 @@ test('daily advertising save button stays compact and aligned at every breakpoin
     if (!filterButton) throw new Error('Daily summary filter button missing');
     expect(filterButton.height).toBeLessThanOrEqual(52);
     expect(filterButton.width).toBeLessThan(260);
-    if (width > 680)
-      expect(
-        Math.abs(box.y + box.height - input.y - input.height),
-      ).toBeLessThan(2);
+    expect(box.y).toBeGreaterThanOrEqual(input.y + input.height);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(width);
@@ -111,6 +108,41 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
     .getByRole('row')
     .filter({ has: page.getByRole('cell', { name: names[0], exact: true }) });
   await expect(row).toContainText('৳2,200.00');
+  const initialSize = page.viewportSize();
+  for (const width of testInfo.project.name === 'desktop'
+    ? [1535, 1280, 1024, 768]
+    : [390, 360]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['light', 'dark']) {
+      await page.getByLabel('Color theme').selectOption(theme);
+      await row.scrollIntoViewIfNeeded();
+      await expect(row.locator('.ledger-identity')).toHaveCSS(
+        'white-space',
+        'nowrap',
+      );
+      const box = await row.boundingBox();
+      if (!box) throw new Error('Ledger row missing');
+      for (const button of await row.getByRole('button').all()) {
+        const action = await button.boundingBox();
+        if (!action) throw new Error('Ledger action missing');
+        expect(action.x).toBeGreaterThanOrEqual(box.x);
+        expect(action.x + action.width).toBeLessThanOrEqual(
+          box.x + box.width + 1,
+        );
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      const scroller = ledger.locator('.table-scroll');
+      expect(
+        await scroller.evaluate((node) => node.scrollWidth - node.clientWidth),
+      ).toBeLessThanOrEqual(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`ledger-${theme}-${String(width)}.png`),
+      });
+    }
+  }
+  if (initialSize) await page.setViewportSize(initialSize);
   await expect(
     ledger.getByRole('cell', { name: names[1], exact: true }),
   ).toBeVisible();
@@ -264,7 +296,7 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
   await page.goto('/business');
   await expect(
     page.getByRole('heading', {
-      name: 'Daily orders. Clear advertising costs.',
+      name: 'Business Tracking',
     }),
   ).toBeVisible();
   await expect(page.locator('main')).not.toContainText('Internal server error');
@@ -327,6 +359,13 @@ test('daily tracking imports, conserves advertising, paginates twenty orders and
   const brandId = z
     .object({ item: z.object({ id: z.string() }) })
     .parse(await created.json()).item.id;
+  const corrected = await page.request.post('/api/manage/brands', {
+    headers,
+    data: { name: brandName + ' corrected', makingCost: 250000 },
+  });
+  const correctedBrandId = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await corrected.json()).item.id;
   await page.goto('/business');
   await expect(
     page.getByRole('heading', { name: 'Daily advertising spend' }),
@@ -384,6 +423,19 @@ test('daily tracking imports, conserves advertising, paginates twenty orders and
   await page.getByRole('button', { name: 'Find order', exact: true }).click();
   await expect(orders.locator('tbody tr')).toHaveCount(1);
   await expect(orders.locator('tbody')).toContainText(prefix + '00');
+  await orders.getByLabel(`Sales amount for ${prefix}00`).fill('175');
+  await orders
+    .getByRole('button', { name: 'Save changes', exact: true })
+    .click();
+  await expect(
+    orders.getByRole('button', { name: 'Save changes', exact: true }),
+  ).toHaveCount(0);
+  await expect(orders.getByLabel(`Sales amount for ${prefix}00`)).toHaveValue(
+    '175',
+  );
+  await expect(
+    orders.getByRole('columnheader', { name: 'Product cost', exact: true }),
+  ).toBeVisible();
   const before = await page.request.get(
     '/api/manage/business/orders?from=2026-10-01&to=2026-10-31&brandId=' +
       brandId,
@@ -408,6 +460,50 @@ test('daily tracking imports, conserves advertising, paginates twenty orders and
   await page.screenshot({
     path: testInfo.outputPath('business-review.png'),
     fullPage: true,
+  });
+  await orders
+    .getByLabel(`Brand for ${prefix}00`)
+    .selectOption(correctedBrandId);
+  await orders
+    .getByRole('button', { name: 'Save changes', exact: true })
+    .click();
+  await expect(orders.locator('tbody')).toContainText(
+    'No orders match this view.',
+  );
+  await page.getByLabel('Summary brand').selectOption(correctedBrandId);
+  await page
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  await expect(orders.getByLabel(`Sales amount for ${prefix}00`)).toHaveValue(
+    '175',
+  );
+  const moved = z
+    .object({
+      items: z.array(
+        z.object({
+          brandId: z.string(),
+          quantity: z.number(),
+          salesOverride: z.number(),
+          costPerPiece: z.number(),
+          ads: z.number(),
+        }),
+      ),
+    })
+    .parse(
+      await (
+        await page.request.get(
+          '/api/manage/business/orders?from=2026-10-01&to=2026-10-31&q=' +
+            prefix +
+            '00',
+        )
+      ).json(),
+    );
+  expect(moved.items[0]).toMatchObject({
+    brandId: correctedBrandId,
+    quantity: 1,
+    salesOverride: 175000,
+    costPerPiece: 250000,
+    ads: 0,
   });
 });
 
