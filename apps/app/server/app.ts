@@ -13,6 +13,7 @@ import { paymentRoutes } from './payments/routes';
 import { advertisingRoutes } from './advertising/routes';
 import { businessRoutes } from './business/routes';
 import { fileRoutes } from './files/routes';
+import { receiptRoutes } from './receipts/routes';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -57,6 +58,7 @@ export const app = new Hono<AppEnvironment>()
   .route('/api/manage', catalogRoutes)
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)
+  .route('/api/manage/receipts', receiptRoutes)
   .route('/api/manage/advertising', advertisingRoutes)
   .route('/api/manage/business', businessRoutes)
   .route('/api/manage/files', fileRoutes)
@@ -71,6 +73,36 @@ export const app = new Hono<AppEnvironment>()
       );
     if (error instanceof SyntaxError)
       return context.json({ error: 'Invalid JSON.' }, 400);
+    const causes: string[] = [];
+    let cause: unknown = error;
+    for (let depth = 0; depth < 4 && cause instanceof Error; depth++) {
+      causes.push(cause.message);
+      cause = cause.cause;
+    }
+    const databaseMessage = causes.join(' ');
+    if (
+      /PAYMENT_RECEIPT_ACTIVE|PAYMENT_RECEIPT_REFERENCED/.test(databaseMessage)
+    )
+      return context.json(
+        {
+          error:
+            'This invoice is referenced by a payment receipt. Reverse its active receipts before editing; referenced invoices cannot be deleted.',
+        },
+        409,
+      );
+    if (databaseMessage.includes('RECEIPT_PAYMENT_LOCKED'))
+      return context.json(
+        {
+          error:
+            'This payment belongs to a receipt. Reverse the receipt in Payments instead of deleting individual allocations.',
+        },
+        409,
+      );
+    if (databaseMessage.includes('receipts_reversal_valid'))
+      return context.json(
+        { error: 'This account changed. Reload before reversing the receipt.' },
+        409,
+      );
     console.error(
       JSON.stringify({ event: 'request_failed', name: error.name }),
     );

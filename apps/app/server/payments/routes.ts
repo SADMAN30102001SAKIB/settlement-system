@@ -5,7 +5,7 @@ import {
   payments,
   settlements,
 } from '@settlement/database/schema';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -55,11 +55,17 @@ export const paymentRoutes = new Hono<AppEnvironment>()
         date: payments.date,
         note: payments.note,
         proofFileId: payments.proofFileId,
+        receiptId: payments.receiptId,
       })
       .from(payments)
       .where(
         and(
-          eq(column, query.targetId),
+          query.kind === 'brand'
+            ? or(
+                eq(column, query.targetId),
+                sql`${payments.adInvoiceId} IN (SELECT id FROM ad_invoices WHERE brand_id=${query.targetId})`,
+              )
+            : eq(column, query.targetId),
           or(
             lt(payments.date, query.before),
             and(
@@ -166,6 +172,22 @@ export const paymentRoutes = new Hono<AppEnvironment>()
         throw new HTTPException(422, {
           message: 'Select an uploaded payment proof.',
         });
+    }
+    const linked = await context.env.DB.prepare(
+      'SELECT receipt_id AS receiptId FROM payments WHERE id=?',
+    )
+      .bind(key)
+      .first<{ receiptId: string | null }>();
+    if (linked?.receiptId) {
+      await context.env.DB.batch([
+        context.env.DB.prepare(
+          'UPDATE payment_receipts SET proof_file_id=? WHERE id=?',
+        ).bind(input.proofFileId, linked.receiptId),
+        context.env.DB.prepare(
+          'UPDATE payments SET proof_file_id=? WHERE receipt_id=?',
+        ).bind(input.proofFileId, linked.receiptId),
+      ]);
+      return context.json({ ok: true });
     }
     const [item] = await database
       .update(payments)

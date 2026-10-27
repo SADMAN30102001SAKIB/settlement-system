@@ -47,6 +47,7 @@ export const brands = sqliteTable(
     name: text().notNull(),
     normalizedName: text('normalized_name').notNull().unique(),
     makingCost: integer('making_cost'),
+    paymentVersion: integer('payment_version').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -194,7 +195,7 @@ export const expenses = sqliteTable(
 export const invoiceCounters = sqliteTable(
   'invoice_counters',
   {
-    kind: text({ enum: ['settlement', 'ads'] }).notNull(),
+    kind: text({ enum: ['settlement', 'ads', 'payment'] }).notNull(),
     date: text().notNull(),
     value: integer().notNull(),
   },
@@ -316,6 +317,62 @@ export const campaigns = sqliteTable(
   ],
 );
 
+export const paymentReceipts = sqliteTable(
+  'payment_receipts',
+  {
+    id: text().primaryKey(),
+    number: text().notNull().unique(),
+    brandId: text('brand_id')
+      .notNull()
+      .references(() => brands.id, { onDelete: 'restrict' }),
+    date: text().notNull(),
+    requestHash: text('request_hash').notNull(),
+    data: text().notNull(),
+    total: integer().notNull(),
+    proofFileId: text('proof_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: integer('created_at').notNull(),
+    reversedAt: integer('reversed_at'),
+    reversalReason: text('reversal_reason'),
+  },
+  (table) => [
+    index('receipts_brand_date_idx').on(table.brandId, table.date, table.id),
+    index('receipts_date_idx').on(table.date, table.id),
+    check('receipts_total_positive', sql`${table.total} > 0`),
+    check(
+      'receipts_reversal_valid',
+      sql`${table.reversedAt} IS NULL OR (${table.reversedAt} >= 0 AND length(${table.reversalReason}) > 0)`,
+    ),
+  ],
+);
+
+export const receiptLines = sqliteTable(
+  'receipt_lines',
+  {
+    id: text().primaryKey(),
+    receiptId: text('receipt_id')
+      .notNull()
+      .references(() => paymentReceipts.id, { onDelete: 'restrict' }),
+    settlementId: text('settlement_id').references(() => settlements.id, {
+      onDelete: 'restrict',
+    }),
+    adInvoiceId: text('ad_invoice_id').references(() => adInvoices.id, {
+      onDelete: 'restrict',
+    }),
+    paymentId: text('payment_id').notNull().unique(),
+  },
+  (table) => [
+    index('receipt_lines_receipt_idx').on(table.receiptId),
+    index('receipt_lines_settlement_idx').on(table.settlementId),
+    index('receipt_lines_ads_idx').on(table.adInvoiceId),
+    check(
+      'receipt_lines_one_invoice',
+      sql`(${table.settlementId} IS NOT NULL) + (${table.adInvoiceId} IS NOT NULL) = 1`,
+    ),
+  ],
+);
+
 export const payments = sqliteTable(
   'payments',
   {
@@ -336,6 +393,9 @@ export const payments = sqliteTable(
       onDelete: 'set null',
     }),
     createdAt: integer('created_at').notNull(),
+    receiptId: text('receipt_id').references(() => paymentReceipts.id, {
+      onDelete: 'restrict',
+    }),
   },
   (table) => [
     index('payments_settlement_idx').on(
@@ -350,6 +410,7 @@ export const payments = sqliteTable(
     ),
     index('payments_brand_idx').on(table.brandId, table.date, table.id),
     check('payments_positive', sql`${table.amount} > 0`),
+    index('payments_receipt_idx').on(table.receiptId),
     check(
       'payments_exactly_one_target',
       sql`(${table.settlementId} IS NOT NULL) + (${table.adInvoiceId} IS NOT NULL) + (${table.brandId} IS NOT NULL) = 1`,

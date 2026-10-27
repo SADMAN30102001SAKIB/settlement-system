@@ -15,6 +15,7 @@ import { ReportEditor } from './features/settlements/editor';
 import { History } from './features/settlements/history';
 import { Invoice } from './features/settlements/invoice';
 import { PaymentsPanel } from './features/payments/panel';
+import { Payments } from './features/payments/page';
 import { Advertising } from './features/advertising/page';
 import { Business } from './features/business/page';
 import { Files } from './features/catalog/files';
@@ -235,7 +236,7 @@ export function App() {
         url.origin !== window.location.origin ||
         url.hash ||
         url.search ||
-        !/^\/(settlements|brands|settings|notes|advertising|business|files)(\/|$)/.test(
+        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments)(\/|$)/.test(
           url.pathname,
         )
       )
@@ -367,6 +368,7 @@ export function App() {
             ['/settings', 'Invoice settings', '03'],
             ['/notes', 'Notes & progress', '04'],
             ['/advertising', 'Advertising', '05'],
+            ['/payments', 'Payments', '08'],
             ['/business', 'Business tracking', '06'],
             ['/files', 'Private files', '07'],
           ].map(([href, label, marker]) => (
@@ -450,7 +452,15 @@ export function App() {
         </header>
         <main id="main" className="page-content" tabIndex={-1}>
           {error ? <Alert>{error}</Alert> : null}
-          {path === '/files' ? (
+          {path.startsWith('/payments') ? (
+            <Payments
+              key={path}
+              path={path}
+              brands={brands}
+              settings={settings}
+              navigate={navigate}
+            />
+          ) : path === '/files' ? (
             <Files refresh={refresh} />
           ) : path === '/business' ? (
             <Business brands={brands} />

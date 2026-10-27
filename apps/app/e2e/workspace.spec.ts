@@ -33,6 +33,211 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+test('brand payments split commission and ads into immutable receipts and support audited reversal', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120000);
+  await signIn(page);
+  await page.goto('/settings');
+  for (const kind of ['watermark', 'signature']) {
+    await page
+      .getByRole('button', { name: `Restore default ${kind}`, exact: true })
+      .click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Restore image', exact: true })
+      .click();
+    await expect(
+      page.getByRole('img', { name: `${kind} preview` }),
+    ).toBeVisible();
+  }
+  const headers = { Origin: 'http://127.0.0.1:5174' },
+    brandName = `Receipts ${testInfo.project.name} ${String(Date.now())}`;
+  const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
+    await (
+      await page.request.post('/api/manage/brands', {
+        headers,
+        data: { name: brandName, makingCost: 100000 },
+      })
+    ).json(),
+  ).item;
+  const settlement = await page.request.post('/api/manage/settlements', {
+    headers,
+    data: {
+      brandId: brand.id,
+      date: '2026-10-27',
+      period: 'October commission',
+      deliveredQty: 10,
+      deliveredAmount: 100000000,
+      cancelledQty: 0,
+      cancelledAmount: 0,
+      partialQty: 0,
+      partialAmount: 0,
+      pendingQty: 0,
+      shipping: 0,
+      codCharge: 0,
+      ads: 0,
+      productCost: 0,
+      costPerPiece: null,
+      agencyBasisPoints: 1500,
+    },
+  });
+  const invoice = z
+    .object({ item: z.object({ id: z.string(), invoiceNumber: z.string() }) })
+    .parse(await settlement.json()).item;
+  const ad = await page.request.post('/api/manage/advertising', {
+    headers,
+    data: {
+      brandId: brand.id,
+      date: '2026-10-27',
+      period: 'October advertising',
+      campaigns: [{ name: 'Campaign', amount: 20000000 }],
+    },
+  });
+  const adId = z.object({ id: z.string() }).parse(await ad.json()).id;
+  const adInvoice = z
+    .object({ item: z.object({ invoiceNumber: z.string() }) })
+    .parse(
+      await (await page.request.get(`/api/manage/advertising/${adId}`)).json(),
+    ).item;
+  await page.goto('/payments');
+  await page.getByLabel('Payment brand account').selectOption(brand.id);
+  await expect(
+    page.getByRole('heading', { name: `${brandName} account`, exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.metrics')).toContainText('৳15,000.00');
+  await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  const size = page.viewportSize();
+  for (const width of testInfo.project.name === 'desktop'
+    ? [1440, 1024, 768]
+    : [390, 360]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['light', 'dark']) {
+      await page.getByLabel('Color theme').selectOption(theme);
+      await page.waitForFunction(
+        () =>
+          !document
+            .getAnimations()
+            .some((animation) => animation instanceof CSSTransition),
+      );
+      await page.locator('.receipt-composer').scrollIntoViewIfNeeded();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      expect(await contrastFailures(page)).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`payments-${theme}-${String(width)}.png`),
+      });
+    }
+  }
+  if (size) await page.setViewportSize(size);
+  await page
+    .getByLabel(`Received for ${invoice.invoiceNumber}`, { exact: true })
+    .fill('4000');
+  await page
+    .getByLabel(`Received for ${adInvoice.invoiceNumber}`, { exact: true })
+    .fill('6000');
+  await page.getByLabel('Payment method').selectOption('Bank transfer');
+  await page.getByLabel('Transaction reference').fill('BANK-VERIFY-1');
+  await page
+    .getByRole('button', {
+      name: 'Record payment & create receipt',
+      exact: true,
+    })
+    .click();
+  await expect(page.locator('.invoice-final')).toContainText('৳10,000.00');
+  await expect(page.locator('.invoice-document')).toContainText('৳11,000.00');
+  await expect(page.locator('.invoice-document')).toContainText('৳16,000.00');
+  const signature = await page
+    .getByRole('img', { name: 'Authorized signature', exact: true })
+    .boundingBox();
+  expect(signature?.width).toBe(130);
+  expect(signature?.height).toBe(60);
+  const firstId = new URL(page.url()).pathname.split('/').at(-1);
+  if (!firstId) throw new Error('Missing receipt id');
+  const first = z
+    .object({ item: z.object({ data: z.unknown() }) })
+    .parse(
+      await (await page.request.get(`/api/manage/receipts/${firstId}`)).json(),
+    ).item;
+  const download = page.waitForEvent('download');
+  await page
+    .getByRole('button', { name: 'Download receipt PDF', exact: true })
+    .click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^PAY-.*\.pdf$/);
+  await file.saveAs(testInfo.outputPath('payment-receipt.pdf'));
+  expect(
+    readFileSync(testInfo.outputPath('payment-receipt.pdf'))
+      .toString('latin1')
+      .match(/\/Type \/Page\b/g),
+  ).toHaveLength(1);
+  await page.screenshot({
+    path: testInfo.outputPath('payment-receipt.png'),
+    fullPage: true,
+  });
+  await page
+    .getByRole('button', { name: 'Back to brand account', exact: true })
+    .click();
+  await page
+    .getByLabel(`Received for ${invoice.invoiceNumber}`, { exact: true })
+    .fill('500');
+  await page
+    .getByRole('button', {
+      name: 'Record payment & create receipt',
+      exact: true,
+    })
+    .click();
+  await expect(page.locator('.invoice-final')).toContainText('৳500.00');
+  await page
+    .getByRole('button', { name: 'Back to brand account', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Payment receipt history' })
+      .locator('tbody tr'),
+  ).toHaveCount(2);
+  const unchanged = z
+    .object({ item: z.object({ data: z.unknown() }) })
+    .parse(
+      await (await page.request.get(`/api/manage/receipts/${firstId}`)).json(),
+    ).item;
+  expect(unchanged.data).toEqual(first.data);
+  await page.goto(`/payments/${firstId}`);
+  await page
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('at least five');
+  await page
+    .getByLabel('Reversal reason')
+    .fill('Incorrect allocation, entered during verification');
+  await page
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(page.locator('.receipt-reversed')).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  await expect(page.locator('.receipt-reversed')).toContainText('REVERSED');
+  await expect(page.locator('.invoice-final')).toContainText('৳10,000.00');
+  await page
+    .getByRole('button', { name: 'Back to brand account', exact: true })
+    .click();
+  await expect(page.locator('.metrics')).toContainText('৳14,500.00');
+  await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  await expect(
+    page.getByRole('region', { name: 'Payment receipt history' }),
+  ).toContainText('Reversed');
+});
+
 test('daily advertising save button stays compact and aligned at every breakpoint', async ({
   page,
 }, testInfo) => {
@@ -193,10 +398,10 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
     .getByRole('alertdialog')
     .getByRole('button', { name: 'Delete settlement', exact: true })
     .click();
-  await expect(row).toHaveCount(0);
-  expect(
-    (await page.request.get(`/api/manage/settlements/${item.id}`)).status(),
-  ).toBe(404);
+  await expect(ledger.getByRole('alert')).toContainText(
+    'referenced by a payment receipt',
+  );
+  await expect(row).toBeVisible();
 });
 
 test('all-brand ledger provides direct view, edit, payment, PDF and safe delete actions', async ({
@@ -320,7 +525,10 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
     .getByRole('alertdialog')
     .getByRole('button', { name: 'Delete invoice', exact: true })
     .click();
-  await expect(row).toHaveCount(0);
+  await expect(ledger.getByRole('alert')).toContainText(
+    'referenced by a payment receipt',
+  );
+  await expect(row).toBeVisible();
   await expect(
     ledger.getByRole('cell', { name: names[1], exact: true }),
   ).toBeVisible();

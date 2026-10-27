@@ -140,6 +140,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
         date: payments.date,
         note: payments.note,
         proofFileId: payments.proofFileId,
+        receiptId: payments.receiptId,
       })
       .from(payments)
       .where(eq(payments.settlementId, key))

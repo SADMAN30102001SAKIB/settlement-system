@@ -1817,6 +1817,7 @@ article.invoice-advertising {
   gap: 6px;
 }
 .advertising-ledger,
+.receipt-ledger,
 .settlement-ledger {
   container-type: inline-size;
 }
@@ -1871,6 +1872,7 @@ article.invoice-advertising {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .advertising-ledger > .table-scroll,
+  .receipt-ledger > .table-scroll,
   .settlement-ledger > .table-scroll {
     overflow: visible;
     margin: 0;
@@ -2060,6 +2062,85 @@ article.invoice-advertising {
 }
 .payment-brand {
   color: var(--ink);
+}
+.payments-workspace > .panel,
+.payments-workspace > h2 {
+  margin-bottom: 24px;
+}
+.receipt-allocation-group {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-bottom: 20px;
+}
+.brand-account-directory {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+.brand-account-directory button {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 8px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.brand-account-directory small {
+  color: var(--muted);
+}
+.receipt-allocation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 240px);
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.receipt-allocation small,
+.receipt-allocation span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.receipt-allocation .field {
+  margin: 0;
+}
+.receipt-payment-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 18px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: var(--soft);
+}
+.receipt-reversed {
+  border: 2px solid #9a3024;
+  color: #9a3024;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.receipt-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.invoice-receipt .invoice-meta p {
+  overflow-wrap: anywhere;
+}
+.invoice-receipt section {
+  margin-bottom: 24px;
+}
+.receipt-reversal {
+  margin-top: 24px;
+}
+@media (max-width: 680px) {
+  .receipt-allocation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invoice-receipt {
+    overflow-x: auto;
+  }
 }
 .note-item {
   border-bottom: 1px solid var(--line);

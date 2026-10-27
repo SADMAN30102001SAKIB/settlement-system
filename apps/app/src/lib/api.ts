@@ -73,6 +73,7 @@ export const paymentSchema = z.object({
   date: z.string(),
   note: z.string(),
   proofFileId: z.string().nullable(),
+  receiptId: z.string().nullable().default(null),
 });
 export type Payment = z.infer<typeof paymentSchema>;
 const campaignSchema = z.object({ name: z.string(), amount: integer });

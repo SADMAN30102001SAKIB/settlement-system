@@ -151,9 +151,15 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           date: payments.date,
           note: payments.note,
           proofFileId: payments.proofFileId,
+          receiptId: payments.receiptId,
         })
         .from(payments)
-        .where(eq(payments.brandId, brandId))
+        .where(
+          or(
+            eq(payments.brandId, brandId),
+            sql`${payments.adInvoiceId} IN (SELECT id FROM ad_invoices WHERE brand_id=${brandId})`,
+          ),
+        )
         .orderBy(desc(payments.date), desc(payments.id))
         .limit(200),
     ]);
@@ -185,6 +191,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           date: payments.date,
           note: payments.note,
           proofFileId: payments.proofFileId,
+          receiptId: payments.receiptId,
         })
         .from(payments)
         .where(eq(payments.adInvoiceId, key))

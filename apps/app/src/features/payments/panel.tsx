@@ -68,17 +68,21 @@ export function PaymentsPanel({
     const form = event.currentTarget;
     const values = new FormData(form);
     try {
-      await api('/manage/payments', z.object({ item: paymentSchema }), {
-        method: 'POST',
-        body: {
-          requestId,
-          proofFileId,
-          target,
-          amount: parseMoney(formText(values, 'amount')),
-          date: formText(values, 'date'),
-          note: formText(values, 'note'),
+      await api(
+        '/manage/receipts/from-payment',
+        z.object({ item: z.object({ id: z.string() }) }),
+        {
+          method: 'POST',
+          body: {
+            requestId,
+            proofFileId,
+            target,
+            amount: parseMoney(formText(values, 'amount')),
+            date: formText(values, 'date'),
+            note: formText(values, 'note'),
+          },
         },
-      });
+      );
       setRequestId(crypto.randomUUID());
       setProofFileId(null);
       form.reset();
@@ -157,17 +161,26 @@ export function PaymentsPanel({
                 >
                   {payment.proofFileId ? 'View / edit proof' : 'Add proof'}
                 </button>
-                <button
-                  disabled={pending}
-                  className="text-button danger-text"
-                  onClick={() => {
-                    remove(payment).catch((reason: unknown) => {
-                      setError(ErrorMessage(reason));
-                    });
-                  }}
-                >
-                  Remove
-                </button>
+                {payment.receiptId ? (
+                  <a
+                    className="secondary compact"
+                    href={`/payments/${payment.receiptId}`}
+                  >
+                    View receipt
+                  </a>
+                ) : (
+                  <button
+                    disabled={pending}
+                    className="text-button danger-text"
+                    onClick={() => {
+                      remove(payment).catch((reason: unknown) => {
+                        setError(ErrorMessage(reason));
+                      });
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))
           ) : (

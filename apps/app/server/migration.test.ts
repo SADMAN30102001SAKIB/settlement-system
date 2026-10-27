@@ -78,6 +78,9 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
     await migrate('0002_brief_whiplash.sql');
     await migrate('0003_mean_zarek.sql');
     await migrate('0004_new_sinister_six.sql');
+    await migrate('0005_lying_patch.sql');
+    await migrate('0006_receipt_guards.sql');
+    await migrate('0007_receipt_history_guards.sql');
     expect(
       (await db.prepare('SELECT vat_added_to_agency FROM settlements').all())
         .results,
@@ -100,8 +103,24 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
       { delivered_units: null, deduct_shipping: 0 },
     ]);
     expect(
-      (await db.prepare('SELECT * FROM payments ORDER BY id').all()).results,
+      (
+        await db
+          .prepare(
+            'SELECT id,settlement_id,ad_invoice_id,brand_id,amount,date,note,proof_file_id,created_at FROM payments ORDER BY id',
+          )
+          .all()
+      ).results,
     ).toEqual(before.results);
+    expect(
+      (await db.prepare('SELECT receipt_id FROM payments').all()).results.every(
+        (row) => row['receipt_id'] === null,
+      ),
+    ).toBe(true);
+    expect(
+      await db
+        .prepare('SELECT COUNT(*) AS count FROM payment_receipts')
+        .first(),
+    ).toEqual({ count: 0 });
     expect(
       (
         await db
