@@ -1,169 +1,161 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SubmitEvent } from 'react';
-import type { z } from 'zod';
+import { useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
 import { parseMoney } from '@settlement/domain/money';
+import { api, okSchema } from '../../lib/api';
+import type { Brand } from '../../lib/api';
 import {
   Alert,
   ErrorMessage,
   Field,
-  Metric,
   PageHeading,
-  Skeleton,
-  SkeletonMetrics,
   SkeletonTable,
   Spinner,
 } from '../../components/ui';
-import { api, okSchema } from '../../lib/api';
-import type { Brand, Settings } from '../../lib/api';
+import { useConfirmation } from '../../components/confirmation-context';
 import { amountInput, formText, money, today } from '../../lib/format';
-import { businessReportSchema, orderListSchema } from './contracts';
+import { orderListSchema } from './contracts';
 import type { Order } from './contracts';
 import { Importer } from './importer';
-import { useConfirmation } from '../../components/confirmation-context';
 
-export function Business({
-  brands,
-  settings,
-}: {
-  brands: Brand[];
-  settings: Settings;
-}) {
+const dailySchema = z.object({
+  days: z.array(
+    z.object({
+      date: z.string(),
+      brandId: z.string(),
+      count: z.number().int(),
+      delivered: z.number().int(),
+      cancelled: z.number().int(),
+      partial: z.number().int(),
+      pending: z.number().int(),
+      amount: z.number().int().nullable(),
+    }),
+  ),
+});
+type Cursor = z.infer<typeof orderListSchema>['next'];
+
+export function Business({ brands }: { brands: Brand[] }) {
   const confirm = useConfirmation();
-  const now = today();
-  const [from, setFrom] = useState(`${now.slice(0, 7)}-01`),
-    [to, setTo] = useState(now),
-    [brandId, setBrandId] = useState('');
-  const [basis, setBasis] = useState('order');
-  const [filters, setFilters] = useState({ from, to, brandId, basis });
-  const [report, setReport] = useState<z.infer<
-    typeof businessReportSchema
-  > | null>(null);
-  const [items, setItems] = useState<Order[]>([]);
-  const [next, setNext] =
-    useState<z.infer<typeof orderListSchema>['next']>(null);
-  const [editing, setEditing] = useState<Order | null>(null);
-  const [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<
-    'import' | 'ads' | 'expense' | 'danger' | null
-  >(null);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const hasOrders = report !== null && report.totals.count > 0;
-  const hasActivity =
-    hasOrders ||
-    (report !== null &&
-      (report.advertising.length > 0 || report.expenses.length > 0));
-  useEffect(() => {
-    if (action !== null) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [action]);
-  const [adsDraft, setAdsDraft] = useState({
+  const [filters, setFilters] = useState({
+    from: today().slice(0, 7) + '-01',
+    to: today(),
     brandId: '',
-    date: today(),
-    amount: '',
   });
-  const params = useCallback(() => {
-    const value = new URLSearchParams({
-      from: filters.from,
-      to: filters.to,
-      basis: filters.basis,
-      agencyBasisPoints: String(settings.agencyBasisPoints),
-    });
-    if (filters.brandId) value.set('brandId', filters.brandId);
-    return value;
-  }, [filters, settings.agencyBasisPoints]);
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      const query = params().toString();
-      return Promise.all([
-        api(
-          `/manage/business/report?${query}`,
-          businessReportSchema,
-          signal === undefined ? undefined : { signal },
-        ),
-        api(
-          `/manage/business/orders?${query}`,
-          orderListSchema,
-          signal === undefined ? undefined : { signal },
-        ),
-      ]);
-    },
-    [params],
-  );
-  const apply = useCallback(
-    ([summary, orders]: Awaited<ReturnType<typeof load>>) => {
-      setReport(summary);
-      setItems(orders.items);
-      setNext(orders.next);
-      setLoading(false);
-      setError('');
-    },
-    [],
-  );
-  const refresh = useCallback(async () => {
-    apply(await load());
-  }, [apply, load]);
+  const [days, setDays] = useState<z.infer<typeof dailySchema>['days']>([]);
+  const [items, setItems] = useState<Order[]>([]);
+  const [next, setNext] = useState<Cursor>(null);
+  const [cursor, setCursor] = useState<Cursor>(null);
+  const [previous, setPrevious] = useState<Cursor[]>([]);
+  const [search, setSearch] = useState('');
+  const [revision, setRevision] = useState(0);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [editing, setEditing] = useState<Order | null>(null);
+  const [adBrand, setAdBrand] = useState('');
+  const [adDate, setAdDate] = useState(today());
+  const [adAmount, setAdAmount] = useState('');
+  const [message, setMessage] = useState('');
+  const editDialog = useRef<HTMLDialogElement>(null);
+  const adsForm = useRef<HTMLFormElement>(null);
+  const name = (id: string) =>
+    brands.find((brand) => brand.id === id)?.name ?? 'Brand';
+  function refresh() {
+    setRevision((value) => value + 1);
+    setCursor(null);
+    setPrevious([]);
+  }
   useEffect(() => {
     const controller = new AbortController();
-    load(controller.signal)
-      .then(apply)
+    const query = new URLSearchParams({ from: filters.from, to: filters.to });
+    if (filters.brandId) query.set('brandId', filters.brandId);
+    api('/manage/business/daily?' + query.toString(), dailySchema, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        setDays(data.days);
+      })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(ErrorMessage(reason));
-          setLoading(false);
-        }
+        if (!controller.signal.aborted) setError(ErrorMessage(reason));
       });
     return () => {
       controller.abort();
     };
-  }, [load, apply]);
-  async function mutate(path: string, body: unknown, method = 'POST') {
+  }, [filters, revision]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams({
+      from: filters.from,
+      to: filters.to,
+      basis: 'order',
+    });
+    if (filters.brandId) query.set('brandId', filters.brandId);
+    if (search) query.set('q', search);
+    if (cursor) {
+      query.set('before', cursor.before);
+      query.set('beforeId', cursor.beforeId);
+    }
+    api('/manage/business/orders?' + query.toString(), orderListSchema, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        setItems(data.items);
+        setNext(data.next);
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(ErrorMessage(reason));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [filters, search, cursor, revision]);
+  useEffect(() => {
+    if (editing) editDialog.current?.showModal();
+    else editDialog.current?.close();
+  }, [editing]);
+  async function saveAds() {
+    if (!adBrand) throw new Error('Choose the brand for this daily spend.');
     setPending(true);
     setError('');
+    setMessage('');
     try {
-      await api(`/manage/business${path}`, okSchema, { method, body });
-      await refresh();
-      setAction(null);
-    } catch (reason) {
-      setError(ErrorMessage(reason));
+      await api('/manage/business/ads', okSchema, {
+        method: 'PUT',
+        body: { brandId: adBrand, date: adDate, amount: parseMoney(adAmount) },
+      });
+      setMessage(
+        'Daily advertising saved. The same budget is split across this brand’s orders for the order date; importing again does not add the budget twice.',
+      );
+      refresh();
     } finally {
       setPending(false);
     }
   }
-  async function saveOrder(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (editing === null) return;
-    const form = new FormData(event.currentTarget);
-    const nullableMoney = (key: string) =>
-      formText(form, key).trim() === ''
-        ? null
-        : parseMoney(formText(form, key));
+  async function removeDay(day: z.infer<typeof dailySchema>['days'][number]) {
+    if (
+      !(await confirm({
+        title: 'Remove imported day?',
+        message:
+          'Remove ' +
+          name(day.brandId) +
+          ' orders and daily advertising for ' +
+          day.date +
+          '? Saved invoices will not be deleted.',
+        action: 'Remove day',
+        destructive: true,
+      }))
+    )
+      return;
     setPending(true);
     setError('');
     try {
-      await api(
-        `/manage/business/orders/${encodeURIComponent(editing.id)}`,
-        okSchema,
-        {
-          method: 'PUT',
-          body: {
-            revision: editing.revision,
-            brandId: formText(form, 'brandId'),
-            quantity: Number(formText(form, 'quantity')),
-            partialQuantity:
-              formText(form, 'partialQuantity') === ''
-                ? null
-                : Number(formText(form, 'partialQuantity')),
-            salesOverride: nullableMoney('salesOverride'),
-            costPerPiece: nullableMoney('costPerPiece'),
-          },
-        },
-      );
-      setEditing(null);
-      await refresh();
-    } catch (reason) {
-      setError(ErrorMessage(reason));
+      await api('/manage/business/day', okSchema, {
+        method: 'DELETE',
+        body: { brandId: day.brandId, date: day.date },
+      });
+      refresh();
     } finally {
       setPending(false);
     }
@@ -172,345 +164,311 @@ export function Business({
     <>
       <PageHeading
         eyebrow="OPERATIONS / BUSINESS TRACKING"
-        title="Understand every order’s outcome"
-        description="Import orders, add costs, and turn the results into a settlement."
+        title="Daily orders. Clear advertising costs."
+        description="Import brand-wise orders, enter each day’s advertising budget, and review the allocation per order."
         action={
-          hasOrders ? (
-            <div className="actions">
-              <button
-                className="secondary"
-                onClick={() => {
-                  setAction('import');
-                }}
-              >
-                Import updates
-              </button>
-              <a
-                className="primary business-settlement-link"
-                href="/settlements/new"
-              >
-                Create settlement
-              </a>
-            </div>
-          ) : undefined
+          <a
+            className="primary business-settlement-link"
+            href="/settlements/new"
+          >
+            Create settlement
+          </a>
         }
       />
-      <form
-        className="panel filters"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!from || !to || from > to) {
-            setError('Choose a valid date range.');
-            return;
-          }
-          setLoading(true);
-          setReport(null);
-          setItems([]);
-          setNext(null);
-          setFilters({ from, to, brandId, basis });
-        }}
+      {error ? <Alert>{error}</Alert> : null}
+      <section
+        className="business-import-step"
+        aria-label="Steadfast daily import"
       >
-        <Field label="From">
-          <input
-            type="date"
-            required
-            value={from}
-            onChange={(event) => {
-              setFrom(event.target.value);
-            }}
-          />
-        </Field>
-        <Field label="To">
-          <input
-            type="date"
-            required
-            value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-            }}
-          />
-        </Field>
-        <Field label="Brand">
-          <select
-            value={brandId}
-            onChange={(event) => {
-              setBrandId(event.target.value);
-            }}
-          >
-            <option value="">All brands</option>
-            {brands.map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Report basis">
-          <select
-            value={basis}
-            onChange={(event) => {
-              setBasis(event.target.value);
-            }}
-          >
-            <option value="order">Order date (profitability)</option>
-            <option value="delivery">Delivery date (courier outcomes)</option>
-          </select>
-        </Field>
-        <button className="secondary" disabled={loading}>
-          {loading ? (
-            <>
-              <Spinner size={12} /> Apply filters
-            </>
-          ) : (
-            'Apply filters'
-          )}
-        </button>
-      </form>
-      {error && action === null ? <Alert>{error}</Alert> : null}
-      {loading && report === null ? (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 24,
-            marginTop: 24,
+        <p className="eyebrow">01 / STEADFAST DAILY IMPORT</p>
+        <Importer brands={brands} onImported={refresh} />
+      </section>
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">02 / DAILY ADVERTISING</p>
+            <h2>Daily advertising spend</h2>
+            <p className="muted">
+              Daily brand spend ÷ that brand’s order count = advertising per
+              order. Delivered, partial, cancelled and pending orders all count.
+            </p>
+          </div>
+        </div>
+        <form
+          ref={adsForm}
+          className="form-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveAds().catch((reason: unknown) => {
+              setError(ErrorMessage(reason));
+            });
           }}
         >
-          <SkeletonMetrics count={4} />
-          <section className="panel">
-            <SkeletonTable
-              rows={5}
-              columns={5}
-              headers={[
-                'Metric / Segment',
-                'Volume',
-                'Revenue',
-                'Cost',
-                'Margin',
-              ]}
+          <Field label="Advertising brand">
+            <select
+              required
+              value={adBrand}
+              onChange={(event) => {
+                setAdBrand(event.target.value);
+                setError('');
+                setMessage('');
+              }}
+            >
+              <option value="">Choose brand</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Advertising order date">
+            <input
+              type="date"
+              required
+              value={adDate}
+              onChange={(event) => {
+                setAdDate(event.target.value);
+                setMessage('');
+              }}
             />
-          </section>
-        </div>
-      ) : loading ? (
-        <Skeleton
-          className="skeleton-progress-bar"
-          height={4}
-          radius={2}
-          aria-label="Updating business data…"
-        />
-      ) : null}
-      {report && !hasOrders ? (
-        <section className="panel business-empty">
-          <p className="eyebrow">STEP 1 / IMPORT</p>
-          <h2>No orders in this view</h2>
-          <p className="muted">
-            Start with a courier Excel, CSV or PDF. You’ll review every import
-            before anything is saved. Already imported? Check the brand and
-            dates above.
+          </Field>
+          <Field label="Total ads spend (৳)">
+            <input
+              required
+              inputMode="decimal"
+              value={adAmount}
+              onChange={(event) => {
+                setAdAmount(event.target.value);
+                setMessage('');
+              }}
+            />
+          </Field>
+          <button className="primary" disabled={pending}>
+            {pending ? (
+              <>
+                <Spinner size={12} /> Saving…
+              </>
+            ) : (
+              'Save daily ad spend'
+            )}
+          </button>
+        </form>
+        {message ? (
+          <p role="status" className="success">
+            {message}
           </p>
+        ) : null}
+      </section>
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">03 / REVIEW</p>
+            <h2>Daily summary</h2>
+            <p className="muted">
+              Base advertising spend, before invoice VAT. Unallocated budgets
+              stay saved until orders arrive.
+            </p>
+          </div>
+        </div>
+        <form
+          className="form-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const from = formText(form, 'from'),
+              to = formText(form, 'to');
+            if (!from || !to || from > to) {
+              setError('Choose a valid date range.');
+              return;
+            }
+            setError('');
+            setLoading(true);
+            setFilters({ from, to, brandId: formText(form, 'brandId') });
+            setCursor(null);
+            setPrevious([]);
+          }}
+        >
+          <Field label="From">
+            <input
+              name="from"
+              type="date"
+              required
+              defaultValue={filters.from}
+            />
+          </Field>
+          <Field label="To">
+            <input name="to" type="date" required defaultValue={filters.to} />
+          </Field>
+          <Field label="Summary brand">
+            <select name="brandId">
+              <option value="">All brands</option>
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <button className="secondary" disabled={loading}>
+            Apply filters
+          </button>
+        </form>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                {[
+                  'Brand',
+                  'Order date',
+                  'Orders',
+                  'Delivered',
+                  'Cancelled',
+                  'Partial',
+                  'Pending',
+                  'Daily ad spend',
+                  'Ads / order',
+                  'Actions',
+                ].map((label) => (
+                  <th key={label}>{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {days.map((day) => (
+                <tr key={day.brandId + day.date}>
+                  <td>{name(day.brandId)}</td>
+                  <td>{day.date}</td>
+                  <td>{day.count}</td>
+                  <td>{day.delivered}</td>
+                  <td>{day.cancelled}</td>
+                  <td>{day.partial}</td>
+                  <td>{day.pending}</td>
+                  <td>
+                    {day.amount === null ? 'Not entered' : money(day.amount)}
+                  </td>
+                  <td>
+                    {day.count && day.amount !== null
+                      ? money(Math.round(day.amount / day.count / 10) * 10)
+                      : 'Not allocated'}
+                  </td>
+                  <td>
+                    <div className="actions">
+                      <button
+                        className="secondary compact"
+                        onClick={() => {
+                          setAdBrand(day.brandId);
+                          setAdDate(day.date);
+                          setAdAmount(amountInput(day.amount));
+                          adsForm.current?.scrollIntoView({ block: 'center' });
+                          adsForm.current
+                            ?.querySelector('input')
+                            ?.focus({ preventScroll: true });
+                        }}
+                      >
+                        Edit ad spend
+                      </button>
+                      <button
+                        className="text-button danger-text"
+                        disabled={pending}
+                        onClick={() => {
+                          removeDay(day).catch((reason: unknown) => {
+                            setError(ErrorMessage(reason));
+                          });
+                        }}
+                      >
+                        Remove day
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!days.length ? (
+                <tr>
+                  <td colSpan={10}>
+                    No orders or daily advertising in this range.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+        <p className="caption">
+          Allocation is rounded to paisa. Any remainder is assigned
+          deterministically to orders so the allocated total always equals the
+          saved budget.
+        </p>
+      </section>
+      <section className="panel" aria-label="Saved orders">
+        <div className="section-heading">
+          <div>
+            <h2>Orders</h2>
+            <p className="muted">
+              20 orders per page. Search an exact Order ID across all dates
+              within the selected brand.
+            </p>
+          </div>
+        </div>
+        <form
+          className="order-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError('');
+            const value = formText(
+              new FormData(event.currentTarget),
+              'q',
+            ).trim();
+            if (value === search && cursor === null) return;
+            setLoading(true);
+            setSearch(value);
+            setCursor(null);
+            setPrevious([]);
+          }}
+        >
+          <Field label="Find Order ID">
+            <input
+              name="q"
+              type="search"
+              maxLength={100}
+              placeholder="Exact Order ID"
+            />
+          </Field>
+          <button className="secondary" disabled={loading}>
+            Find order
+          </button>
           <button
-            className="primary"
-            onClick={() => {
-              setAction('import');
+            type="button"
+            className="secondary"
+            onClick={(event) => {
+              event.currentTarget.form?.reset();
+              setSearch('');
+              setCursor(null);
+              setPrevious([]);
             }}
           >
-            Import orders
+            Clear search
           </button>
-          {!brands.length ? (
-            <p>
-              <a href="/brands">Add your first brand before importing</a>
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-      {report ? (
-        <div className="business-actions">
-          {hasOrders ? (
-            <p className="muted">
-              Next: add costs, review results, then create a settlement.
-            </p>
-          ) : (
-            <p className="muted">
-              Need to record costs before orders arrive? Use the optional
-              actions.
-            </p>
-          )}
-          <div>
-            <div className="actions">
-              <button
-                className="secondary"
-                onClick={() => {
-                  setAdsDraft({ brandId, date: today(), amount: '' });
-                  setAction('ads');
-                }}
-              >
-                Add ad spend
-              </button>
-              <button
-                className="secondary"
-                onClick={() => {
-                  setAction('expense');
-                }}
-              >
-                Add expense
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {report && hasActivity ? (
-        <>
-          <div className="metrics">
-            <Metric
-              label="Orders"
-              value={String(report.totals.count)}
-              detail={`${String(report.totals.delivered)} delivered · ${String(report.totals.cancelled)} cancelled · ${String(report.totals.partial)} partial · ${String(report.totals.pending)} pending`}
-            />
-            <Metric
-              label="Collection after COD fees"
-              value={money(report.totals.revenue)}
-            />
-            <Metric
-              label="Net profit / loss"
-              value={money(report.totals.net)}
-            />
-            <Metric
-              label={`Agency share · ${String(settings.agencyBasisPoints / 100)}%`}
-              value={money(report.totals.commission)}
-              detail="Floored at zero on a loss"
-            />
-          </div>
-          {report.totals.missingCosts > 0 ? (
-            <Alert>
-              {report.totals.missingCosts} delivered orders have missing making
-              costs. Profit is provisional until you correct them.
-            </Alert>
-          ) : null}
-          <section className="panel business-breakdown">
-            <h2>Cost breakdown & daily totals</h2>
-            <p className="muted">
-              Delivered item quantity × saved making cost, advertising plus 10%
-              VAT, delivery charges and eligible COD fees. Pending orders have
-              no delivery-charge deduction.
-            </p>
-            <div className="metrics">
-              <Metric
-                label="Advertising incl. 10% VAT"
-                value={money(report.totals.ads)}
-              />
-              <Metric
-                label="Making costs"
-                value={money(report.totals.productCost)}
-              />
-              <Metric
-                label="COD fees already deducted"
-                value={money(report.totals.codCharge)}
-              />
-              <Metric
-                label="Other expenses"
-                value={money(report.totals.otherExpenses)}
-                detail={
-                  filters.brandId
-                    ? 'Excluded from a single-brand report'
-                    : 'Workspace expenses for this date range'
-                }
-              />
-            </div>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Orders</th>
-                    <th>Delivered / cancelled / partial / pending</th>
-                    <th>Revenue</th>
-                    <th>Ads</th>
-                    <th>Product</th>
-                    <th>Shipping</th>
-                    <th>COD fee</th>
-                    <th>Expenses</th>
-                    <th>Net profit / loss</th>
-                    <th>Agency share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.days.map((day) => (
-                    <tr key={day.date}>
-                      <td>{day.date}</td>
-                      <td>{day.count}</td>
-                      <td>
-                        {day.delivered} / {day.cancelled} / {day.partial} /{' '}
-                        {day.pending}
-                      </td>
-                      <td>{money(day.revenue)}</td>
-                      <td>{money(day.ads)}</td>
-                      <td>{money(day.productCost)}</td>
-                      <td>{money(day.shipping)}</td>
-                      <td>{money(day.codCharge)}</td>
-                      <td>{money(day.otherExpenses)}</td>
-                      <td>{money(day.net)}</td>
-                      <td>{money(day.commission)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          <section className="panel">
-            <h2>Brand-wise daily summary</h2>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Brand</th>
-                    <th>Orders</th>
-                    <th>Delivered / cancelled / partial / pending</th>
-                    <th>Advertising incl. VAT</th>
-                    <th>Net profit / loss</th>
-                    <th>Agency share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.brandDays.map((day) => (
-                    <tr key={`${day.brandId}-${day.date}`}>
-                      <td>{day.date}</td>
-                      <td>
-                        {brands.find((brand) => brand.id === day.brandId)
-                          ?.name ?? 'Brand'}
-                      </td>
-                      <td>{day.count}</td>
-                      <td>
-                        {day.delivered} / {day.cancelled} / {day.partial} /{' '}
-                        {day.pending}
-                      </td>
-                      <td>{money(day.ads)}</td>
-                      <td>{money(day.net)}</td>
-                      <td>{money(day.commission)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      ) : null}
-      {items.length > 0 ? (
-        <section className="panel">
-          <h2>Orders</h2>
+        </form>
+        {loading ? (
+          <SkeletonTable rows={4} columns={8} />
+        ) : (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Status</th>
-                  <th>Delivery date</th>
-                  <th>COD</th>
-                  <th>Shipping / COD fee</th>
-                  <th>Ads</th>
-                  <th>Qty / partial</th>
-                  <th>Making cost / piece</th>
-                  <th>Action</th>
+                  {[
+                    'Order / date',
+                    'Brand',
+                    'Status',
+                    'Delivery date',
+                    'COD',
+                    'Shipping / COD fee',
+                    'Ads allocation',
+                    'Quantity',
+                    'Action',
+                  ].map((label) => (
+                    <th key={label}>{label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -520,28 +478,15 @@ export function Business({
                       {item.id}
                       <small>{item.orderDate}</small>
                     </td>
+                    <td>{name(item.brandId)}</td>
                     <td>{item.status}</td>
                     <td>{item.deliveryDate ?? '—'}</td>
-                    <td>
-                      {money(item.codAmount)}
-                      {item.salesOverride !== null ? (
-                        <small>
-                          Sales override: {money(item.salesOverride)}
-                        </small>
-                      ) : null}
-                    </td>
+                    <td>{money(item.codAmount)}</td>
                     <td>
                       {money(item.shipping)} / {money(item.codCharge)}
                     </td>
                     <td>{money(item.ads)}</td>
-                    <td>
-                      {item.quantity} / {item.partialQuantity ?? '—'}
-                    </td>
-                    <td>
-                      {item.costPerPiece === null
-                        ? 'Missing'
-                        : money(item.costPerPiece)}
-                    </td>
+                    <td>{item.quantity}</td>
                     <td>
                       <button
                         className="secondary compact"
@@ -549,30 +494,97 @@ export function Business({
                           setEditing(item);
                         }}
                       >
-                        Edit costs / quantities
+                        Edit order
                       </button>
                     </td>
                   </tr>
                 ))}
+                {!items.length ? (
+                  <tr>
+                    <td colSpan={9}>No orders match this view.</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
-          {next ? (
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                const query = params();
-                query.set('before', next.before);
-                query.set('beforeId', next.beforeId);
+        )}
+        <div className="pagination-actions">
+          <button
+            className="secondary"
+            disabled={loading || !previous.length}
+            onClick={() => {
+              setLoading(true);
+              setCursor(previous.at(-1) ?? null);
+              setPrevious((values) => values.slice(0, -1));
+            }}
+          >
+            Previous orders
+          </button>
+          <span>Page {previous.length + 1} · 20 orders per page</span>
+          <button
+            className="secondary"
+            disabled={loading || !next}
+            onClick={() => {
+              if (!next) return;
+              setLoading(true);
+              setPrevious((values) => [...values, cursor]);
+              setCursor(next);
+            }}
+          >
+            Next orders
+          </button>
+        </div>
+      </section>
+      <dialog
+        ref={editDialog}
+        className="business-dialog"
+        onCancel={() => {
+          setEditing(null);
+        }}
+      >
+        <header className="business-dialog-heading">
+          <h2>Edit order {editing?.id}</h2>
+          <button
+            className="secondary compact"
+            onClick={() => {
+              setEditing(null);
+            }}
+          >
+            Close
+          </button>
+        </header>
+        {editing ? (
+          <form
+            className="panel"
+            key={editing.id}
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              const amount = (key: string) =>
+                formText(form, key).trim()
+                  ? parseMoney(formText(form, key))
+                  : null;
+              try {
+                const body = {
+                  revision: editing.revision,
+                  brandId: formText(form, 'brandId'),
+                  quantity: Number(formText(form, 'quantity')),
+                  partialQuantity:
+                    formText(form, 'partialQuantity') === ''
+                      ? null
+                      : Number(formText(form, 'partialQuantity')),
+                  salesOverride: amount('salesOverride'),
+                  costPerPiece: amount('costPerPiece'),
+                };
                 setPending(true);
                 api(
-                  `/manage/business/orders?${query.toString()}`,
-                  orderListSchema,
+                  '/manage/business/orders/' + encodeURIComponent(editing.id),
+                  okSchema,
+                  { method: 'PUT', body },
                 )
-                  .then((data) => {
-                    setItems((current) => [...current, ...data.items]);
-                    setNext(data.next);
+                  .then(() => {
+                    setEditing(null);
+                    refresh();
                   })
                   .catch((reason: unknown) => {
                     setError(ErrorMessage(reason));
@@ -580,30 +592,14 @@ export function Business({
                   .finally(() => {
                     setPending(false);
                   });
-              }}
-            >
-              Load 100 more orders
-            </button>
-          ) : null}
-        </section>
-      ) : null}
-      {editing ? (
-        <section className="panel">
-          <h2>Edit order {editing.id}</h2>
-          <form
-            key={`${editing.id}-${String(editing.revision)}`}
-            onSubmit={(event) => {
-              saveOrder(event).catch((reason: unknown) => {
+              } catch (reason) {
                 setError(ErrorMessage(reason));
-              });
+              }
             }}
           >
             <div className="form-grid">
-              <Field
-                label="Order brand"
-                hint="Moving an order snapshots the new brand’s making cost and reallocates both brands’ daily advertising."
-              >
-                <select name="brandId" defaultValue={editing.brandId} required>
+              <Field label="Order brand">
+                <select name="brandId" defaultValue={editing.brandId}>
                   {brands.map((brand) => (
                     <option key={brand.id} value={brand.id}>
                       {brand.name}
@@ -614,10 +610,10 @@ export function Business({
               <Field label="Ordered quantity">
                 <input
                   name="quantity"
-                  type="number"
-                  min={1}
-                  step={1}
                   required
+                  type="number"
+                  min="1"
+                  step="1"
                   defaultValue={editing.quantity}
                 />
               </Field>
@@ -625,9 +621,8 @@ export function Business({
                 <input
                   name="partialQuantity"
                   type="number"
-                  min={0}
-                  max={editing.quantity}
-                  step={1}
+                  min="0"
+                  step="1"
                   defaultValue={editing.partialQuantity ?? ''}
                 />
               </Field>
@@ -638,7 +633,7 @@ export function Business({
                   defaultValue={amountInput(editing.salesOverride)}
                 />
               </Field>
-              <Field label="Making cost per piece (৳)">
+              <Field label="Making cost per piece (blank means missing)">
                 <input
                   name="costPerPiece"
                   inputMode="decimal"
@@ -646,348 +641,11 @@ export function Business({
                 />
               </Field>
             </div>
-            <div className="actions">
-              <button className="primary" disabled={pending}>
-                Save order
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  setEditing(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+            <button className="primary" disabled={pending}>
+              {pending ? 'Saving…' : 'Save order'}
+            </button>
+            {error ? <Alert>{error}</Alert> : null}
           </form>
-        </section>
-      ) : null}
-      <section className="business-maintenance">
-        <h2>Data management</h2>
-        <p className="muted">
-          Removing imported data is permanent. This does not delete saved
-          settlement invoices.
-        </p>
-        <button
-          className="secondary danger-text"
-          onClick={() => {
-            setAction('danger');
-          }}
-        >
-          Remove an imported day
-        </button>
-      </section>
-      <dialog
-        ref={dialog}
-        className="business-dialog"
-        aria-labelledby="business-action-title"
-        onCancel={(event) => {
-          if (pending) event.preventDefault();
-        }}
-        onClose={() => {
-          setAction(null);
-          setError('');
-        }}
-      >
-        <div className="business-dialog-heading">
-          <h2 id="business-action-title">
-            {action === 'import'
-              ? 'Import orders'
-              : action === 'ads'
-                ? 'Add ad spend'
-                : action === 'expense'
-                  ? 'Add an expense'
-                  : 'Manage imported data'}
-          </h2>
-          <button
-            className="secondary compact"
-            disabled={pending}
-            onClick={() => {
-              setAction(null);
-              setError('');
-            }}
-          >
-            Close
-          </button>
-        </div>
-        {error ? <Alert>{error}</Alert> : null}
-        {action === 'ads' ? (
-          <section className="panel">
-            <p className="muted">
-              Set one total per brand/day. Saving again replaces that day’s
-              budget; it does not add another charge.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                try {
-                  mutate(
-                    '/ads',
-                    {
-                      brandId: formText(form, 'brandId'),
-                      date: formText(form, 'date'),
-                      amount: parseMoney(formText(form, 'amount')),
-                    },
-                    'PUT',
-                  ).catch((reason: unknown) => {
-                    setError(ErrorMessage(reason));
-                  });
-                } catch (reason) {
-                  setError(ErrorMessage(reason));
-                }
-              }}
-            >
-              <Field label="Brand">
-                <select
-                  name="brandId"
-                  required
-                  value={adsDraft.brandId}
-                  onChange={(event) => {
-                    setBrandId(event.target.value);
-                    setAdsDraft((current) => ({
-                      ...current,
-                      brandId: event.target.value,
-                    }));
-                  }}
-                >
-                  <option value="">Choose brand</option>
-                  {brands.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="form-grid">
-                <Field label="Order date">
-                  <input
-                    name="date"
-                    type="date"
-                    value={adsDraft.date}
-                    onChange={(event) => {
-                      setAdsDraft((current) => ({
-                        ...current,
-                        date: event.target.value,
-                      }));
-                    }}
-                    required
-                  />
-                </Field>
-                <Field label="Total ads spend (৳)">
-                  <input
-                    name="amount"
-                    required
-                    inputMode="decimal"
-                    value={adsDraft.amount}
-                    onChange={(event) => {
-                      setAdsDraft((current) => ({
-                        ...current,
-                        amount: event.target.value,
-                      }));
-                    }}
-                  />
-                </Field>
-              </div>
-              <button className="primary" disabled={pending}>
-                Save / replace daily spend
-              </button>
-            </form>
-            <section className="import-options">
-              <h3>How allocation works</h3>
-              <p className="muted">
-                Spend is reallocated across all unique orders, including pending
-                and cancelled. Later imports re-split the same total without
-                adding it again.
-              </p>
-              <p className="muted">
-                Saved budgets below use order dates, regardless of the reporting
-                basis above. A budget without imported orders stays saved until
-                those orders arrive.
-              </p>
-            </section>
-            <section>
-              <h3>Saved daily spend</h3>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Brand</th>
-                      <th>Saved spend</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report?.advertising.map((item) => (
-                      <tr key={`${item.brandId}-${item.date}`}>
-                        <td>{item.date}</td>
-                        <td>
-                          {brands.find((brand) => brand.id === item.brandId)
-                            ?.name ?? 'Brand'}
-                        </td>
-                        <td>{money(item.amount)}</td>
-                        <td>
-                          <button
-                            className="secondary compact"
-                            onClick={() => {
-                              setAdsDraft({
-                                brandId: item.brandId,
-                                date: item.date,
-                                amount: amountInput(item.amount),
-                              });
-                            }}
-                          >
-                            Edit spend
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </section>
-        ) : null}
-        {action === 'expense' ? (
-          <section className="panel">
-            <h2>Other expenses</h2>
-            <p className="muted">
-              Expenses apply to the whole workspace, not a single brand.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                try {
-                  mutate('/expenses', {
-                    date: formText(form, 'date'),
-                    amount: parseMoney(formText(form, 'amount')),
-                    description: formText(form, 'description'),
-                  }).catch((reason: unknown) => {
-                    setError(ErrorMessage(reason));
-                  });
-                } catch (reason) {
-                  setError(ErrorMessage(reason));
-                }
-              }}
-            >
-              <div className="form-grid">
-                <Field label="Date">
-                  <input
-                    name="date"
-                    type="date"
-                    required
-                    defaultValue={today()}
-                  />
-                </Field>
-                <Field label="Amount (৳)">
-                  <input name="amount" required inputMode="decimal" />
-                </Field>
-              </div>
-              <Field label="Description">
-                <input name="description" required maxLength={200} />
-              </Field>
-              <button className="primary" disabled={pending}>
-                Save expense
-              </button>
-            </form>
-            {report?.expenses.map((expense) => (
-              <div className="payment-row" key={expense.id}>
-                <span>
-                  {expense.date} · {expense.description} ·{' '}
-                  {money(expense.amount)}
-                </span>
-                <button
-                  className="text-button danger-text"
-                  disabled={pending}
-                  onClick={() => {
-                    confirm({
-                      title: 'Delete expense?',
-                      message: `Delete ${expense.description} (${money(expense.amount)})? This cannot be undone.`,
-                      action: 'Delete expense',
-                      destructive: true,
-                    })
-                      .then(async (confirmed) => {
-                        if (confirmed)
-                          await mutate(`/expenses/${expense.id}`, {}, 'DELETE');
-                      })
-                      .catch((reason: unknown) => {
-                        setError(ErrorMessage(reason));
-                      });
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-          </section>
-        ) : null}
-        {action === 'import' ? (
-          <Importer
-            brands={brands}
-            initialBrandId={brandId}
-            onBrandChange={setBrandId}
-            onImported={() => {
-              refresh().catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              });
-            }}
-          />
-        ) : null}
-        {action === 'danger' ? (
-          <section className="panel">
-            <h2>Remove an imported day</h2>
-            <p className="muted">
-              Only the selected brand/day’s orders and saved daily advertising
-              spend are removed.
-            </p>
-            <form
-              className="form-grid"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                confirm({
-                  title: 'Remove imported day?',
-                  message: `Permanently remove the orders and daily advertising allocation for ${formText(form, 'date')}? Saved settlement invoices will not be deleted.`,
-                  action: 'Remove day',
-                  destructive: true,
-                })
-                  .then(async (confirmed) => {
-                    if (!confirmed) return;
-                    await mutate(
-                      '/day',
-                      {
-                        brandId: formText(form, 'brandId'),
-                        date: formText(form, 'date'),
-                      },
-                      'DELETE',
-                    );
-                  })
-                  .catch((reason: unknown) => {
-                    setError(ErrorMessage(reason));
-                  });
-              }}
-            >
-              <Field label="Brand">
-                <select name="brandId" required defaultValue={brandId}>
-                  <option value="">Choose brand</option>
-                  {brands.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Order date">
-                <input name="date" required type="date" />
-              </Field>
-              <button className="secondary danger-text" disabled={pending}>
-                Delete day
-              </button>
-            </form>
-          </section>
         ) : null}
       </dialog>
     </>

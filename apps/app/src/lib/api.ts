@@ -29,6 +29,7 @@ export const reportSchema = z.object({
   deliveredCodCharge: integer,
   partialCodCharge: integer,
   vatBasisPoints: integer,
+  vatAddedToAgency: z.boolean(),
   deliveredQty: integer,
   deliveredUnits: integer.nullable(),
   deductShipping: z.boolean(),
@@ -87,6 +88,7 @@ const adSummarySchema = z.object({
   createdAt: integer,
 });
 const adInvoiceSchema = adSummarySchema.omit({ directPaid: true }).extend({
+  vatBasisPoints: integer,
   brandId: z.string(),
   brandName: z.string(),
   campaigns: z.array(campaignSchema),

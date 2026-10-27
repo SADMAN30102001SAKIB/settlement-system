@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
+import { calculateAdvertising } from '@settlement/domain/advertising';
 import { parseMoney, sumMoney } from '@settlement/domain/money';
-import { paymentStatus } from '@settlement/domain/payments';
+import { AdvertisingLedger } from './ledger';
 
 import {
   Alert,
@@ -20,7 +21,7 @@ import {
 } from '../../components/ui';
 import { api, adAccountSchema, adDetailSchema, okSchema } from '../../lib/api';
 import type { AdInvoice, Brand, Settings } from '../../lib/api';
-import { amountInput, dateLabel, money, today } from '../../lib/format';
+import { amountInput, money, today } from '../../lib/format';
 import { Invoice } from '../settlements/invoice';
 import { PaymentsPanel } from '../payments/panel';
 const accountOverviewSchema = z.object({
@@ -47,6 +48,7 @@ function Editor({
   onBack: () => void;
 }) {
   const [brandId, setBrandId] = useState(item?.brandId ?? '');
+  const vatBasisPoints = item?.vatBasisPoints ?? 1000;
   const [date, setDate] = useState(item?.date ?? today());
   const [period, setPeriod] = useState(item?.period ?? '');
   const [lines, setLines] = useState(
@@ -78,6 +80,7 @@ function Editor({
             brandId,
             date,
             period,
+            vatBasisPoints,
             campaigns: lines.map((line) => ({
               name: line.name,
               amount: parseMoney(line.amount),
@@ -221,7 +224,15 @@ function Editor({
           >
             + Add campaign
           </button>
-          <strong>Total {money(total)}</strong>
+          <div>
+            <p>
+              Subtotal {money(total)} · VAT{' '}
+              {money(calculateAdvertising([total], vatBasisPoints).vat)}
+            </p>
+            <strong>
+              Total {money(calculateAdvertising([total], vatBasisPoints).total)}
+            </strong>
+          </div>
         </div>
         {error ? <Alert>{error}</Alert> : null}
         <button className="primary" disabled={pending}>
@@ -326,6 +337,7 @@ function Detail({
         }}
       />
       <PaymentsPanel
+        brandName={data.item.brandName}
         target={{ kind: 'ads', targetId: id }}
         total={data.item.total}
         paid={data.item.paid}
@@ -356,15 +368,14 @@ export function Advertising({
   navigate: (path: string) => void;
 }) {
   const accountPanel = useRef<HTMLElement>(null);
+  const revealAccount = useRef(false);
   const [brandId, setBrandId] = useState(brands[0]?.id ?? '');
   const [data, setData] = useState<z.infer<typeof adAccountSchema> | null>(
     null,
   );
   const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
   const [reloading, setReloading] = useState(false);
-  const [from, setFrom] = useState(''),
-    [to, setTo] = useState('');
+  const [ledgerVersion, setLedgerVersion] = useState(0);
   const [overview, setOverview] = useState<
     z.infer<typeof accountOverviewSchema>['items']
   >([]);
@@ -381,6 +392,7 @@ export function Advertising({
       ]);
       setData(account);
       setOverview(all.items);
+      setLedgerVersion((value) => value + 1);
     } finally {
       setReloading(false);
     }
@@ -418,6 +430,15 @@ export function Advertising({
       controller.abort();
     };
   }, [brandId, listing]);
+  useEffect(() => {
+    if (!data || !revealAccount.current) return;
+    revealAccount.current = false;
+    accountPanel.current?.focus({ preventScroll: true });
+    accountPanel.current?.scrollIntoView({
+      behavior: 'instant',
+      block: 'start',
+    });
+  }, [data]);
   if (parts[2] === 'new')
     return (
       <Editor
@@ -514,20 +535,14 @@ export function Advertising({
                         disabled={reloading}
                         onClick={() => {
                           if (brandId !== account.id) {
+                            revealAccount.current = true;
                             setBrandId(account.id);
                             setData(null);
                           }
                           setError('');
-                          setQuery('');
-                          setFrom('');
-                          setTo('');
                           accountPanel.current?.focus({ preventScroll: true });
                           accountPanel.current?.scrollIntoView({
-                            behavior: window.matchMedia(
-                              '(prefers-reduced-motion: reduce)',
-                            ).matches
-                              ? 'instant'
-                              : 'smooth',
+                            behavior: 'instant',
                             block: 'start',
                           });
                         }}
@@ -542,6 +557,13 @@ export function Advertising({
           </div>
         )}
       </section>
+      <AdvertisingLedger
+        brands={brands}
+        settings={settings}
+        navigate={navigate}
+        version={ledgerVersion}
+        onChanged={reloadAccount}
+      />
       <section
         className="panel advertising-account-panel"
         ref={accountPanel}
@@ -589,7 +611,7 @@ export function Advertising({
           />
         ) : null}
         <div className="form-grid">
-          <Field label="Brand account">
+          <Field label="Payment brand">
             <select
               value={brandId}
               disabled={reloading}
@@ -605,35 +627,6 @@ export function Advertising({
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label="Search invoices">
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-              }}
-              placeholder="Invoice or period"
-            />
-          </Field>
-          <Field label="Invoice date from">
-            <input
-              type="date"
-              value={from}
-              onChange={(event) => {
-                setFrom(event.target.value);
-              }}
-            />
-          </Field>
-          <Field label="Invoice date to">
-            <input
-              type="date"
-              value={to}
-              min={from}
-              onChange={(event) => {
-                setTo(event.target.value);
-              }}
-            />
           </Field>
         </div>
       </section>
@@ -674,65 +667,11 @@ export function Advertising({
               value={money(Math.abs(data.total - data.paid))}
             />
           </div>
-          <section className="panel">
-            <h2>Invoice ledger</h2>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Invoice / date</th>
-                    <th>Period</th>
-                    <th>Total</th>
-                    <th>Paid</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.invoices
-                    .filter(
-                      (item) =>
-                        (!from || item.date >= from) &&
-                        (!to || item.date <= to),
-                    )
-                    .filter((item) =>
-                      `${item.invoiceNumber} ${item.period} ${item.date}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase()),
-                    )
-                    .sort(
-                      (a, b) =>
-                        b.date.localeCompare(a.date) ||
-                        b.createdAt - a.createdAt,
-                    )
-                    .map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          {item.invoiceNumber}
-                          <small>{dateLabel(item.date)}</small>
-                        </td>
-                        <td>{item.period}</td>
-                        <td>{money(item.total)}</td>
-                        <td>{money(item.paid)}</td>
-                        <td>{paymentStatus(item.total, item.paid).status}</td>
-                        <td>
-                          <button
-                            className="secondary compact"
-                            onClick={() => {
-                              navigate(`/advertising/${item.id}`);
-                            }}
-                          >
-                            Open
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
           <PaymentsPanel
             key={brandId}
+            brandName={
+              brands.find((brand) => brand.id === brandId)?.name ?? 'Brand'
+            }
             target={{ kind: 'brand', targetId: brandId }}
             total={data.total}
             paid={data.paid}

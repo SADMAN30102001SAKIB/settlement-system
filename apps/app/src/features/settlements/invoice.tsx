@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { calculateSettlement } from '@settlement/domain/settlement';
+import { calculateAdvertising } from '@settlement/domain/advertising';
 import type { AdInvoice, Report, Settings } from '../../lib/api';
 import { dateLabel, money } from '../../lib/format';
 import { Alert, ErrorMessage, PageHeading, Spinner } from '../../components/ui';
@@ -10,13 +11,23 @@ export function Invoice({
   onEdit,
   onBack,
   onDelete,
+  autoDownload = false,
 }: {
   report: Report | AdInvoice;
   settings: Settings;
   onEdit: () => void;
   onBack: () => void;
   onDelete: () => void;
+  autoDownload?: boolean;
 }) {
+  const downloadButton = useRef<HTMLButtonElement>(null);
+  const downloadStarted = useRef(false);
+  useEffect(() => {
+    if (autoDownload && !downloadStarted.current) {
+      downloadStarted.current = true;
+      downloadButton.current?.click();
+    }
+  }, [autoDownload]);
   const [moreOpen, setMoreOpen] = useState(false);
   const more = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -209,6 +220,7 @@ export function Invoice({
               </div>
               <button
                 className="primary"
+                ref={downloadButton}
                 disabled={downloading}
                 onClick={() => {
                   download().catch((reason: unknown) => {
@@ -292,6 +304,24 @@ export function Invoice({
                 </tbody>
               </table>
             </section>
+            <table className="invoice-ad-totals">
+              <tbody>
+                {row(
+                  'Advertising subtotal',
+                  calculateAdvertising(
+                    report.campaigns.map((line) => line.amount),
+                    report.vatBasisPoints,
+                  ).subtotal,
+                )}
+                {row(
+                  `Advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
+                  calculateAdvertising(
+                    report.campaigns.map((line) => line.amount),
+                    report.vatBasisPoints,
+                  ).vat,
+                )}
+              </tbody>
+            </table>
             <div className="invoice-final">
               <span>Total advertising cost</span>
               <strong>{money(report.total)}</strong>
@@ -368,7 +398,7 @@ export function Invoice({
                   )}
                   {row('Gross settlement', report.gross, true)}
                   {row('Less: advertising cost', -report.ads)}
-                  {report.rule === 'v3'
+                  {report.rule === 'v3' && !report.vatAddedToAgency
                     ? row(
                         `Less: advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
                         -calculateSettlement(report).vat,
@@ -390,9 +420,23 @@ export function Invoice({
               </table>
             </section>
             <div className="invoice-final">
-              <span>Agency share · {report.agencyBasisPoints / 100}%</span>
+              <span>
+                Agency share · {report.agencyBasisPoints / 100}%
+                {report.vatAddedToAgency ? ' + advertising VAT' : ''}
+              </span>
               <strong>{money(report.commission)}</strong>
             </div>
+            {report.vatAddedToAgency ? (
+              <table>
+                <tbody>
+                  {row(
+                    'Agency percentage on net',
+                    report.commission - calculateSettlement(report).vat,
+                  )}
+                  {row('Add: advertising VAT', calculateSettlement(report).vat)}
+                </tbody>
+              </table>
+            ) : null}
           </>
         )}
         <footer className="invoice-footer">
@@ -414,7 +458,8 @@ export function Invoice({
                 alt="Authorized signature"
               />
             ) : null}
-            {settings.signatureLabel}
+            <span className="signature-rule" />
+            <span>{settings.signatureLabel}</span>
           </div>
         </footer>
       </article>

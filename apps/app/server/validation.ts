@@ -31,6 +31,7 @@ export const settlementFields = z
     deliveredCodCharge: money.default(0),
     partialCodCharge: money.default(0),
     vatBasisPoints: rate.default(1000),
+    vatAddedToAgency: z.boolean().default(true),
     deliveredQty: counts,
     deliveredUnits: counts.nullable().default(null),
     deductShipping: z.boolean().default(true),

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./advertising": "./src/advertising.ts",
     "./money": "./src/money.ts",
     "./settlement": "./src/settlement.ts",
     "./profit": "./src/profit.ts",

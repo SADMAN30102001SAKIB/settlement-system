@@ -5,21 +5,33 @@ import {
   invoiceCounters,
   payments,
 } from '@settlement/database/schema';
-import { sumMoney } from '@settlement/domain/money';
-import { and, desc, eq, getTableColumns, sql } from 'drizzle-orm';
+import { calculateAdvertising } from '@settlement/domain/advertising';
+import {
+  and,
+  desc,
+  eq,
+  getTableColumns,
+  sql,
+  gte,
+  lte,
+  lt,
+  or,
+  like,
+} from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 
 import type { AppEnvironment } from '../environment';
-import { date, id, money, name, revision } from '../validation';
-import { advertisingAccount } from './accounts';
+import { date, id, money, name, revision, rate } from '../validation';
+import { advertisingAccount, advertisingAccounts } from './accounts';
 
 const fields = z
   .object({
     brandId: id,
     date,
     period: z.string().trim().min(1).max(120),
+    vatBasisPoints: rate.default(1000),
     campaigns: z
       .array(z.object({ name, amount: money }).strict())
       .min(1)
@@ -28,6 +40,83 @@ const fields = z
   .strict();
 
 export const advertisingRoutes = new Hono<AppEnvironment>()
+  .get('/', async (context) => {
+    const query = z
+      .object({
+        brandId: id.optional(),
+        from: date.optional(),
+        to: date.optional(),
+        before: date.optional(),
+        beforeId: id.optional(),
+        q: z.string().trim().max(120).optional(),
+      })
+      .parse(context.req.query());
+    if (query.from && query.to && query.to < query.from)
+      throw new HTTPException(422, { message: 'Choose a valid date range.' });
+    const rows = await context
+      .get('database')()
+      .select({
+        id: adInvoices.id,
+        brandId: adInvoices.brandId,
+        brandName: adInvoices.brandName,
+        invoiceNumber: adInvoices.invoiceNumber,
+        date: adInvoices.date,
+        period: adInvoices.period,
+        total: adInvoices.total,
+        revision: adInvoices.revision,
+      })
+      .from(adInvoices)
+      .where(
+        and(
+          query.brandId ? eq(adInvoices.brandId, query.brandId) : undefined,
+          query.from ? gte(adInvoices.date, query.from) : undefined,
+          query.to ? lte(adInvoices.date, query.to) : undefined,
+          query.q
+            ? or(
+                like(
+                  adInvoices.invoiceNumber,
+                  `%${query.q.replaceAll('%', '').replaceAll('_', '')}%`,
+                ),
+                like(
+                  adInvoices.period,
+                  `%${query.q.replaceAll('%', '').replaceAll('_', '')}%`,
+                ),
+              )
+            : undefined,
+          query.before && query.beforeId
+            ? or(
+                lt(adInvoices.date, query.before),
+                and(
+                  eq(adInvoices.date, query.before),
+                  lt(adInvoices.id, query.beforeId),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(adInvoices.date), desc(adInvoices.id))
+      .limit(21);
+    const page = rows.slice(0, 20);
+    const accounts = page.length
+      ? await advertisingAccounts(context.env.DB, [
+          ...new Set(page.map((row) => row.brandId)),
+        ])
+      : undefined;
+    const last = page.at(-1);
+    return context.json({
+      items: page.map((row) => ({
+        ...row,
+        paid:
+          accounts
+            ?.get(row.brandId)
+            ?.invoices.find((item) => item.id === row.id)?.paid ?? 0,
+      })),
+      next:
+        rows.length > 20 && last
+          ? { before: last.date, beforeId: last.id }
+          : null,
+    });
+  })
   .get('/overview', async (context) => {
     const result = await context.env.DB.prepare(
       `WITH invoice_totals AS (
@@ -40,7 +129,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
       COALESCE(d.paid, 0) + COALESCE(a.paid, 0) AS paid
       FROM brands b LEFT JOIN invoice_totals i ON i.brand_id = b.id
       LEFT JOIN direct_totals d ON d.brand_id = b.id LEFT JOIN account_totals a ON a.brand_id = b.id
-      WHERE i.count > 0 OR a.paid > 0 ORDER BY b.normalized_name LIMIT 500`,
+      ORDER BY b.normalized_name LIMIT 500`,
     ).all<{
       id: string;
       name: string;
@@ -137,7 +226,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
     const results = await binding.batch([
       binding
         .prepare(
-          'INSERT INTO ad_invoices (id, invoice_number, brand_id, brand_name, date, period, normalized_period, total, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(brand_id, normalized_period) DO NOTHING RETURNING id',
+          'INSERT INTO ad_invoices (id, invoice_number, brand_id, brand_name, date, period, normalized_period, total, vat_basis_points, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(brand_id, normalized_period) DO NOTHING RETURNING id',
         )
         .bind(
           key,
@@ -147,7 +236,11 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           input.date,
           input.period,
           input.period.toLocaleLowerCase('en-US'),
-          sumMoney(input.campaigns.map((line) => line.amount)),
+          calculateAdvertising(
+            input.campaigns.map((line) => line.amount),
+            input.vatBasisPoints,
+          ).total,
+          input.vatBasisPoints,
           now,
           now,
         ),
@@ -173,7 +266,10 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
       .parse(await context.req.json<unknown>());
     const database = context.get('database')();
     const [current] = await database
-      .select({ brandId: adInvoices.brandId })
+      .select({
+        brandId: adInvoices.brandId,
+        vatBasisPoints: adInvoices.vatBasisPoints,
+      })
       .from(adInvoices)
       .where(eq(adInvoices.id, key))
       .limit(1);
@@ -185,6 +281,10 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(422, {
         message:
           'The brand of a saved advertising invoice cannot change because payments may already be allocated.',
+      });
+    if (current.vatBasisPoints !== input.vatBasisPoints)
+      throw new HTTPException(409, {
+        message: 'Saved VAT rules cannot change. Create a new invoice instead.',
       });
     const [duplicate] = await database
       .select({ id: adInvoices.id })
@@ -232,7 +332,10 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           input.date,
           input.period,
           input.period.toLocaleLowerCase('en-US'),
-          sumMoney(input.campaigns.map((line) => line.amount)),
+          calculateAdvertising(
+            input.campaigns.map((line) => line.amount),
+            current.vatBasisPoints,
+          ).total,
           Date.now(),
           key,
           input.revision,

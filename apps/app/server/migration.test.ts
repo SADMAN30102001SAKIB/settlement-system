@@ -77,6 +77,18 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
       .all();
     await migrate('0002_brief_whiplash.sql');
     await migrate('0003_mean_zarek.sql');
+    await migrate('0004_new_sinister_six.sql');
+    expect(
+      (await db.prepare('SELECT vat_added_to_agency FROM settlements').all())
+        .results,
+    ).toEqual([{ vat_added_to_agency: 0 }, { vat_added_to_agency: 0 }]);
+    expect(
+      await db
+        .prepare(
+          "SELECT total,vat_basis_points FROM ad_invoices WHERE id='ads'",
+        )
+        .first(),
+    ).toEqual({ total: 100000, vat_basis_points: 0 });
     expect(
       (
         await db

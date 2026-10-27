@@ -231,6 +231,9 @@ export const settlements = sqliteTable(
     deliveredCodCharge: integer('delivered_cod_charge').notNull().default(0),
     partialCodCharge: integer('partial_cod_charge').notNull().default(0),
     vatBasisPoints: integer('vat_basis_points').notNull().default(1000),
+    vatAddedToAgency: integer('vat_added_to_agency', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     ads: integer().notNull(),
     productCost: integer('product_cost').notNull(),
     costPerPiece: integer('cost_per_piece'),
@@ -276,6 +279,7 @@ export const adInvoices = sqliteTable(
     date: text().notNull(),
     period: text().notNull(),
     normalizedPeriod: text('normalized_period').notNull(),
+    vatBasisPoints: integer('vat_basis_points').notNull().default(0),
     total: integer().notNull(),
     revision: integer().notNull().default(1),
     createdAt: integer('created_at').notNull(),

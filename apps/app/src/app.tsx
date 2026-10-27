@@ -117,6 +117,7 @@ function ReportView({
         }}
       />
       <PaymentsPanel
+        brandName={report.brandName}
         target={{ kind: 'settlement', targetId: report.id }}
         total={report.commission}
         paid={report.paid}
@@ -452,7 +453,7 @@ export function App() {
           {path === '/files' ? (
             <Files refresh={refresh} />
           ) : path === '/business' ? (
-            <Business brands={brands} settings={settings} />
+            <Business brands={brands} />
           ) : path.startsWith('/advertising') ? (
             <Advertising
               key={path}

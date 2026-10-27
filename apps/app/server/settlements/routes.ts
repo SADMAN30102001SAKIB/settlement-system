@@ -104,7 +104,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
           pendingQty: sql<number>`COALESCE(SUM(${settlements.pendingQty}), 0)`,
           shipping: sql<number>`COALESCE(SUM(CASE WHEN ${settlements.rule} = 'v3' AND NOT ${settlements.deductShipping} THEN 0 ELSE ${settlements.shipping} END), 0)`,
           codCharge: sql<number>`COALESCE(SUM(CASE WHEN ${settlements.rule} = 'v3' THEN ${settlements.deliveredCodCharge} + ${settlements.partialCodCharge} ELSE ${settlements.codCharge} END), 0)`,
-          ads: sql<number>`COALESCE(SUM(${settlements.ads} + CASE WHEN ${settlements.rule} = 'v3' THEN (((${settlements.ads} * ${settlements.vatBasisPoints} + 5000) / 10000 + 5) / 10) * 10 ELSE 0 END), 0)`,
+          ads: sql<number>`COALESCE(SUM(${settlements.ads} + CASE WHEN ${settlements.rule} = 'v3' AND NOT ${settlements.vatAddedToAgency} THEN (((${settlements.ads} * ${settlements.vatBasisPoints} + 5000) / 10000 + 5) / 10) * 10 ELSE 0 END), 0)`,
           productCost: sql<number>`COALESCE(SUM(${settlements.productCost}), 0)`,
         })
         .from(settlements)
@@ -195,13 +195,15 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       .select({
         rule: settlements.rule,
         deductShipping: settlements.deductShipping,
+        vatAddedToAgency: settlements.vatAddedToAgency,
       })
       .from(settlements)
       .where(eq(settlements.id, key))
       .limit(1);
     if (
       existing?.rule !== input.rule ||
-      existing.deductShipping !== input.deductShipping
+      existing.deductShipping !== input.deductShipping ||
+      existing.vatAddedToAgency !== input.vatAddedToAgency
     )
       throw new HTTPException(409, {
         message:

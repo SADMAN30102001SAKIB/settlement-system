@@ -5,6 +5,7 @@ export interface SettlementInput {
   deliveredCodCharge?: number;
   partialCodCharge?: number;
   vatBasisPoints?: number;
+  vatAddedToAgency?: boolean;
   deductShipping?: boolean;
   deliveredAmount: number;
   cancelledAmount: number;
@@ -49,10 +50,17 @@ export function calculateSettlement(input: SettlementInput) {
       ? toPaisaPrecision(percentage(input.ads, input.vatBasisPoints ?? 1000))
       : 0;
   const adsTotal = sumMoney([input.ads, vat]);
-  const net = sumMoney([gross, -adsTotal, -input.productCost]);
+  const net = sumMoney([
+    gross,
+    -(input.vatAddedToAgency ? input.ads : adsTotal),
+    -input.productCost,
+  ]);
   const commission =
     input.rule === 'v3'
-      ? toPaisaPrecision(percentage(net, input.agencyBasisPoints))
+      ? sumMoney([
+          toPaisaPrecision(percentage(net, input.agencyBasisPoints)),
+          input.vatAddedToAgency ? vat : 0,
+        ])
       : percentage(net, input.agencyBasisPoints);
   return {
     gross,

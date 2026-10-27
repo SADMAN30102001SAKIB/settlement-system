@@ -160,6 +160,7 @@ export function ReportEditor({
       deliveredCodCharge: parseMoney(values.deliveredCodCharge),
       partialCodCharge: parseMoney(values.partialCodCharge),
       vatBasisPoints: parsePercentage(values.vatPercentage),
+      vatAddedToAgency: report?.vatAddedToAgency ?? true,
       ads: parseMoney(values.ads),
       productCost,
       costPerPiece: autoCost ? makingCost : (report?.costPerPiece ?? null),
@@ -511,7 +512,7 @@ export function ReportEditor({
                 <dt>Product cost</dt>
                 <dd>{calculation ? money(-productCost) : '—'}</dd>
               </div>
-              {isV3 ? (
+              {isV3 && !(report?.vatAddedToAgency ?? true) ? (
                 <div>
                   <dt>Advertising VAT · {values.vatPercentage}%</dt>
                   <dd>{calculation ? money(-calculation.vat) : '—'}</dd>
@@ -524,9 +525,19 @@ export function ReportEditor({
             </dl>
           </section>
           <div className="commission">
-            <span>Agency share · {values.percentage}%</span>
+            <span>
+              Agency share · {values.percentage}%
+              {(report?.vatAddedToAgency ?? true) ? ' + advertising VAT' : ''}
+            </span>
             <strong>{calculation ? money(calculation.commission) : '—'}</strong>
           </div>
+          {isV3 && (report?.vatAddedToAgency ?? true) && calculation ? (
+            <p className="caption">
+              Agency percentage on net:{' '}
+              {money(calculation.commission - calculation.vat)} + advertising
+              VAT: {money(calculation.vat)}. VAT is not deducted from net.
+            </p>
+          ) : null}
           {calculation && calculation.net < 0 ? (
             <p className="warning-text">
               This settlement records a loss. Its signed commission is

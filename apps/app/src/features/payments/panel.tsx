@@ -17,12 +17,14 @@ export function PaymentsPanel({
   paid,
   payments,
   refresh,
+  brandName,
 }: {
   target: { kind: 'settlement' | 'ads' | 'brand'; targetId: string };
   total: number;
   paid: number;
   payments: Payment[];
   refresh: () => Promise<void>;
+  brandName: string;
 }) {
   const confirm = useConfirmation();
   const [error, setError] = useState('');
@@ -116,6 +118,12 @@ export function PaymentsPanel({
       <div className="section-heading">
         <div>
           <h2>Payments</h2>
+          <p className="payment-brand">
+            <strong>{brandName}</strong> ·{' '}
+            {target.kind === 'brand'
+              ? 'Brand account payment'
+              : 'Payment against this invoice'}
+          </p>
           <p className="muted">
             Paid {money(totalPaid)} ·{' '}
             {status.balance < 0 ? 'Advance' : 'Balance'}{' '}

@@ -94,10 +94,10 @@ it('atomically edits campaigns and applies direct, account and advance payments 
       ).json(),
     );
   expect(account.invoices.find((item) => item.id === firstId)?.paid).toBe(
-    100000,
+    110000,
   );
   expect(account.invoices.find((item) => item.id === secondId)?.paid).toBe(
-    50000,
+    40000,
   );
   const edit = {
     ...input,
@@ -150,9 +150,9 @@ it('atomically edits campaigns and applies direct, account and advance payments 
       ).json(),
     );
   expect(account.paid).toBe(400000);
-  expect(account.total).toBe(300000);
+  expect(account.total).toBe(330000);
   expect(account.invoices.find((item) => item.id === secondId)?.paid).toBe(
-    300000,
+    290000,
   );
   expect(
     (
@@ -358,8 +358,8 @@ it('uses v3 by default, preserves saved rules, and reports automatic completion'
   expect(saved).toMatchObject({
     rule: 'v3',
     gross: 988000,
-    net: 678000,
-    commission: 101700,
+    net: 688000,
+    commission: 113200,
   });
   expect(
     (
@@ -377,7 +377,7 @@ it('uses v3 by default, preserves saved rules, and reports automatic completion'
         await request(`/api/manage/settlements?brandId=${brandId}`)
       ).json(),
     );
-  expect(summary.summary.ads).toBe(110055);
+  expect(summary.summary.ads).toBe(100045);
   expect(
     (
       await request(`/api/manage/settlements/${saved.id}`, 'PUT', {
@@ -396,6 +396,124 @@ it('uses v3 by default, preserves saved rules, and reports automatic completion'
       .object({ items: z.array(z.object({ id: z.string() })) })
       .parse(await progress.json()).items,
   ).toContainEqual({ id: saved.id });
+});
+
+it('lists all advertising brands and paginates invoices with VAT-inclusive account balances', async () => {
+  const a = await brand('PDF requirements A'),
+    b = await brand('PDF requirements B'),
+    empty = await brand('PDF empty account');
+  const ids: string[] = [];
+  for (let i = 0; i < 24; i++) {
+    const response = await request('/api/manage/advertising', 'POST', {
+      brandId: i === 23 ? b : a,
+      date: `2026-10-${String(i + 1).padStart(2, '0')}`,
+      period: `PDF requirement ${String(i)}`,
+      campaigns: [{ name: 'Spend', amount: 100000 }],
+    });
+    expect(response.status).toBe(201);
+    ids.push(z.object({ id: z.string() }).parse(await response.json()).id);
+  }
+  await request('/api/manage/payments', 'POST', {
+    requestId: crypto.randomUUID(),
+    target: { kind: 'brand', targetId: a },
+    amount: 150000,
+    date: '2026-10-25',
+    note: '',
+  });
+  const overview = z
+    .object({
+      items: z.array(
+        z.object({
+          id: z.string(),
+          count: z.number(),
+          total: z.number(),
+          paid: z.number(),
+        }),
+      ),
+    })
+    .parse(await (await request('/api/manage/advertising/overview')).json());
+  expect(overview.items.find((item) => item.id === empty)).toMatchObject({
+    count: 0,
+    total: 0,
+    paid: 0,
+  });
+  expect(overview.items.find((item) => item.id === a)).toMatchObject({
+    count: 23,
+    total: 2530000,
+    paid: 150000,
+  });
+  const schema = z.object({
+    items: z.array(
+      z.object({
+        id: z.string(),
+        brandId: z.string(),
+        brandName: z.string(),
+        total: z.number(),
+        paid: z.number(),
+      }),
+    ),
+    next: z.object({ before: z.string(), beforeId: z.string() }).nullable(),
+  });
+  const first = schema.parse(
+    await (await request('/api/manage/advertising?q=PDF%20requirement')).json(),
+  );
+  expect(first.items).toHaveLength(20);
+  expect(first.items.some((item) => item.brandId === b)).toBe(true);
+  const next = first.next;
+  if (next === null) throw new Error('Expected another ledger page');
+  const second = schema.parse(
+    await (
+      await request(
+        '/api/manage/advertising?' +
+          new URLSearchParams({ q: 'PDF requirement', ...next }).toString(),
+      )
+    ).json(),
+  );
+  expect(second.items).toHaveLength(4);
+  expect(
+    new Set([...first.items, ...second.items].map((item) => item.id)),
+  ).toEqual(new Set(ids));
+  expect(
+    [...first.items, ...second.items].find((item) => item.id === ids[0])?.paid,
+  ).toBe(110000);
+  const plans = await fixture.env.DB.prepare(
+    'EXPLAIN QUERY PLAN SELECT id FROM ad_invoices WHERE brand_id = ? AND date >= ? ORDER BY date DESC,id DESC LIMIT 21',
+  )
+    .bind(a, '2026-10-01')
+    .all<{ detail: string }>();
+  expect(plans.results.map((row) => row.detail).join(' ')).toContain(
+    'ad_invoices_brand_date_idx',
+  );
+}, 20000);
+
+it('preserves original VAT rules when editing saved invoices', async () => {
+  const brandId = await brand('Historical VAT');
+  const legacy = await request('/api/manage/advertising', 'POST', {
+    brandId,
+    date: '2026-10-26',
+    period: 'Old VAT',
+    vatBasisPoints: 0,
+    campaigns: [{ name: 'Old', amount: 2000000 }],
+  });
+  const key = z.object({ id: z.string() }).parse(await legacy.json()).id;
+  expect(
+    (
+      await request(`/api/manage/advertising/${key}`, 'PUT', {
+        brandId,
+        date: '2026-10-26',
+        period: 'Old VAT',
+        vatBasisPoints: 1000,
+        revision: 1,
+        campaigns: [{ name: 'Old', amount: 2000000 }],
+      })
+    ).status,
+  ).toBe(409);
+  const detail = z
+    .object({
+      item: z.object({ total: z.number(), vatBasisPoints: z.number() }),
+    })
+    .parse(await (await request(`/api/manage/advertising/${key}`)).json());
+  expect(detail.item).toMatchObject({ total: 2000000, vatBasisPoints: 0 });
 });
 
 it('excludes workspace expenses from brand reports and safely reallocates reassigned orders', async () => {
@@ -530,7 +648,7 @@ it('excludes workspace expenses from brand reports and safely reallocates reassi
       ).all()
     ).results,
   ).toEqual(after.results);
-});
+}, 15000);
 
 it('restores original image assets privately and resets only company identity', async () => {
   for (const kind of ['watermark', 'signature']) {

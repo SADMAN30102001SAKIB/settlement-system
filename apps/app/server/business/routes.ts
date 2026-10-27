@@ -66,6 +66,86 @@ function reallocate(binding: D1Database, brandId: string, orderDate: string) {
 }
 
 export const businessRoutes = new Hono<AppEnvironment>()
+  .get('/daily', async (context) => {
+    const query = filterFields.parse(context.req.query());
+    if (
+      query.to < query.from ||
+      (Date.parse(query.to) - Date.parse(query.from)) / 86400000 > 366
+    )
+      throw new HTTPException(422, {
+        message: 'Choose a valid range of up to 366 days.',
+      });
+    const database = context.get('database')();
+    const [counts, budgets] = await database.batch([
+      database
+        .select({
+          date: orders.orderDate,
+          brandId: orders.brandId,
+          count: sql<number>`COUNT(*)`,
+          delivered: sql<number>`SUM(CASE WHEN ${orders.status} = 'Delivered' THEN 1 ELSE 0 END)`,
+          cancelled: sql<number>`SUM(CASE WHEN ${orders.status} = 'Cancelled' THEN 1 ELSE 0 END)`,
+          partial: sql<number>`SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN 1 ELSE 0 END)`,
+          pending: sql<number>`SUM(CASE WHEN ${orders.status} = 'Pending' THEN 1 ELSE 0 END)`,
+        })
+        .from(orders)
+        .where(
+          and(
+            gte(orders.orderDate, query.from),
+            lte(orders.orderDate, query.to),
+            query.brandId ? eq(orders.brandId, query.brandId) : undefined,
+          ),
+        )
+        .groupBy(orders.orderDate, orders.brandId)
+        .limit(1001),
+      database
+        .select({
+          date: dailyAds.orderDate,
+          brandId: dailyAds.brandId,
+          amount: dailyAds.amount,
+        })
+        .from(dailyAds)
+        .where(
+          and(
+            gte(dailyAds.orderDate, query.from),
+            lte(dailyAds.orderDate, query.to),
+            query.brandId ? eq(dailyAds.brandId, query.brandId) : undefined,
+          ),
+        )
+        .limit(1001),
+    ]);
+    if (counts.length > 1000 || budgets.length > 1000)
+      throw new HTTPException(422, {
+        message: 'Narrow the range to at most 1,000 brand/day groups.',
+      });
+    const days = counts.map((row) => ({
+      ...row,
+      amount:
+        budgets.find(
+          (budget) =>
+            budget.date === row.date && budget.brandId === row.brandId,
+        )?.amount ?? null,
+    }));
+    for (const budget of budgets)
+      if (
+        !days.some(
+          (row) => row.date === budget.date && row.brandId === budget.brandId,
+        )
+      )
+        days.push({
+          ...budget,
+          count: 0,
+          delivered: 0,
+          cancelled: 0,
+          partial: 0,
+          pending: 0,
+        });
+    return context.json({
+      days: days.sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || a.brandId.localeCompare(b.brandId),
+      ),
+    });
+  })
   .get('/settlement', async (context) => {
     const query = filterFields
       .extend({ brandId: id })
@@ -337,6 +417,7 @@ export const businessRoutes = new Hono<AppEnvironment>()
       .extend({
         before: date.optional(),
         beforeId: z.string().max(100).optional(),
+        q: z.string().trim().max(100).optional(),
       })
       .parse(context.req.query());
     if (query.to < query.from)
@@ -364,8 +445,8 @@ export const businessRoutes = new Hono<AppEnvironment>()
       .from(orders)
       .where(
         and(
-          gte(column, query.from),
-          lte(column, query.to),
+          query.q ? eq(orders.id, query.q) : gte(column, query.from),
+          query.q ? undefined : lte(column, query.to),
           query.brandId === undefined
             ? undefined
             : eq(orders.brandId, query.brandId),
@@ -378,12 +459,12 @@ export const businessRoutes = new Hono<AppEnvironment>()
         ),
       )
       .orderBy(desc(column), desc(orders.id))
-      .limit(101);
-    const last = items[99];
+      .limit(21);
+    const last = items[19];
     return context.json({
-      items: items.slice(0, 100),
+      items: items.slice(0, 20),
       next:
-        items.length > 100 && last !== undefined
+        items.length > 20 && last !== undefined
           ? {
               before:
                 query.basis === 'order' ? last.orderDate : last.deliveryDate,
