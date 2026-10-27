@@ -107,6 +107,18 @@ test('brand payments split commission and ads into immutable receipts and suppor
   ).toBeVisible();
   await expect(page.locator('.metrics')).toContainText('৳15,000.00');
   await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  const dateLedger = page.getByRole('region', {
+    name: 'Date-wise payment ledger',
+  });
+  const billRow = dateLedger.locator('[data-bill-date="2026-10-27"]');
+  await expect(billRow.locator('.numeric')).toHaveText([
+    '৳15,000.00',
+    '৳22,000.00',
+    '৳0.00',
+    '৳0.00',
+    '৳15,000.00',
+    '৳22,000.00',
+  ]);
   const size = page.viewportSize();
   for (const width of testInfo.project.name === 'desktop'
     ? [1440, 1024, 768]
@@ -120,6 +132,11 @@ test('brand payments split commission and ads into immutable receipts and suppor
             .getAnimations()
             .some((animation) => animation instanceof CSSTransition),
       );
+      await dateLedger.scrollIntoViewIfNeeded();
+      expect(await contrastFailures(page)).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`date-ledger-${theme}-${String(width)}.png`),
+      });
       await page.locator('.receipt-composer').scrollIntoViewIfNeeded();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
@@ -131,6 +148,13 @@ test('brand payments split commission and ads into immutable receipts and suppor
     }
   }
   if (size) await page.setViewportSize(size);
+  await billRow
+    .getByRole('button', { name: 'Pay this date', exact: true })
+    .click();
+  await expect(page.getByLabel('Bills to pay', { exact: true })).toHaveValue(
+    '2026-10-27',
+  );
+  await page.getByLabel('Payment date', { exact: true }).fill('2026-10-28');
   await page
     .getByLabel(`Received for ${invoice.invoiceNumber}`, { exact: true })
     .fill('4000');
@@ -148,6 +172,7 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await expect(page.locator('.invoice-final')).toContainText('৳10,000.00');
   await expect(page.locator('.invoice-document')).toContainText('৳11,000.00');
   await expect(page.locator('.invoice-document')).toContainText('৳16,000.00');
+  await expect(page.locator('.invoice-meta')).toContainText('28 Oct 2026');
   const signature = await page
     .getByRole('img', { name: 'Authorized signature', exact: true })
     .boundingBox();
@@ -179,6 +204,14 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await page
     .getByRole('button', { name: 'Back to brand account', exact: true })
     .click();
+  await expect(billRow.locator('.numeric')).toHaveText([
+    '৳15,000.00',
+    '৳22,000.00',
+    '৳4,000.00',
+    '৳6,000.00',
+    '৳11,000.00',
+    '৳16,000.00',
+  ]);
   await page
     .getByLabel(`Received for ${invoice.invoiceNumber}`, { exact: true })
     .fill('500');
@@ -233,9 +266,139 @@ test('brand payments split commission and ads into immutable receipts and suppor
     .click();
   await expect(page.locator('.metrics')).toContainText('৳14,500.00');
   await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  await expect(billRow.locator('.numeric')).toHaveText([
+    '৳15,000.00',
+    '৳22,000.00',
+    '৳500.00',
+    '৳0.00',
+    '৳14,500.00',
+    '৳22,000.00',
+  ]);
   await expect(
     page.getByRole('region', { name: 'Payment receipt history' }),
   ).toContainText('Reversed');
+});
+
+test('date ledger paginates and filters bills, and date-specific payments do not affect other dates', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120000);
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const brandResponse = await page.request.post('/api/manage/brands', {
+    headers,
+    data: {
+      name: `Date ledger ${testInfo.project.name} ${String(Date.now())}`,
+      makingCost: 0,
+    },
+  });
+  const brandId = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await brandResponse.json()).item.id;
+  const invoices: { id: string; invoiceNumber: string }[] = [];
+  for (let day = 1; day <= 21; day++) {
+    const response = await page.request.post('/api/manage/advertising', {
+      headers,
+      data: {
+        brandId,
+        date: `2026-10-${String(day).padStart(2, '0')}`,
+        period: `Daily advertising ${String(day)}`,
+        campaigns: [{ name: 'Campaign', amount: 1000000 }],
+      },
+    });
+    expect(response.status()).toBe(201);
+    const id = z.object({ id: z.string() }).parse(await response.json()).id;
+    const item = z
+      .object({ item: z.object({ id: z.string(), invoiceNumber: z.string() }) })
+      .parse(
+        await (await page.request.get(`/api/manage/advertising/${id}`)).json(),
+      ).item;
+    invoices.push(item);
+  }
+  const latest = invoices.at(-1),
+    oldest = invoices[0];
+  if (!latest || !oldest) throw new Error('Date fixtures missing');
+  await page.goto(`/payments/brand/${brandId}`);
+  const ledger = page.getByRole('region', { name: 'Date-wise payment ledger' });
+  await expect(ledger.locator('tbody tr')).toHaveCount(20);
+  await expect(ledger.locator('tbody tr').first()).toHaveAttribute(
+    'data-bill-date',
+    '2026-10-21',
+  );
+  await ledger.getByRole('button', { name: 'Next dates', exact: true }).click();
+  await expect(ledger.locator('tbody tr')).toHaveCount(1);
+  await expect(ledger.locator('tbody tr').first()).toHaveAttribute(
+    'data-bill-date',
+    '2026-10-01',
+  );
+  await page.getByLabel('Find bill date', { exact: true }).fill('2026-10-21');
+  await expect(ledger.locator('tbody tr')).toHaveCount(1);
+  await ledger
+    .getByRole('button', { name: 'Pay this date', exact: true })
+    .click();
+  await expect(page.getByLabel('Bills to pay', { exact: true })).toHaveValue(
+    '2026-10-21',
+  );
+  await expect(page.locator('.receipt-allocation')).toHaveCount(1);
+  await page
+    .getByLabel(`Received for ${latest.invoiceNumber}`, { exact: true })
+    .fill('400');
+  await page
+    .getByLabel('Bills to pay', { exact: true })
+    .selectOption('2026-10-01');
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(page.getByLabel('Bills to pay', { exact: true })).toHaveValue(
+    '2026-10-21',
+  );
+  await expect(
+    page.getByLabel(`Received for ${latest.invoiceNumber}`, { exact: true }),
+  ).toHaveValue('400');
+  await page
+    .getByLabel('Bills to pay', { exact: true })
+    .selectOption('2026-10-01');
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Change bill date', exact: true })
+    .click();
+  await expect(
+    page.getByLabel(`Received for ${oldest.invoiceNumber}`, { exact: true }),
+  ).toHaveValue('');
+  await page
+    .getByLabel(`Received for ${oldest.invoiceNumber}`, { exact: true })
+    .fill('250');
+  await page
+    .getByRole('button', {
+      name: 'Record payment & create receipt',
+      exact: true,
+    })
+    .click();
+  await expect(page.locator('.invoice-final')).toContainText('৳250.00');
+  await expect(page.locator('.invoice-document')).toContainText(
+    oldest.invoiceNumber,
+  );
+  await expect(page.locator('.invoice-document')).not.toContainText(
+    latest.invoiceNumber,
+  );
+  await page
+    .getByRole('button', { name: 'Back to brand account', exact: true })
+    .click();
+  await page.getByLabel('Find bill date', { exact: true }).fill('2026-10-21');
+  await expect(ledger.locator('[data-label="Ads paid"]')).toHaveText('৳0.00');
+  await expect(ledger.locator('[data-label="Ads due"]')).toHaveText(
+    '৳1,100.00',
+  );
+  await page.getByLabel('Find bill date', { exact: true }).fill('2026-10-01');
+  await expect(ledger.locator('[data-label="Ads paid"]')).toHaveText('৳250.00');
+  await expect(ledger.locator('[data-label="Ads due"]')).toHaveText('৳850.00');
+  await page.getByLabel('Find bill date', { exact: true }).fill('2026-09-01');
+  await expect(ledger).toContainText('No bills for this date');
+  await ledger
+    .getByRole('button', { name: 'Show all dates', exact: true })
+    .click();
+  await expect(ledger.locator('tbody tr')).toHaveCount(20);
 });
 
 test('daily advertising save button stays compact and aligned at every breakpoint', async ({

@@ -2067,6 +2067,119 @@ article.invoice-advertising {
 .payments-workspace > h2 {
   margin-bottom: 24px;
 }
+.payment-date-ledger {
+  container-type: inline-size;
+  margin-bottom: 24px;
+}
+.payment-date-ledger .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.payment-date-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.payment-date-filter .field {
+  width: min(100%, 220px);
+  margin: 0;
+}
+.payment-date-table {
+  min-width: 960px;
+}
+.payment-date-table th,
+.payment-date-table td {
+  padding: 14px 12px;
+}
+.payment-date-table .numeric,
+.payment-date-action {
+  white-space: nowrap;
+}
+.payment-date-identity {
+  min-width: 130px;
+}
+.receipt-composer {
+  scroll-margin-top: 24px;
+}
+@container (max-width: 700px) {
+  .payment-date-ledger .section-heading {
+    flex-direction: column;
+    align-items: start;
+    gap: 8px;
+  }
+  .payment-date-ledger .pagination-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .payment-date-ledger .pagination-actions span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    text-align: center;
+  }
+  .payment-date-ledger .pagination-actions button {
+    justify-self: start;
+  }
+  .payment-date-ledger .pagination-actions button:last-child {
+    justify-self: end;
+  }
+  .payment-date-ledger > .table-scroll {
+    overflow: visible;
+    margin: 0;
+  }
+  .payment-date-table,
+  .payment-date-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .payment-date-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .payment-date-table tbody {
+    display: grid;
+    gap: 16px;
+  }
+  .payment-date-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .payment-date-table td {
+    display: block;
+    padding: 0;
+    min-width: 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .payment-date-table td::before {
+    content: attr(data-label) / '';
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .payment-date-identity,
+  .payment-date-action {
+    grid-column: 1 / -1;
+  }
+  .payment-date-table .payment-date-action {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+}
 .receipt-allocation-group {
   border-top: 1px solid var(--line);
   padding-top: 16px;

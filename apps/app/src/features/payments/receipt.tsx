@@ -181,6 +181,7 @@ export function ReceiptView({
                   <td>
                     {line.invoiceNumber}
                     <small>{line.period}</small>
+                    <small>Bill date {dateLabel(line.date)}</small>
                   </td>
                   <td>
                     {line.kind === 'commission' ? 'Commission' : 'Advertising'}
