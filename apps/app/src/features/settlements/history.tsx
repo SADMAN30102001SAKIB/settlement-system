@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { StatusSelect } from '../../components/status-select';
 import type { z } from 'zod';
 import { paymentStatus } from '@settlement/domain/payments';
 
@@ -380,11 +381,22 @@ export function History({
                         {status.balance < 0 ? <small>Advance</small> : null}
                       </td>
                       <td data-label="Status">
-                        <span
-                          className={`status status-${status.status.toLowerCase().replace('/', '')}`}
-                        >
-                          {status.status}
-                        </span>
+                        <StatusSelect
+                          kind="settlement"
+                          id={item.id}
+                          label={`Status for ${item.invoiceNumber}`}
+                          value={item.statusOverride ?? status.status}
+                          manual={item.statusOverride !== null}
+                          onSaved={(value) => {
+                            setItems((rows) =>
+                              rows.map((row) =>
+                                row.id === item.id
+                                  ? { ...row, statusOverride: value }
+                                  : row,
+                              ),
+                            );
+                          }}
+                        />
                       </td>
                       <td data-label="Actions" className="ledger-actions">
                         <InvoiceRowActions

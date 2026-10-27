@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { StatusSelect } from '../../components/status-select';
+import { invoiceStatusSchema } from '../../../shared/invoice-status';
 import { z } from 'zod';
 import { api, adDetailSchema, okSchema } from '../../lib/api';
 import type { Brand, Settings } from '../../lib/api';
@@ -28,6 +30,7 @@ const ledgerSchema = z.object({
       date: z.string(),
       period: z.string(),
       total: z.number().int(),
+      statusOverride: invoiceStatusSchema.nullable(),
       paid: z.number().int(),
       revision: z.number().int(),
     }),
@@ -227,9 +230,30 @@ export function AdvertisingLedger({
                     {money(item.paid)}
                   </td>
                   <td data-label="Status">
-                    <span className="invoice-status">
-                      {paymentStatus(item.total, item.paid).status}
-                    </span>
+                    <StatusSelect
+                      kind="ads"
+                      id={item.id}
+                      label={`Status for ${item.invoiceNumber}`}
+                      value={
+                        item.statusOverride ??
+                        paymentStatus(item.total, item.paid).status
+                      }
+                      manual={item.statusOverride !== null}
+                      onSaved={(value) => {
+                        setData((current) =>
+                          current
+                            ? {
+                                ...current,
+                                items: current.items.map((row) =>
+                                  row.id === item.id
+                                    ? { ...row, statusOverride: value }
+                                    : row,
+                                ),
+                              }
+                            : current,
+                        );
+                      }}
+                    />
                   </td>
                   <td data-label="Actions" className="ledger-actions">
                     <InvoiceRowActions

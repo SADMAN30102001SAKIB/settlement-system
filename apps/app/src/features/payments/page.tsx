@@ -21,6 +21,9 @@ import {
 import { dateLabel, money } from '../../lib/format';
 import { ReceiptComposer } from './composer';
 import { ReceiptView } from './receipt';
+import { StatusSelect } from '../../components/status-select';
+import { receiptStampStatus } from '../../../shared/receipts';
+import { stampStatusSchema } from '../../../shared/invoice-status';
 
 const cursorSchema = z.object({ before: z.string(), beforeId: z.string() });
 type Cursor = z.infer<typeof cursorSchema> | null;
@@ -357,7 +360,7 @@ export function Payments({
                   Could not load receipt history. Use Reload balances to retry.
                 </p>
               ) : (
-                <SkeletonTable rows={3} columns={6} />
+                <SkeletonTable rows={3} columns={7} />
               )
             ) : (
               <div className="table-scroll">
@@ -368,7 +371,8 @@ export function Payments({
                       <th>Commission received</th>
                       <th>Advertising received</th>
                       <th>Total received</th>
-                      <th>Status</th>
+                      <th>Receipt state</th>
+                      <th>Stamp status</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -397,10 +401,37 @@ export function Payments({
                         <td className="numeric" data-label="Total received">
                           {money(row.total)}
                         </td>
-                        <td data-label="Status">
+                        <td data-label="Receipt state">
                           <span className="invoice-status">
                             {row.reversedAt === null ? 'Recorded' : 'Reversed'}
                           </span>
+                        </td>
+                        <td data-label="Stamp status">
+                          <StatusSelect
+                            kind="receipt"
+                            id={row.id}
+                            label={`Stamp status for ${row.number}`}
+                            value={receiptStampStatus(row)}
+                            disabled={row.reversedAt !== null}
+                            onSaved={(value) => {
+                              setList((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      items: current.items.map((item) =>
+                                        item.id === row.id
+                                          ? {
+                                              ...item,
+                                              stampStatus:
+                                                stampStatusSchema.parse(value),
+                                            }
+                                          : item,
+                                      ),
+                                    }
+                                  : current,
+                              );
+                            }}
+                          />
                         </td>
                         <td className="ledger-actions" data-label="Action">
                           <button
@@ -416,7 +447,7 @@ export function Payments({
                     ))}
                     {!list.items.length ? (
                       <tr>
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           No receipts recorded for this brand yet.
                         </td>
                       </tr>

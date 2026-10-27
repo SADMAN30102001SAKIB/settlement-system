@@ -12,12 +12,19 @@ export function ImageUpload({
   onChange,
   onPendingChange,
 }: {
-  kind: 'proof' | 'watermark' | 'signature';
+  kind:
+    | 'proof'
+    | 'watermark'
+    | 'signature'
+    | 'stamp-paid'
+    | 'stamp-unpaid'
+    | 'stamp-due';
   currentId: string | null;
   onChange: (id: string | null) => Promise<void>;
   onPendingChange?: (pending: boolean) => void;
 }) {
   const confirm = useConfirmation();
+  const kindLabel = kind.startsWith('stamp-') ? `${kind.slice(6)} stamp` : kind;
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [removeBackground, setRemoveBackground] = useState(false);
@@ -54,7 +61,7 @@ export function ImageUpload({
       }
       const saved = z.object({ id: z.string() }).parse(payload);
       await onChange(saved.id);
-      if (currentId !== null)
+      if (currentId !== null && !kind.startsWith('stamp-'))
         await api(`/manage/files/${currentId}`, okSchema, {
           method: 'DELETE',
           body: {},
@@ -98,13 +105,16 @@ export function ImageUpload({
           target="_blank"
           rel="noreferrer"
         >
-          <img src={`/api/manage/files/${currentId}`} alt={`${kind} preview`} />
+          <img
+            src={`/api/manage/files/${currentId}`}
+            alt={`${kindLabel} preview`}
+          />
         </a>
       ) : (
-        <p className="muted">No custom {kind} image.</p>
+        <p className="muted">No custom {kindLabel} image.</p>
       )}
       <Field
-        label={`${currentId ? 'Replace' : 'Upload'} ${kind} (PNG, JPEG or WebP)`}
+        label={`${currentId ? 'Replace' : 'Upload'} ${kindLabel} (PNG, JPEG or WebP)`}
       >
         <FilePicker
           accept="image/png,image/jpeg,image/webp"
@@ -116,7 +126,7 @@ export function ImageUpload({
           }}
         />
       </Field>
-      {kind !== 'proof' ? (
+      {kind === 'watermark' || kind === 'signature' ? (
         <>
           <label className="check-field">
             <input

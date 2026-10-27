@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { stampStatusSchema } from './invoice-status';
 
 const amount = z.number().int();
 export const categorySchema = z.enum(['commission', 'ads']);
@@ -69,6 +70,7 @@ export const receiptSchema = z.object({
   reversedAt: amount.nullable(),
   reversalReason: z.string().nullable(),
   proofFileId: z.string().nullable(),
+  stampStatus: stampStatusSchema.nullable(),
   data: receiptDataSchema,
 });
 export const receiptListSchema = z.object({
@@ -77,3 +79,10 @@ export const receiptListSchema = z.object({
 });
 export type PaymentAccount = z.infer<typeof paymentAccountSchema>;
 export type PaymentReceipt = z.infer<typeof receiptSchema>;
+
+export function receiptStampStatus(item: PaymentReceipt) {
+  return (
+    item.stampStatus ??
+    (item.data.commissionAfter + item.data.adsAfter > 0 ? 'Due' : 'Paid')
+  );
+}

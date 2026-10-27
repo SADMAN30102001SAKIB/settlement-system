@@ -7,10 +7,11 @@ import { z } from 'zod';
 import type { AppEnvironment } from '../environment';
 import { id } from '../validation';
 import defaultImages from './default-images.json';
+import { stampKinds } from '../../shared/invoice-status';
 
 async function storeImage(
   context: Context<AppEnvironment>,
-  kind: 'proof' | 'watermark' | 'signature',
+  kind: 'proof' | 'watermark' | 'signature' | (typeof stampKinds)[number],
   filename: string,
   data: ArrayBuffer,
 ) {
@@ -40,7 +41,13 @@ async function storeImage(
           .set({
             ...(kind === 'watermark'
               ? { watermarkFileId: key }
-              : { signatureFileId: key }),
+              : kind === 'signature'
+                ? { signatureFileId: key }
+                : kind === 'stamp-paid'
+                  ? { paidStampFileId: key }
+                  : kind === 'stamp-unpaid'
+                    ? { unpaidStampFileId: key }
+                    : { dueStampFileId: key }),
             updatedAt: Date.now(),
           })
           .where(eq(settings.id, 1)),
@@ -150,7 +157,7 @@ export const fileRoutes = new Hono<AppEnvironment>()
   })
   .post('/:kind', async (context) => {
     const kind = z
-      .enum(['proof', 'watermark', 'signature'])
+      .enum(['proof', 'watermark', 'signature', ...stampKinds])
       .parse(context.req.param('kind'));
     const filename = z
       .string()

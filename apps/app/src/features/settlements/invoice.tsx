@@ -5,6 +5,8 @@ import { calculateAdvertising } from '@settlement/domain/advertising';
 import type { AdInvoice, Report, Settings } from '../../lib/api';
 import { dateLabel, money } from '../../lib/format';
 import { Alert, ErrorMessage, PageHeading, Spinner } from '../../components/ui';
+import { InvoiceStamp } from '../../components/invoice-stamp';
+import { paymentStatus } from '@settlement/domain/payments';
 
 export function Invoice({
   report,
@@ -184,6 +186,16 @@ export function Invoice({
             <strong>{report.invoiceNumber}</strong>
             <p>{report.brandName}</p>
           </div>
+          <InvoiceStamp
+            status={
+              report.statusOverride ??
+              paymentStatus(
+                'campaigns' in report ? report.total : report.commission,
+                report.paid,
+              ).status
+            }
+            settings={settings}
+          />
           <div>
             <small>REPORT DATE</small>
             <strong>{dateLabel(report.date)}</strong>

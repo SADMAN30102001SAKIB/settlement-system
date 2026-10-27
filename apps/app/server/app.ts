@@ -14,6 +14,7 @@ import { advertisingRoutes } from './advertising/routes';
 import { businessRoutes } from './business/routes';
 import { fileRoutes } from './files/routes';
 import { receiptRoutes } from './receipts/routes';
+import { invoiceStatusRoutes } from './invoice-status/routes';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -39,7 +40,7 @@ export const app = new Hono<AppEnvironment>()
         });
       if (
         !(
-          /^\/api\/manage\/files\/(proof|watermark|signature)$/.test(
+          /^\/api\/manage\/files\/(proof|watermark|signature|stamp-paid|stamp-unpaid|stamp-due)$/.test(
             context.req.path,
           ) && context.req.method === 'POST'
         ) &&
@@ -59,6 +60,7 @@ export const app = new Hono<AppEnvironment>()
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)
   .route('/api/manage/receipts', receiptRoutes)
+  .route('/api/manage/invoice-status', invoiceStatusRoutes)
   .route('/api/manage/advertising', advertisingRoutes)
   .route('/api/manage/business', businessRoutes)
   .route('/api/manage/files', fileRoutes)

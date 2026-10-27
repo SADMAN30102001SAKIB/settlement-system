@@ -10,18 +10,45 @@ export function InvoiceRowActions({
   pending: boolean;
   onAction: (action: 'View' | 'Edit' | 'Payment' | 'PDF' | 'Delete') => void;
 }) {
+  const paths = {
+    View: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+    Edit: 'm15 4 5 5M4 20l5-1L21 7a2.1 2.1 0 0 0-5-3L4 16l-1 5Z',
+    Payment: 'M3 7h17v13H3V7Zm0 0V4h15v3m-3 5h6v5h-6v-5Zm3 2v1',
+    PDF: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
+    Delete: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
+  };
   return (
     <div className="invoice-row-actions">
       {(['View', 'Edit', 'Payment', 'PDF', 'Delete'] as const).map((action) => (
         <button
           key={action}
-          className={`secondary compact ${action === 'Delete' ? 'danger-text' : ''}`}
+          className={`secondary compact invoice-icon-action ${action === 'Delete' ? 'danger-text' : ''}`}
+          aria-label={action}
+          data-tooltip={
+            action === 'PDF'
+              ? 'Download PDF'
+              : action === 'Payment'
+                ? 'Record payment'
+                : action
+          }
           disabled={pending}
           onClick={() => {
             onAction(action);
           }}
         >
-          {action}
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d={paths[action]} />
+          </svg>
         </button>
       ))}
     </div>

@@ -9,6 +9,7 @@ import {
 import type { PaymentReceipt } from '../../shared/receipts';
 import { date, id, money } from '../validation';
 import { loadPaymentAccount } from './account';
+import { stampStatusSchema } from '../../shared/invoice-status';
 
 export const receiptInput = z
   .object({
@@ -20,6 +21,7 @@ export const receiptInput = z
     reference: z.string().trim().max(100),
     note: z.string().trim().max(200),
     proofFileId: id.nullable().default(null),
+    stampStatus: stampStatusSchema.optional(),
     allocations: z
       .array(
         z
@@ -46,7 +48,7 @@ export async function receiptById(
   const row = await db
     .prepare(
       `SELECT id,number,brand_id AS brandId,date,total,proof_file_id AS proofFileId,
-    created_at AS createdAt,reversed_at AS reversedAt,reversal_reason AS reversalReason,data FROM payment_receipts WHERE id=?`,
+    created_at AS createdAt,reversed_at AS reversedAt,reversal_reason AS reversalReason,stamp_status AS stampStatus,data FROM payment_receipts WHERE id=?`,
     )
     .bind(key)
     .first();
@@ -182,8 +184,8 @@ export async function createReceipt(
     db
       .prepare(
         `INSERT INTO payment_receipts
-    (id,number,brand_id,date,request_hash,data,total,proof_file_id,created_at)
-    VALUES (?,?,?,?,?,?,CASE WHEN (SELECT payment_version FROM brands WHERE id=?)=? THEN ? ELSE -1 END,?,?)`,
+    (id,number,brand_id,date,request_hash,data,total,proof_file_id,created_at,stamp_status)
+    VALUES (?,?,?,?,?,?,CASE WHEN (SELECT payment_version FROM brands WHERE id=?)=? THEN ? ELSE -1 END,?,?,?)`,
       )
       .bind(
         input.requestId,
@@ -197,6 +199,8 @@ export async function createReceipt(
         total,
         input.proofFileId,
         now,
+        input.stampStatus ??
+          (data.commissionAfter + data.adsAfter > 0 ? 'Due' : 'Paid'),
       ),
   ];
   const entries = JSON.stringify(

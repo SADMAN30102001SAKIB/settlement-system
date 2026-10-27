@@ -14,6 +14,10 @@ import {
 import { useConfirmation } from '../../components/confirmation-context';
 import { dateLabel, money } from '../../lib/format';
 import { downloadDocument } from '../../lib/pdf';
+import { InvoiceStamp } from '../../components/invoice-stamp';
+import { StatusSelect } from '../../components/status-select';
+import { receiptStampStatus } from '../../../shared/receipts';
+import { stampStatusSchema } from '../../../shared/invoice-status';
 
 export function ReceiptView({
   item,
@@ -85,6 +89,21 @@ export function ReceiptView({
         }
       />
       <div className="actions no-print">
+        <Field label="Receipt stamp status">
+          <StatusSelect
+            kind="receipt"
+            id={item.id}
+            label="Receipt stamp status"
+            value={receiptStampStatus(item)}
+            disabled={pending || item.reversedAt !== null}
+            onSaved={(status) => {
+              onChanged({
+                ...item,
+                stampStatus: stampStatusSchema.parse(status),
+              });
+            }}
+          />
+        </Field>
         <button
           className="primary"
           disabled={pending}
@@ -145,6 +164,7 @@ export function ReceiptView({
             <strong>{item.number}</strong>
             <p>{data.brandName}</p>
           </div>
+          <InvoiceStamp status={receiptStampStatus(item)} settings={settings} />
           <div>
             <small>PAYMENT DATE</small>
             <strong>{dateLabel(item.date)}</strong>

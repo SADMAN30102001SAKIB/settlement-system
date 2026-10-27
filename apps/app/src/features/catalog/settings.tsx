@@ -230,6 +230,35 @@ export function Settings({
             </article>
           </div>
         </section>
+        <section className="panel invoice-stamp-settings">
+          <h2>Payment status stamps</h2>
+          <p className="muted">
+            Upload transparent artwork for Paid, Unpaid and Due. These stamps
+            are used on invoices and payment receipts. Advance and N/A have no
+            stamp. Replacing artwork updates PDFs using that status; previous
+            files remain in Private files.
+          </p>
+          <div className="invoice-images-grid">
+            {(
+              [
+                ['stamp-paid', 'Paid', settings.paidStampFileId],
+                ['stamp-unpaid', 'Unpaid', settings.unpaidStampFileId],
+                ['stamp-due', 'Due', settings.dueStampFileId],
+              ] as const
+            ).map(([kind, label, currentId]) => (
+              <article className="invoice-image-card" key={kind}>
+                <h3>{label} stamp</h3>
+                <ImageUpload
+                  kind={kind}
+                  currentId={currentId}
+                  onChange={async () => {
+                    await refresh();
+                  }}
+                />
+              </article>
+            ))}
+          </div>
+        </section>
       </div>
     </>
   );

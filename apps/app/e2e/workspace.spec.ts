@@ -33,6 +33,44 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+async function uploadStamps(page: Page) {
+  await page.goto('/settings');
+  for (const kind of ['paid', 'unpaid', 'due']) {
+    const source = join(
+      '..',
+      '..',
+      'assets',
+      'stamps',
+      `${kind}-transparent.png`,
+    );
+    const buffer = existsSync(source)
+      ? readFileSync(source)
+      : Buffer.from(
+          await page.evaluate((label) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 150;
+            const drawing = canvas.getContext('2d');
+            if (!drawing) throw new Error('Canvas unavailable');
+            drawing.strokeStyle = drawing.fillStyle =
+              label === 'paid' ? '#0034ac' : '#cc0000';
+            drawing.lineWidth = 8;
+            drawing.strokeRect(8, 8, 284, 134);
+            drawing.font = 'bold 50px sans-serif';
+            drawing.fillText(label.toUpperCase(), 22, 95);
+            return canvas.toDataURL('image/png').split(',')[1] ?? '';
+          }, kind),
+          'base64',
+        );
+    await page
+      .getByLabel(new RegExp(`^(Upload|Replace) ${kind} stamp`))
+      .setInputFiles({ name: `${kind}.png`, mimeType: 'image/png', buffer });
+    await expect(
+      page.getByRole('img', { name: `${kind} stamp preview`, exact: true }),
+    ).toBeVisible();
+  }
+}
+
 test('brand payments split commission and ads into immutable receipts and support audited reversal', async ({
   page,
 }, testInfo) => {
@@ -51,6 +89,7 @@ test('brand payments split commission and ads into immutable receipts and suppor
       page.getByRole('img', { name: `${kind} preview` }),
     ).toBeVisible();
   }
+  await uploadStamps(page);
   const headers = { Origin: 'http://127.0.0.1:5174' },
     brandName = `Receipts ${testInfo.project.name} ${String(Date.now())}`;
   const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
@@ -100,7 +139,81 @@ test('brand payments split commission and ads into immutable receipts and suppor
     .parse(
       await (await page.request.get(`/api/manage/advertising/${adId}`)).json(),
     ).item;
+  for (const [route, number, kind] of [
+    ['/settlements', invoice.invoiceNumber, 'settlement'],
+    ['/advertising', adInvoice.invoiceNumber, 'advertising'],
+  ] as const) {
+    await page.goto(route);
+    const status = page.getByLabel(`Status for ${number}`, { exact: true });
+    await expect(status.locator('option')).toHaveText([
+      'Unpaid',
+      'Paid',
+      'Due',
+      'Advance',
+      'N/A',
+    ]);
+    const row = page.locator('tr').filter({ has: status });
+    const actions = await row
+      .locator('.invoice-row-actions button')
+      .evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return {
+            top: box.top,
+            text: button.textContent.trim(),
+            label: button.getAttribute('aria-label'),
+          };
+        }),
+      );
+    expect(new Set(actions.map((action) => action.top)).size).toBe(1);
+    expect(actions.every((action) => action.text === '' && action.label)).toBe(
+      true,
+    );
+    for (const choice of ['Unpaid', 'Due', 'Advance', 'N/A', 'Paid']) {
+      await status.selectOption(choice);
+      await expect(status).toHaveValue(choice);
+      await row.getByRole('button', { name: 'View', exact: true }).click();
+      const dialog = page.locator('.invoice-dialog');
+      await expect(dialog).toBeVisible();
+      if (['Paid', 'Unpaid', 'Due'].includes(choice)) {
+        await expect(
+          dialog.getByRole('img', { name: `${choice} stamp`, exact: true }),
+        ).toBeVisible();
+      } else await expect(dialog.locator('.invoice-stamp')).toHaveCount(0);
+      if (choice === 'Paid') {
+        const download = page.waitForEvent('download');
+        await dialog
+          .getByRole('button', { name: 'Download PDF', exact: true })
+          .click();
+        await (
+          await download
+        ).saveAs(testInfo.outputPath(`${kind}-paid-stamp.pdf`));
+        await page.screenshot({
+          path: testInfo.outputPath(`${kind}-paid-stamp.png`),
+        });
+      }
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    }
+    await page.reload();
+    await expect(status).toHaveValue('Paid');
+  }
   await page.goto('/payments');
+  if (testInfo.project.name === 'mobile')
+    await page
+      .getByRole('button', { name: 'Toggle navigation', exact: true })
+      .click();
+  const navigation = page.locator('.sidebar');
+  await expect(
+    navigation.getByRole('link', { name: /Payments/ }),
+  ).toContainText('06');
+  await expect(
+    navigation.getByRole('link', { name: /Business tracking/ }),
+  ).toContainText('07');
+  await expect(
+    navigation.getByRole('link', { name: /Private files/ }),
+  ).toContainText('08');
+  if (testInfo.project.name === 'mobile')
+    await navigation.getByRole('link', { name: /Payments/ }).click();
   await page.getByLabel('Payment brand account').selectOption(brand.id);
   await expect(
     page.getByRole('heading', { name: `${brandName} account`, exact: true }),
@@ -164,12 +277,34 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await page.getByLabel('Payment method').selectOption('Bank transfer');
   await page.getByLabel('Transaction reference').fill('BANK-VERIFY-1');
   await page
+    .getByLabel('Receipt stamp status', { exact: true })
+    .selectOption('Unpaid');
+  await page
     .getByRole('button', {
       name: 'Record payment & create receipt',
       exact: true,
     })
     .click();
   await expect(page.locator('.invoice-final')).toContainText('৳10,000.00');
+  await expect(
+    page.getByRole('img', { name: 'Unpaid stamp', exact: true }),
+  ).toBeVisible();
+  await page.emulateMedia({ media: 'print' });
+  expect(
+    await page.evaluate(() => {
+      const stampBox = document
+        .querySelector('.invoice-stamp')
+        ?.getBoundingClientRect();
+      const metaBox = document
+        .querySelector('.invoice-meta')
+        ?.getBoundingClientRect();
+      if (!stampBox || !metaBox) throw new Error('Printed stamp missing');
+      return Math.abs(
+        stampBox.x + stampBox.width / 2 - metaBox.x - metaBox.width / 2,
+      );
+    }),
+  ).toBeLessThan(1);
+  await page.emulateMedia({ media: null });
   await expect(page.locator('.invoice-document')).toContainText('৳11,000.00');
   await expect(page.locator('.invoice-document')).toContainText('৳16,000.00');
   await expect(page.locator('.invoice-meta')).toContainText('28 Oct 2026');
@@ -485,7 +620,9 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   const row = ledger.getByRole('row').filter({
     has: page.getByRole('button', { name: item.invoiceNumber, exact: true }),
   });
-  await expect(row.getByText('Unpaid', { exact: true })).toBeVisible();
+  await expect(row.getByLabel(`Status for ${item.invoiceNumber}`)).toHaveValue(
+    'Unpaid',
+  );
   const initialSize = page.viewportSize();
   for (const width of testInfo.project.name === 'desktop'
     ? [1535, 1280, 768]
@@ -539,7 +676,9 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   await expect(dialog.getByText(/Paid ৳100/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(row.locator('[data-label="Balance"]')).toHaveText('৳50.00');
-  await expect(row.getByText('Due', { exact: true })).toBeVisible();
+  await expect(row.getByLabel(`Status for ${item.invoiceNumber}`)).toHaveValue(
+    'Due',
+  );
   const downloadEvent = page.waitForEvent('download');
   await row.getByRole('button', { name: 'PDF', exact: true }).click();
   const download = await downloadEvent;
@@ -1253,7 +1392,10 @@ test('layouts stay balanced across desktop, tablet and narrow mobile screens', a
             20,
           );
         }
-        await expect(page.locator('.invoice-image-card')).toHaveCount(2);
+        await expect(page.locator('.invoice-image-card')).toHaveCount(5);
+        await expect(
+          page.locator('.invoice-stamp-settings .invoice-image-card'),
+        ).toHaveCount(3);
       } else if (route === 'files') {
         await expect(
           page.locator('.files-table tbody tr').first(),

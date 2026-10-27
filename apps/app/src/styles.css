@@ -1101,6 +1101,9 @@ strong {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
+.invoice-stamp-settings .invoice-images-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+}
 .invoice-image-card {
   min-width: 0;
   padding: 20px;
@@ -1812,9 +1815,107 @@ article.invoice-advertising {
   margin: 4px 0 9px;
 }
 .invoice-row-actions {
-  display: grid;
-  grid-template-columns: repeat(3, max-content);
+  display: flex;
+  flex-wrap: nowrap;
   gap: 6px;
+}
+.invoice-icon-action {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 !important;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+}
+.invoice-icon-action::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: 6px;
+  padding: 6px 9px;
+  white-space: nowrap;
+  font-size: 11px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.invoice-icon-action:is(:hover, :focus-visible)::after {
+  opacity: 1;
+}
+.status-control {
+  min-width: 110px;
+}
+.status-control select {
+  min-height: 40px;
+  padding: 8px 28px 8px 10px;
+  font-size: 12px;
+}
+.status-control small {
+  font-size: 10px;
+}
+.invoice-meta {
+  position: relative;
+}
+.invoice-meta:has(.invoice-stamp) > div {
+  width: calc(50% - 85px);
+  overflow-wrap: anywhere;
+}
+.invoice-stamp {
+  position: absolute;
+  width: 145px;
+  height: 74px;
+  object-fit: contain;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+@media (max-width: 680px) {
+  .invoice-icon-action {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+  .invoice-meta:has(.invoice-stamp) {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .invoice-meta:has(.invoice-stamp) > div {
+    width: calc(50% - 10px);
+  }
+  .invoice-meta .invoice-stamp {
+    position: static;
+    transform: none;
+    order: 1;
+    margin: 0 auto;
+  }
+}
+@media print {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .invoice-meta:has(.invoice-stamp) {
+    flex-wrap: nowrap;
+  }
+  .invoice-meta:has(.invoice-stamp) > div {
+    width: calc(50% - 85px);
+  }
+  .invoice-meta .invoice-stamp {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    order: 0;
+  }
 }
 .advertising-ledger,
 .receipt-ledger,

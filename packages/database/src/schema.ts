@@ -68,7 +68,15 @@ export const files = sqliteTable(
     mime: text().notNull(),
     size: integer().notNull(),
     kind: text({
-      enum: ['proof', 'courier', 'watermark', 'signature'],
+      enum: [
+        'proof',
+        'courier',
+        'watermark',
+        'signature',
+        'stamp-paid',
+        'stamp-unpaid',
+        'stamp-due',
+      ],
     }).notNull(),
     createdAt: integer('created_at').notNull(),
   },
@@ -94,6 +102,15 @@ export const settings = sqliteTable(
       onDelete: 'set null',
     }),
     signatureFileId: text('signature_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    paidStampFileId: text('paid_stamp_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    unpaidStampFileId: text('unpaid_stamp_file_id').references(() => files.id, {
+      onDelete: 'set null',
+    }),
+    dueStampFileId: text('due_stamp_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),
     updatedAt: integer('updated_at').notNull(),
@@ -335,6 +352,7 @@ export const paymentReceipts = sqliteTable(
     createdAt: integer('created_at').notNull(),
     reversedAt: integer('reversed_at'),
     reversalReason: text('reversal_reason'),
+    stampStatus: text('stamp_status', { enum: ['Paid', 'Unpaid', 'Due'] }),
   },
   (table) => [
     index('receipts_brand_date_idx').on(table.brandId, table.date, table.id),
@@ -343,6 +361,33 @@ export const paymentReceipts = sqliteTable(
     check(
       'receipts_reversal_valid',
       sql`${table.reversedAt} IS NULL OR (${table.reversedAt} >= 0 AND length(${table.reversalReason}) > 0)`,
+    ),
+  ],
+);
+
+export const invoiceStatuses = sqliteTable(
+  'invoice_statuses',
+  {
+    id: text().primaryKey(),
+    settlementId: text('settlement_id')
+      .unique()
+      .references(() => settlements.id, { onDelete: 'cascade' }),
+    adInvoiceId: text('ad_invoice_id')
+      .unique()
+      .references(() => adInvoices.id, { onDelete: 'cascade' }),
+    status: text({
+      enum: ['Unpaid', 'Paid', 'Due', 'Advance', 'N/A'],
+    }).notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    check(
+      'invoice_status_one_target',
+      sql`(${table.settlementId} IS NOT NULL) + (${table.adInvoiceId} IS NOT NULL) = 1`,
+    ),
+    check(
+      'invoice_status_valid',
+      sql`${table.status} IN ('Unpaid','Paid','Due','Advance','N/A')`,
     ),
   ],
 );

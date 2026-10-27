@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { invoiceStatusSchema } from '../../shared/invoice-status';
 
 const integer = z.number().int();
 export const brandSchema = z.object({
@@ -16,9 +17,13 @@ export const settingsSchema = z.object({
   agencyBasisPoints: integer,
   watermarkFileId: z.string().nullable(),
   signatureFileId: z.string().nullable(),
+  paidStampFileId: z.string().nullable(),
+  unpaidStampFileId: z.string().nullable(),
+  dueStampFileId: z.string().nullable(),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export const reportSchema = z.object({
+  statusOverride: invoiceStatusSchema.nullable(),
   id: z.string(),
   invoiceNumber: z.string(),
   brandId: z.string(),
@@ -64,6 +69,7 @@ const reportRowSchema = reportSchema
     net: true,
     commission: true,
     revision: true,
+    statusOverride: true,
   })
   .extend({ paid: integer });
 export type ReportRow = z.infer<typeof reportRowSchema>;
@@ -78,6 +84,7 @@ export const paymentSchema = z.object({
 export type Payment = z.infer<typeof paymentSchema>;
 const campaignSchema = z.object({ name: z.string(), amount: integer });
 const adSummarySchema = z.object({
+  statusOverride: invoiceStatusSchema.nullable(),
   id: z.string(),
   invoiceNumber: z.string(),
   date: z.string(),

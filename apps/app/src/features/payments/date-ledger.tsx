@@ -137,7 +137,11 @@ export function PaymentDateLedger({
                       Pay this date
                     </button>
                   ) : (
-                    <span className="invoice-status">Settled</span>
+                    <span className="invoice-status">
+                      {row.commission.billed + row.ads.billed > 0
+                        ? 'Paid'
+                        : 'Nothing due'}
+                    </span>
                   )}
                 </td>
               </tr>

@@ -81,6 +81,8 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
     await migrate('0005_lying_patch.sql');
     await migrate('0006_receipt_guards.sql');
     await migrate('0007_receipt_history_guards.sql');
+    await migrate('0008_classy_miss_america.sql');
+    await migrate('0009_stamp-file-cleanup.sql');
     expect(
       (await db.prepare('SELECT vat_added_to_agency FROM settlements').all())
         .results,

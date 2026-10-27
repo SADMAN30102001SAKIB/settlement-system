@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { AppEnvironment } from '../environment';
 import { date, id, money } from '../validation';
 import { loadPaymentAccount } from './account';
+import { stampStatusSchema } from '../../shared/invoice-status';
 import {
   createReceipt,
   existingReceipt,
@@ -75,7 +76,7 @@ export const receiptRoutes = new Hono<AppEnvironment>()
     const records = page.length
       ? await c.env.DB.prepare(
           `SELECT id,number,brand_id AS brandId,date,total,proof_file_id AS proofFileId,
-      created_at AS createdAt,reversed_at AS reversedAt,reversal_reason AS reversalReason,data FROM payment_receipts
+      created_at AS createdAt,reversed_at AS reversedAt,reversal_reason AS reversalReason,stamp_status AS stampStatus,data FROM payment_receipts
       WHERE id IN (SELECT value FROM json_each(?)) ORDER BY date DESC,id DESC`,
         )
           .bind(JSON.stringify(page.map((r) => r.id)))
@@ -98,6 +99,24 @@ export const receiptRoutes = new Hono<AppEnvironment>()
     if (!item)
       throw new HTTPException(404, { message: 'Payment receipt not found.' });
     return c.json({ item });
+  })
+  .put('/:id/stamp', async (c) => {
+    const key = id.parse(c.req.param('id'));
+    const input = z
+      .object({ status: stampStatusSchema })
+      .strict()
+      .parse(await c.req.json<unknown>());
+    const row = await c.env.DB.prepare(
+      'UPDATE payment_receipts SET stamp_status=? WHERE id=? AND reversed_at IS NULL RETURNING id',
+    )
+      .bind(input.status, key)
+      .first();
+    if (!row)
+      throw new HTTPException(409, {
+        message:
+          'Receipt not found or already reversed. Reversed receipts cannot be changed.',
+      });
+    return c.json({ ok: true });
   })
   .post('/', async (c) => {
     const input = receiptInput.parse(await c.req.json<unknown>());

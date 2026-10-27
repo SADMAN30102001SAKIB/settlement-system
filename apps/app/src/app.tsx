@@ -368,9 +368,9 @@ export function App() {
             ['/settings', 'Invoice settings', '03'],
             ['/notes', 'Notes & progress', '04'],
             ['/advertising', 'Advertising', '05'],
-            ['/payments', 'Payments', '08'],
-            ['/business', 'Business tracking', '06'],
-            ['/files', 'Private files', '07'],
+            ['/payments', 'Payments', '06'],
+            ['/business', 'Business tracking', '07'],
+            ['/files', 'Private files', '08'],
           ].map(([href, label, marker]) => (
             <a
               key={href}

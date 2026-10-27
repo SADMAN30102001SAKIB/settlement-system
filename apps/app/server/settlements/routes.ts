@@ -23,6 +23,7 @@ import { z } from 'zod';
 
 import type { AppEnvironment } from '../environment';
 import { date, id, range, revision, settlementFields } from '../validation';
+import { settlementStatus } from '../invoice-status/routes';
 
 const listQuery = range.safeExtend({
   before: date.optional(),
@@ -84,6 +85,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
           commission: settlements.commission,
           revision: settlements.revision,
           paid: paidTotal,
+          statusOverride: settlementStatus,
         })
         .from(settlements)
         .where(pageFilters)
@@ -127,6 +129,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       .select({
         ...getTableColumns(settlements),
         paid: paidTotal,
+        statusOverride: settlementStatus,
       })
       .from(settlements)
       .where(eq(settlements.id, key))
@@ -184,7 +187,10 @@ export const settlementRoutes = new Hono<AppEnvironment>()
         updatedAt: now,
       })
       .returning();
-    return context.json({ item: { ...item, paid: 0 } }, 201);
+    return context.json(
+      { item: { ...item, paid: 0, statusOverride: null } },
+      201,
+    );
   })
   .put('/:id', async (context) => {
     const key = id.parse(context.req.param('id'));
@@ -197,6 +203,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
         rule: settlements.rule,
         deductShipping: settlements.deductShipping,
         vatAddedToAgency: settlements.vatAddedToAgency,
+        statusOverride: settlementStatus,
       })
       .from(settlements)
       .where(eq(settlements.id, key))
@@ -241,7 +248,13 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       .select({ paid: sql<number>`COALESCE(SUM(${payments.amount}), 0)` })
       .from(payments)
       .where(eq(payments.settlementId, key));
-    return context.json({ item: { ...item, paid: paymentTotal?.paid ?? 0 } });
+    return context.json({
+      item: {
+        ...item,
+        paid: paymentTotal?.paid ?? 0,
+        statusOverride: existing.statusOverride,
+      },
+    });
   })
   .delete('/:id', async (context) => {
     const key = id.parse(context.req.param('id'));

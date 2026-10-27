@@ -15,6 +15,7 @@ import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
 import { PaymentDateLedger } from './date-ledger';
+import { stampStatusSchema } from '../../../shared/invoice-status';
 
 export function ReceiptComposer({
   account,
@@ -29,6 +30,9 @@ export function ReceiptComposer({
     [uploading, setUploading] = useState(false),
     [error, setError] = useState('');
   const [proof, setProof] = useState<string | null>(null);
+  const [stamp, setStamp] = useState<ReturnType<
+    typeof stampStatusSchema.parse
+  > | null>(null);
   const [billDate, setBillDate] = useState('');
   const dateSelect = useRef<HTMLSelectElement>(null);
   const confirm = useConfirmation();
@@ -165,6 +169,17 @@ export function ReceiptComposer({
                   reference: formText(form, 'reference'),
                   note: formText(form, 'note'),
                   proofFileId: proof,
+                  stampStatus:
+                    stamp ??
+                    (commission + ads === 0
+                      ? 'Unpaid'
+                      : account.commission.due +
+                            account.ads.due -
+                            commission -
+                            ads >
+                          0
+                        ? 'Due'
+                        : 'Paid'),
                   allocations,
                 },
               })
@@ -268,6 +283,33 @@ export function ReceiptComposer({
               return Promise.resolve();
             }}
           />
+          <Field
+            label="Receipt stamp status"
+            hint="Controls the stamp only. It does not change the money received or remaining balances."
+          >
+            <select
+              value={
+                stamp ??
+                (commission + ads === 0
+                  ? 'Unpaid'
+                  : account.commission.due +
+                        account.ads.due -
+                        commission -
+                        ads >
+                      0
+                    ? 'Due'
+                    : 'Paid')
+              }
+              disabled={pending}
+              onChange={(event) => {
+                setStamp(stampStatusSchema.parse(event.target.value));
+              }}
+            >
+              {stampStatusSchema.options.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </Field>
           {error ? <Alert>{error}</Alert> : null}
           <button
             className="primary"

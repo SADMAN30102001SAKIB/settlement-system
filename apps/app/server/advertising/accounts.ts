@@ -3,6 +3,7 @@ import { createDatabase } from '@settlement/database';
 import { allocateBrandPayments } from '@settlement/domain/payments';
 import { inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { advertisingStatus } from '../invoice-status/routes';
 
 export async function advertisingAccounts(
   binding: D1Database,
@@ -18,6 +19,7 @@ export async function advertisingAccounts(
         date: adInvoices.date,
         period: adInvoices.period,
         total: adInvoices.total,
+        statusOverride: advertisingStatus,
         revision: adInvoices.revision,
         createdAt: adInvoices.createdAt,
         directPaid: sql<number>`COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.ad_invoice_id = ad_invoices.id), 0)`,

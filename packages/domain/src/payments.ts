@@ -13,7 +13,7 @@ export function paymentStatus(total: number, paid: number) {
   const paidAmount = toPaisaPrecision(paid);
   if (paidAmount < 0) throw new RangeError('Payments cannot be negative.');
   const balance = assertMoney(payable - paidAmount);
-  const status =
+  const status: 'Unpaid' | 'Paid' | 'Due' | 'Advance' | 'N/A' =
     paidAmount === 0
       ? payable <= 0
         ? 'N/A'

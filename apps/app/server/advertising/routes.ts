@@ -19,6 +19,7 @@ import {
   like,
 } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { advertisingStatus } from '../invoice-status/routes';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 
@@ -63,6 +64,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
         date: adInvoices.date,
         period: adInvoices.period,
         total: adInvoices.total,
+        statusOverride: advertisingStatus,
         revision: adInvoices.revision,
       })
       .from(adInvoices)
@@ -169,7 +171,10 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
     const key = id.parse(context.req.param('id'));
     const database = context.get('database')();
     const [item] = await database
-      .select(getTableColumns(adInvoices))
+      .select({
+        ...getTableColumns(adInvoices),
+        statusOverride: advertisingStatus,
+      })
       .from(adInvoices)
       .where(eq(adInvoices.id, key))
       .limit(1);

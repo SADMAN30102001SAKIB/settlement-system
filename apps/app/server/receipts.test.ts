@@ -24,6 +24,176 @@ beforeAll(async () => {
 afterAll(async () => {
   await fixture.runtime.dispose();
 });
+
+it('persists all five invoice labels without changing financial records or locking receipt-backed metadata', async () => {
+  const source = await seed();
+  const before = await account(source.brandId);
+  const receipt = await create(await inputFor(source));
+  const current = await account(source.brandId);
+  for (const status of ['Unpaid', 'Paid', 'Due', 'Advance', 'N/A']) {
+    for (const [kind, id] of [
+      ['settlement', source.settlementId],
+      ['ads', source.adId],
+    ] as const) {
+      expect(
+        (
+          await request(`/api/manage/invoice-status/${kind}/${id}`, 'PUT', {
+            status,
+          })
+        ).status,
+      ).toBe(200);
+    }
+    const settlement = await request(
+      `/api/manage/settlements/${source.settlementId}`,
+    );
+    expect(
+      z
+        .object({ item: z.object({ statusOverride: z.string() }) })
+        .parse(await settlement.json()).item.statusOverride,
+    ).toBe(status);
+    const ad = await request(`/api/manage/advertising/${source.adId}`);
+    expect(
+      z
+        .object({ item: z.object({ statusOverride: z.string() }) })
+        .parse(await ad.json()).item.statusOverride,
+    ).toBe(status);
+    expect(await account(source.brandId)).toEqual(current);
+  }
+  expect(before.version).toBeLessThan(current.version);
+  const snapshot = z
+    .object({ item: receiptSchema })
+    .parse(
+      await (await request(`/api/manage/receipts/${receipt.id}`)).json(),
+    ).item;
+  expect(snapshot.data).toEqual(receipt.data);
+  expect(
+    (
+      await request(
+        `/api/manage/invoice-status/ads/${crypto.randomUUID()}`,
+        'PUT',
+        { status: 'Paid' },
+      )
+    ).status,
+  ).toBe(404);
+  expect(
+    (
+      await request(`/api/manage/invoice-status/ads/${source.adId}`, 'PUT', {
+        status: 'Unknown',
+      })
+    ).status,
+  ).toBe(422);
+  expect(
+    (
+      await request(`/api/manage/invoice-status/ads/${source.adId}`, 'PUT', {
+        status: 'Paid',
+        total: 0,
+      })
+    ).status,
+  ).toBe(422);
+}, 15000);
+
+it('saves a separate receipt stamp choice without changing allocations, receipt state or historical figures', async () => {
+  const source = await seed(),
+    input = await inputFor(source);
+  const receipt = await create({ ...input, stampStatus: 'Unpaid' });
+  expect(receipt.stampStatus).toBe('Unpaid');
+  const balances = await account(source.brandId);
+  for (const status of ['Paid', 'Unpaid', 'Due']) {
+    expect(
+      (
+        await request(`/api/manage/receipts/${receipt.id}/stamp`, 'PUT', {
+          status,
+        })
+      ).status,
+    ).toBe(200);
+    const updated = z
+      .object({ item: receiptSchema })
+      .parse(
+        await (await request(`/api/manage/receipts/${receipt.id}`)).json(),
+      ).item;
+    expect(updated.stampStatus).toBe(status);
+    expect(updated.data).toEqual(receipt.data);
+    expect(updated.total).toBe(receipt.total);
+    expect(updated.reversedAt).toBeNull();
+    expect(await account(source.brandId)).toEqual(balances);
+  }
+  for (const status of ['Advance', 'N/A', 'Recorded', 'Reversed']) {
+    expect(
+      (
+        await request(`/api/manage/receipts/${receipt.id}/stamp`, 'PUT', {
+          status,
+        })
+      ).status,
+    ).toBe(422);
+  }
+  expect(
+    (
+      await request(`/api/manage/receipts/${receipt.id}/reverse`, 'POST', {
+        reason: 'Correction test',
+        version: balances.version,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/manage/receipts/${receipt.id}/stamp`, 'PUT', {
+        status: 'Paid',
+      })
+    ).status,
+  ).toBe(409);
+}, 15000);
+
+it('uploads, replaces and deletes private stamp artwork without breaking settings references', async () => {
+  const bytes = Uint8Array.from(
+    atob(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+    ),
+    (char) => char.charCodeAt(0),
+  );
+  for (const kind of ['paid', 'unpaid', 'due']) {
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const response = await app.request(
+        `/api/manage/files/stamp-${kind}`,
+        {
+          method: 'POST',
+          headers: {
+            Origin: 'http://localhost',
+            Cookie: cookie,
+            'Content-Type': 'application/octet-stream',
+            'X-File-Name': `${kind}.png`,
+          },
+          body: bytes,
+        },
+        fixture.env,
+      );
+      expect(response.status).toBe(201);
+      ids.push(z.object({ id: z.string() }).parse(await response.json()).id);
+    }
+    const previous = ids[0],
+      current = ids[1];
+    if (!previous || !current) throw new Error('Missing uploaded stamp');
+    const settings = await (await request('/api/manage/settings')).json();
+    expect(
+      z.object({ item: z.record(z.string(), z.unknown()) }).parse(settings)
+        .item[`${kind}StampFileId`],
+    ).toBe(current);
+    expect((await request(`/api/manage/files/${previous}`)).status).toBe(200);
+    expect(
+      (await request(`/api/manage/files/${previous}`, 'DELETE', {})).status,
+    ).toBe(200);
+    expect(
+      (await request(`/api/manage/files/${current}`, 'DELETE', {})).status,
+    ).toBe(200);
+    const updated = z
+      .object({ item: z.record(z.string(), z.unknown()) })
+      .parse(await (await request('/api/manage/settings')).json());
+    expect(updated.item[`${kind}StampFileId`]).toBeNull();
+  }
+  expect(
+    (await fixture.env.DB.prepare('PRAGMA foreign_key_check').all()).results,
+  ).toHaveLength(0);
+}, 15000);
 function request(path: string, method = 'GET', body?: unknown) {
   return app.request(
     path,
