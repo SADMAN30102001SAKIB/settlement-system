@@ -244,7 +244,7 @@ export function Business({ brands }: { brands: Brand[] }) {
               }}
             />
           </Field>
-          <button className="primary" disabled={pending}>
+          <button className="primary form-submit" disabled={pending}>
             {pending ? (
               <>
                 <Spinner size={12} /> Saving…
@@ -310,7 +310,7 @@ export function Business({ brands }: { brands: Brand[] }) {
               ))}
             </select>
           </Field>
-          <button className="secondary" disabled={loading}>
+          <button className="secondary form-submit" disabled={loading}>
             Apply filters
           </button>
         </form>

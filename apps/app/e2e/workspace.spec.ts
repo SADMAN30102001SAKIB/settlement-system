@@ -33,6 +33,45 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+test('daily advertising save button stays compact and aligned at every breakpoint', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto('/business');
+  for (const width of testInfo.project.name === 'desktop'
+    ? [1440, 1024, 768]
+    : [390, 360]) {
+    await page.setViewportSize({ width, height: 900 });
+    const button = page.getByRole('button', {
+      name: 'Save daily ad spend',
+      exact: true,
+    });
+    await button.scrollIntoViewIfNeeded();
+    const box = await button.boundingBox();
+    const input = await page.getByLabel('Total ads spend (৳)').boundingBox();
+    if (!box || !input) throw new Error('Daily advertising controls missing');
+    expect(box.height).toBeLessThanOrEqual(52);
+    expect(box.height).toBeGreaterThanOrEqual(40);
+    expect(box.width).toBeLessThan(260);
+    const filterButton = await page
+      .getByRole('button', { name: 'Apply filters', exact: true })
+      .boundingBox();
+    if (!filterButton) throw new Error('Daily summary filter button missing');
+    expect(filterButton.height).toBeLessThanOrEqual(52);
+    expect(filterButton.width).toBeLessThan(260);
+    if (width > 680)
+      expect(
+        Math.abs(box.y + box.height - input.y - input.height),
+      ).toBeLessThan(2);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await page.screenshot({
+      path: testInfo.outputPath(`daily-button-${String(width)}.png`),
+    });
+  }
+});
+
 test('all-brand ledger provides direct view, edit, payment, PDF and safe delete actions', async ({
   page,
 }, testInfo) => {

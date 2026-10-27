@@ -732,6 +732,11 @@ strong {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 22px;
 }
+.form-submit {
+  align-self: end;
+  justify-self: start;
+  margin-bottom: 20px;
+}
 .check-field {
   display: flex;
   align-items: center;
