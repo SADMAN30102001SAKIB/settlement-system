@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { api, adDetailSchema, okSchema } from '../../lib/api';
 import type { Brand, Settings } from '../../lib/api';
@@ -12,8 +12,10 @@ import {
 import { useConfirmation } from '../../components/confirmation-context';
 import { dateLabel, money, formText } from '../../lib/format';
 import { paymentStatus } from '@settlement/domain/payments';
-import { Invoice } from '../settlements/invoice';
-import { PaymentsPanel } from '../payments/panel';
+import {
+  InvoiceActionDialog,
+  InvoiceRowActions,
+} from '../settlements/ledger-actions';
 
 const cursorSchema = z.object({ before: z.string(), beforeId: z.string() });
 const ledgerSchema = z.object({
@@ -64,7 +66,6 @@ export function AdvertisingLedger({
     null,
   );
   const [mode, setMode] = useState<'view' | 'pdf' | 'payment'>('view');
-  const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const controller = new AbortController();
     const query = new URLSearchParams();
@@ -88,10 +89,6 @@ export function AdvertisingLedger({
       controller.abort();
     };
   }, [filters, cursor, version]);
-  useEffect(() => {
-    if (detail) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [detail]);
   async function open(id: string, action: typeof mode) {
     setPending(true);
     setError('');
@@ -235,39 +232,29 @@ export function AdvertisingLedger({
                     </span>
                   </td>
                   <td data-label="Actions" className="ledger-actions">
-                    <div className="invoice-row-actions">
-                      {(
-                        ['View', 'Edit', 'Payment', 'PDF', 'Delete'] as const
-                      ).map((action) => (
-                        <button
-                          key={action}
-                          className={`secondary compact ${action === 'Delete' ? 'danger-text' : ''}`}
-                          disabled={pending}
-                          onClick={() => {
-                            if (action === 'Edit') {
-                              navigate(`/advertising/${item.id}/edit`);
-                              return;
-                            }
-                            const task =
-                              action === 'Delete'
-                                ? remove(item)
-                                : open(
-                                    item.id,
-                                    action === 'Payment'
-                                      ? 'payment'
-                                      : action === 'PDF'
-                                        ? 'pdf'
-                                        : 'view',
-                                  );
-                            task.catch((reason: unknown) => {
-                              setError(ErrorMessage(reason));
-                            });
-                          }}
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
+                    <InvoiceRowActions
+                      pending={pending}
+                      onAction={(action) => {
+                        if (action === 'Edit') {
+                          navigate(`/advertising/${item.id}/edit`);
+                          return;
+                        }
+                        const task =
+                          action === 'Delete'
+                            ? remove(item)
+                            : open(
+                                item.id,
+                                action === 'Payment'
+                                  ? 'payment'
+                                  : action === 'PDF'
+                                    ? 'pdf'
+                                    : 'view',
+                              );
+                        task.catch((reason: unknown) => {
+                          setError(ErrorMessage(reason));
+                        });
+                      }}
+                    />
                   </td>
                 </tr>
               ))}
@@ -311,68 +298,30 @@ export function AdvertisingLedger({
           Next invoices
         </button>
       </div>
-      <dialog
-        ref={dialog}
-        className="business-dialog invoice-dialog"
-        onCancel={() => {
+      <InvoiceActionDialog
+        detail={detail}
+        mode={mode}
+        settings={settings}
+        onClose={() => {
           setDetail(null);
         }}
-      >
-        <header className="business-dialog-heading">
-          <h2>
-            {mode === 'payment' ? 'Record invoice payment' : 'Invoice preview'}
-          </h2>
-          <button
-            className="secondary compact"
-            onClick={() => {
-              setDetail(null);
-            }}
-          >
-            Close
-          </button>
-        </header>
-        {detail ? (
-          <div className="invoice-dialog-body">
-            {mode === 'payment' ? (
-              <PaymentsPanel
-                key={detail.item.id}
-                brandName={detail.item.brandName}
-                target={{ kind: 'ads', targetId: detail.item.id }}
-                total={detail.item.total}
-                paid={detail.item.paid}
-                payments={detail.payments}
-                refresh={async () => {
-                  setDetail(
-                    await api(
-                      `/manage/advertising/${detail.item.id}`,
-                      adDetailSchema,
-                    ),
-                  );
-                  await onChanged();
-                }}
-              />
-            ) : (
-              <Invoice
-                key={detail.item.id}
-                autoDownload={mode === 'pdf'}
-                report={detail.item}
-                settings={settings}
-                onBack={() => {
-                  setDetail(null);
-                }}
-                onEdit={() => {
-                  navigate(`/advertising/${detail.item.id}/edit`);
-                }}
-                onDelete={() => {
-                  remove({ ...detail.item }).catch((reason: unknown) => {
-                    setError(ErrorMessage(reason));
-                  });
-                }}
-              />
-            )}
-          </div>
-        ) : null}
-      </dialog>
+        onEdit={() => {
+          if (detail) navigate(`/advertising/${detail.item.id}/edit`);
+        }}
+        onDelete={() => {
+          if (detail)
+            remove(detail.item).catch((reason: unknown) => {
+              setError(ErrorMessage(reason));
+            });
+        }}
+        refresh={async () => {
+          if (!detail) return;
+          setDetail(
+            await api(`/manage/advertising/${detail.item.id}`, adDetailSchema),
+          );
+          await onChanged();
+        }}
+      />
     </section>
   );
 }

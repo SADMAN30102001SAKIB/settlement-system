@@ -492,6 +492,8 @@ export function App() {
           ) : (
             <History
               brands={brands}
+              settings={settings}
+              navigate={navigate}
               onNew={() => {
                 navigate('/settlements/new');
               }}

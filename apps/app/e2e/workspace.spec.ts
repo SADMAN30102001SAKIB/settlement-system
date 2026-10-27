@@ -69,6 +69,136 @@ test('daily advertising save button stays compact and aligned at every breakpoin
   }
 });
 
+test('settlement ledger provides responsive direct invoice actions and refreshes balances', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90000);
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const brandName = `Settlement actions ${testInfo.project.name} ${String(Date.now())}`;
+  const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
+    await (
+      await page.request.post('/api/manage/brands', {
+        headers,
+        data: { name: brandName, makingCost: 100000 },
+      })
+    ).json(),
+  ).item;
+  const created = await page.request.post('/api/manage/settlements', {
+    headers,
+    data: {
+      brandId: brand.id,
+      date: '2026-10-27',
+      period: 'Ledger actions verification',
+      deliveredQty: 2,
+      deliveredAmount: 1000000,
+      cancelledQty: 0,
+      cancelledAmount: 0,
+      partialQty: 0,
+      partialAmount: 0,
+      pendingQty: 0,
+      shipping: 0,
+      codCharge: 0,
+      ads: 0,
+      productCost: 0,
+      costPerPiece: null,
+      agencyBasisPoints: 1500,
+    },
+  });
+  expect(created.status()).toBe(201);
+  const item = z
+    .object({ item: z.object({ id: z.string(), invoiceNumber: z.string() }) })
+    .parse(await created.json()).item;
+  await page.goto('/settlements');
+  const ledger = page.getByRole('region', {
+    name: 'Settlement invoice ledger',
+    exact: true,
+  });
+  const row = ledger.getByRole('row').filter({
+    has: page.getByRole('button', { name: item.invoiceNumber, exact: true }),
+  });
+  await expect(row.getByText('Unpaid', { exact: true })).toBeVisible();
+  const initialSize = page.viewportSize();
+  for (const width of testInfo.project.name === 'desktop'
+    ? [1535, 1280, 768]
+    : [390, 360]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['light', 'dark']) {
+      await page.getByLabel('Color theme').selectOption(theme);
+      await row.scrollIntoViewIfNeeded();
+      await expect(row.locator('.ledger-identity')).toHaveCSS(
+        'white-space',
+        'nowrap',
+      );
+      expect(
+        await ledger
+          .locator('.table-scroll')
+          .evaluate((node) => node.scrollWidth - node.clientWidth),
+      ).toBeLessThanOrEqual(1);
+      const bounds = await row.boundingBox();
+      if (!bounds) throw new Error('Settlement row missing');
+      for (const action of await row
+        .locator('.invoice-row-actions button')
+        .all()) {
+        const box = await action.boundingBox();
+        if (!box) throw new Error('Settlement action missing');
+        expect(box.x + box.width).toBeLessThanOrEqual(
+          bounds.x + bounds.width + 1,
+        );
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `settlement-ledger-${theme}-${String(width)}.png`,
+        ),
+      });
+    }
+  }
+  if (initialSize) await page.setViewportSize(initialSize);
+  await row.getByRole('button', { name: 'View', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.invoice-final')).toContainText('৳150.00');
+  await expect(page).toHaveURL(/\/settlements$/);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await row.getByRole('button', { name: 'Payment', exact: true }).click();
+  await expect(dialog.locator('.payment-brand')).toContainText(brandName);
+  await dialog.getByLabel('Amount (৳)', { exact: true }).fill('100');
+  await dialog
+    .getByRole('button', { name: 'Record payment', exact: true })
+    .click();
+  await expect(dialog.getByText(/Paid ৳100/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(row.locator('[data-label="Balance"]')).toHaveText('৳50.00');
+  await expect(row.getByText('Due', { exact: true })).toBeVisible();
+  const downloadEvent = page.waitForEvent('download');
+  await row.getByRole('button', { name: 'PDF', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe(item.invoiceNumber + '.pdf');
+  await download.saveAs(testInfo.outputPath('settlement-ledger.pdf'));
+  await expect(page).toHaveURL(/\/settlements$/);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/settlements/${item.id}/edit$`));
+  await page.goto('/settlements');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete settlement', exact: true })
+    .click();
+  await expect(row).toHaveCount(0);
+  expect(
+    (await page.request.get(`/api/manage/settlements/${item.id}`)).status(),
+  ).toBe(404);
+});
+
 test('all-brand ledger provides direct view, edit, payment, PDF and safe delete actions', async ({
   page,
 }, testInfo) => {

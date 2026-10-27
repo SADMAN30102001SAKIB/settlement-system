@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { z } from 'zod';
 import { paymentStatus } from '@settlement/domain/payments';
 
 import {
@@ -13,19 +14,37 @@ import {
   SkeletonTable,
   Spinner,
 } from '../../components/ui';
-import { api, reportListSchema } from '../../lib/api';
-import type { Brand, ReportRow } from '../../lib/api';
+import {
+  api,
+  reportListSchema,
+  reportDetailSchema,
+  okSchema,
+} from '../../lib/api';
+import type { Brand, ReportRow, Settings } from '../../lib/api';
 import { dateLabel, money, today } from '../../lib/format';
+import { useConfirmation } from '../../components/confirmation-context';
+import { InvoiceActionDialog, InvoiceRowActions } from './ledger-actions';
 
 export function History({
   brands,
   onNew,
   onView,
+  settings,
+  navigate,
 }: {
   brands: Brand[];
   onNew: () => void;
   onView: (id: string) => void;
+  settings: Settings;
+  navigate: (path: string) => void;
 }) {
+  const confirm = useConfirmation();
+  const [detail, setDetail] = useState<z.infer<
+    typeof reportDetailSchema
+  > | null>(null);
+  const [mode, setMode] = useState<'view' | 'pdf' | 'payment'>('view');
+  const [actionPending, setActionPending] = useState(false);
+  const [revision, setRevision] = useState(0);
   const now = today();
   const [from, setFrom] = useState(`${now.slice(0, 7)}-01`);
   const [to, setTo] = useState(now);
@@ -90,7 +109,52 @@ export function History({
     return () => {
       controller.abort();
     };
-  }, [filters, cursor]);
+  }, [filters, cursor, revision]);
+  function refresh() {
+    setCursor(null);
+    setItems([]);
+    setNext(null);
+    setPending(true);
+    setRevision((value) => value + 1);
+  }
+  async function open(id: string, action: typeof mode) {
+    setActionPending(true);
+    setError('');
+    try {
+      const result = await api(`/manage/settlements/${id}`, reportDetailSchema);
+      setMode(action);
+      setDetail(result);
+    } catch (reason) {
+      setError(ErrorMessage(reason));
+    } finally {
+      setActionPending(false);
+    }
+  }
+  async function remove(item: ReportRow) {
+    if (
+      !(await confirm({
+        title: 'Delete settlement?',
+        message: `Permanently delete ${item.invoiceNumber} for ${item.brandName} and all of its payment records? This cannot be undone.`,
+        action: 'Delete settlement',
+        destructive: true,
+      }))
+    )
+      return;
+    setActionPending(true);
+    setError('');
+    try {
+      await api(`/manage/settlements/${item.id}`, okSchema, {
+        method: 'DELETE',
+        body: { revision: item.revision },
+      });
+      setDetail(null);
+      refresh();
+    } catch (reason) {
+      setError(ErrorMessage(reason));
+    } finally {
+      setActionPending(false);
+    }
+  }
   return (
     <>
       <PageHeading
@@ -158,7 +222,10 @@ export function History({
           ))}
         </dl>
       </section>
-      <section className="panel">
+      <section
+        className="panel settlement-ledger"
+        aria-label="Settlement invoice ledger"
+      >
         <div className="section-heading">
           <div>
             <h2>Settlement ledger</h2>
@@ -167,7 +234,7 @@ export function History({
           <span className="pill">BDT · ৳</span>
         </div>
         <form
-          className="filters"
+          className="filters form-grid ledger-filters"
           onSubmit={(event) => {
             event.preventDefault();
             if (from && to && from > to) {
@@ -225,7 +292,7 @@ export function History({
               }}
             />
           </Field>
-          <button className="secondary compact" disabled={pending}>
+          <button className="secondary compact form-submit" disabled={pending}>
             {pending ? (
               <>
                 <Spinner size={12} /> Loading…
@@ -264,7 +331,7 @@ export function History({
           </Empty>
         ) : (
           <div className="table-scroll">
-            <table>
+            <table className="invoice-ledger-table">
               <thead>
                 <tr>
                   <th>Invoice / Brand</th>
@@ -273,9 +340,7 @@ export function History({
                   <th className="numeric">Agency share</th>
                   <th className="numeric">Balance</th>
                   <th>Status</th>
-                  <th>
-                    <span className="sr-only">Action</span>
-                  </th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -283,7 +348,10 @@ export function History({
                   const status = paymentStatus(item.commission, item.paid);
                   return (
                     <tr key={item.id}>
-                      <td>
+                      <td
+                        data-label="Invoice / Brand"
+                        className="ledger-identity"
+                      >
                         <button
                           className="text-button"
                           onClick={() => {
@@ -294,34 +362,54 @@ export function History({
                         </button>
                         <small className="muted">{item.brandName}</small>
                       </td>
-                      <td>
+                      <td data-label="Report date" className="ledger-period">
                         {dateLabel(item.date)}
                         <small className="muted">{item.period}</small>
                       </td>
-                      <td className="numeric">{money(item.net)}</td>
-                      <td className="numeric emphasis">
+                      <td data-label="Net amount" className="numeric">
+                        {money(item.net)}
+                      </td>
+                      <td
+                        data-label="Agency share"
+                        className="numeric emphasis"
+                      >
                         {money(item.commission)}
                       </td>
-                      <td className="numeric">
+                      <td data-label="Balance" className="numeric">
                         {money(Math.abs(status.balance))}
                         {status.balance < 0 ? <small>Advance</small> : null}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <span
                           className={`status status-${status.status.toLowerCase().replace('/', '')}`}
                         >
                           {status.status}
                         </span>
                       </td>
-                      <td>
-                        <button
-                          className="secondary compact"
-                          onClick={() => {
-                            onView(item.id);
+                      <td data-label="Actions" className="ledger-actions">
+                        <InvoiceRowActions
+                          pending={actionPending}
+                          onAction={(action) => {
+                            if (action === 'Edit') {
+                              navigate(`/settlements/${item.id}/edit`);
+                              return;
+                            }
+                            const task =
+                              action === 'Delete'
+                                ? remove(item)
+                                : open(
+                                    item.id,
+                                    action === 'Payment'
+                                      ? 'payment'
+                                      : action === 'PDF'
+                                        ? 'pdf'
+                                        : 'view',
+                                  );
+                            task.catch((reason: unknown) => {
+                              setError(ErrorMessage(reason));
+                            });
                           }}
-                        >
-                          Open <span aria-hidden="true">↗</span>
-                        </button>
+                        />
                       </td>
                     </tr>
                   );
@@ -330,6 +418,38 @@ export function History({
             </table>
           </div>
         )}
+        {actionPending ? (
+          <p role="status">
+            <Spinner size={12} /> Updating invoice…
+          </p>
+        ) : null}
+        <InvoiceActionDialog
+          detail={detail}
+          mode={mode}
+          settings={settings}
+          onClose={() => {
+            setDetail(null);
+          }}
+          onEdit={() => {
+            if (detail) navigate(`/settlements/${detail.item.id}/edit`);
+          }}
+          onDelete={() => {
+            if (detail)
+              remove(detail.item).catch((reason: unknown) => {
+                setError(ErrorMessage(reason));
+              });
+          }}
+          refresh={async () => {
+            if (!detail) return;
+            setDetail(
+              await api(
+                `/manage/settlements/${detail.item.id}`,
+                reportDetailSchema,
+              ),
+            );
+            refresh();
+          }}
+        />
         {next ? (
           <div className="load-more">
             <button

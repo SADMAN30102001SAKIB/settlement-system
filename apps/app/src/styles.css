@@ -1816,7 +1816,8 @@ article.invoice-advertising {
   grid-template-columns: repeat(3, max-content);
   gap: 6px;
 }
-.advertising-ledger {
+.advertising-ledger,
+.settlement-ledger {
   container-type: inline-size;
 }
 .ledger-filters {
@@ -1830,6 +1831,7 @@ article.invoice-advertising {
 .ledger-filters .field,
 .ledger-filters .form-submit {
   margin: 0;
+  align-self: end;
 }
 .invoice-ledger-table {
   min-width: 1000px;
@@ -1841,6 +1843,9 @@ article.invoice-advertising {
 .invoice-ledger-table .ledger-identity {
   min-width: 165px;
   white-space: nowrap;
+}
+.invoice-ledger-table .ledger-identity small {
+  white-space: normal;
 }
 .invoice-ledger-table .ledger-brand {
   min-width: 120px;
@@ -1865,7 +1870,8 @@ article.invoice-advertising {
   .ledger-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .advertising-ledger > .table-scroll {
+  .advertising-ledger > .table-scroll,
+  .settlement-ledger > .table-scroll {
     overflow: visible;
     margin: 0;
   }
