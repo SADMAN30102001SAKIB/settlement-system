@@ -31,6 +31,9 @@ async function reverseLinkedReceipt(
   );
   if (!receipt) throw new Error('Expected an active linked receipt');
   await page.goto(`/payments/${receipt.id}`);
+  await expect(
+    page.getByRole('button', { name: 'Delete receipt', exact: true }),
+  ).toHaveCount(0);
   await page
     .getByLabel('Reversal reason')
     .fill('Reverse browser test payment before deleting source invoice');
@@ -767,6 +770,30 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   await (
     await historicalDownload
   ).saveAs(testInfo.outputPath('deleted-source-receipt.pdf'));
+  await page
+    .getByRole('button', { name: 'Delete receipt', exact: true })
+    .click();
+  await expect(page.getByRole('alertdialog')).toContainText(
+    'permanently removes',
+  );
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(
+    page.getByText('REVERSED — NOT AN ACTIVE PAYMENT', { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Delete receipt', exact: true })
+    .click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete receipt', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/payments\/brand\//);
+  expect(
+    (await page.request.get(`/api/manage/receipts/${receiptId}`)).status(),
+  ).toBe(404);
 });
 
 test('all-brand ledger provides direct view, edit, payment, PDF and safe delete actions', async ({
@@ -912,6 +939,34 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
       exact: true,
     }),
   ).toBeVisible();
+  const receiptInfo = z
+    .object({ item: z.object({ number: z.string() }) })
+    .parse(
+      await (
+        await page.request.get(`/api/manage/receipts/${receiptId}`)
+      ).json(),
+    );
+  await page
+    .getByRole('button', { name: 'Back to brand account', exact: true })
+    .click();
+  const history = page.getByRole('region', {
+    name: 'Payment receipt history',
+    exact: true,
+  });
+  const historyRow = history
+    .getByRole('row')
+    .filter({ hasText: receiptInfo.item.number });
+  await historyRow
+    .getByRole('button', { name: 'Delete receipt', exact: true })
+    .click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete receipt', exact: true })
+    .click();
+  await expect(historyRow).toHaveCount(0);
+  expect(
+    (await page.request.get(`/api/manage/receipts/${receiptId}`)).status(),
+  ).toBe(404);
 });
 
 test('admin can create a brand, save/edit a settlement, record payment, and export its invoice', async ({

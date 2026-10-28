@@ -92,6 +92,22 @@ export const app = new Hono<AppEnvironment>()
         },
         409,
       );
+    if (databaseMessage.includes('RECEIPT_DELETE_BLOCKED'))
+      return context.json(
+        {
+          error:
+            'Only reversed receipts without active payment allocations can be deleted. Reverse the receipt first.',
+        },
+        409,
+      );
+    if (databaseMessage.includes('RECEIPT_DELETED'))
+      return context.json(
+        {
+          error:
+            'This payment request belongs to a deleted receipt. Reload before recording a new payment.',
+        },
+        409,
+      );
     if (databaseMessage.includes('RECEIPT_PAYMENT_LOCKED'))
       return context.json(
         {

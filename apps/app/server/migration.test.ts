@@ -95,6 +95,8 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
       .run();
     const history = await db.prepare('SELECT * FROM receipt_lines').all();
     await migrate('0010_safe-receipt-invoice-deletion.sql');
+    await migrate('0011_chief_plazm.sql');
+    await migrate('0012_reversed-receipt-deletion-guards.sql');
     expect(
       (await db.prepare('SELECT * FROM receipt_lines').all()).results,
     ).toEqual(history.results);

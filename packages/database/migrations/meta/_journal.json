@@ -78,6 +78,20 @@
       "when": 1793173589447,
       "tag": "0010_safe-receipt-invoice-deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1793175027823,
+      "tag": "0011_chief_plazm",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793175029300,
+      "tag": "0012_reversed-receipt-deletion-guards",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,8 @@ import { ReceiptView } from './receipt';
 import { StatusSelect } from '../../components/status-select';
 import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
+import { useConfirmation } from '../../components/confirmation-context';
+import { deleteReceipt } from './delete-receipt';
 
 const cursorSchema = z.object({ before: z.string(), beforeId: z.string() });
 type Cursor = z.infer<typeof cursorSchema> | null;
@@ -143,6 +145,8 @@ export function Payments({
   settings: Settings;
   navigate: (path: string) => void;
 }) {
+  const confirm = useConfirmation();
+  const [deleting, setDeleting] = useState(false);
   const parts = path.split('/').filter(Boolean),
     brandId = parts[1] === 'brand' ? (parts[2] ?? '') : '',
     receiptId = parts[1] && parts[1] !== 'brand' ? parts[1] : '';
@@ -350,7 +354,7 @@ export function Payments({
                 <h2>Payment receipts</h2>
                 <p className="muted">
                   One receipt per payment, including partial payments. Reversed
-                  receipts remain in history.
+                  receipts remain in history unless you permanently delete them.
                 </p>
               </div>
             </div>
@@ -434,14 +438,42 @@ export function Payments({
                           />
                         </td>
                         <td className="ledger-actions" data-label="Action">
-                          <button
-                            className="secondary compact"
-                            onClick={() => {
-                              navigate(`/payments/${row.id}`);
-                            }}
-                          >
-                            View receipt
-                          </button>
+                          <div className="actions">
+                            <button
+                              className="secondary compact"
+                              onClick={() => {
+                                navigate(`/payments/${row.id}`);
+                              }}
+                            >
+                              View receipt
+                            </button>
+                            {row.reversedAt !== null ? (
+                              <button
+                                className="secondary compact danger-text"
+                                disabled={deleting}
+                                onClick={() => {
+                                  setDeleting(true);
+                                  setError('');
+                                  deleteReceipt(row, confirm)
+                                    .then((deleted) => {
+                                      if (deleted) {
+                                        setCursor(null);
+                                        setPrevious([]);
+                                        setVersion((v) => v + 1);
+                                      }
+                                    })
+                                    .catch((e: unknown) => {
+                                      setError(ErrorMessage(e));
+                                    })
+                                    .finally(() => {
+                                      setDeleting(false);
+                                    });
+                                }}
+                              >
+                                Delete receipt
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     ))}

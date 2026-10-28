@@ -85,10 +85,18 @@ export async function existingReceipt(
   hash: string,
 ) {
   const existing = await db
-    .prepare('SELECT request_hash AS hash FROM payment_receipts WHERE id=?')
-    .bind(key)
-    .first<{ hash: string }>();
+    .prepare(
+      `SELECT request_hash AS hash,0 AS deleted FROM payment_receipts WHERE id=?
+      UNION ALL SELECT NULL AS hash,1 AS deleted FROM deleted_receipt_requests WHERE id=?`,
+    )
+    .bind(key, key)
+    .first<{ hash: string | null; deleted: number }>();
   if (!existing) return null;
+  if (existing.deleted === 1)
+    throw new HTTPException(409, {
+      message:
+        'This payment request belongs to a deleted receipt. Reload before recording a new payment.',
+    });
   if (existing.hash !== hash)
     throw new HTTPException(409, {
       message:

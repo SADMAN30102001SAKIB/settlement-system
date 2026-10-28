@@ -18,6 +18,7 @@ import { InvoiceStamp } from '../../components/invoice-stamp';
 import { StatusSelect } from '../../components/status-select';
 import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
+import { deleteReceipt } from './delete-receipt';
 
 export function ReceiptView({
   item,
@@ -292,8 +293,8 @@ export function ReceiptView({
         <section className="panel no-print receipt-reversal">
           <h2>Correct a recorded payment</h2>
           <p className="muted">
-            Receipts are not overwritten or deleted. Reverse this receipt with a
-            reason, then record the corrected payment.
+            Reverse this receipt with a reason, then record the corrected
+            payment. Permanent deletion is available only after reversal.
           </p>
           <Field label="Reversal reason">
             <input
@@ -318,7 +319,36 @@ export function ReceiptView({
             Reverse receipt
           </button>
         </section>
-      ) : null}
+      ) : (
+        <section className="panel no-print receipt-reversal">
+          <h2>Delete reversed receipt</h2>
+          <p className="muted">
+            Its payment has already been reversed. Deleting this receipt
+            permanently erases its history without changing balances or deleting
+            invoices.
+          </p>
+          <button
+            className="secondary danger-text"
+            disabled={pending}
+            onClick={() => {
+              setPending(true);
+              setError('');
+              deleteReceipt(item, confirm)
+                .then((deleted) => {
+                  if (deleted) onBack();
+                })
+                .catch((e: unknown) => {
+                  setError(ErrorMessage(e));
+                })
+                .finally(() => {
+                  setPending(false);
+                });
+            }}
+          >
+            Delete receipt
+          </button>
+        </section>
+      )}
     </>
   );
 }

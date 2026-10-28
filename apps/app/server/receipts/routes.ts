@@ -194,6 +194,37 @@ export const receiptRoutes = new Hono<AppEnvironment>()
     });
     return c.json({ item: await createReceipt(c.env.DB, receipt, hash) }, 201);
   })
+  .delete('/:id', async (c) => {
+    const key = id.parse(c.req.param('id'));
+    const input = z
+      .object({ receiptNumber: z.string().min(1).max(60) })
+      .strict()
+      .parse(await c.req.json<unknown>());
+    const removed = await c.env.DB.prepare(
+      'DELETE FROM payment_receipts WHERE id=? AND number=? AND reversed_at IS NOT NULL RETURNING id',
+    )
+      .bind(key, input.receiptNumber)
+      .first();
+    if (removed) return c.json({ ok: true });
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM payment_receipts WHERE id=?',
+    )
+      .bind(key)
+      .first();
+    if (existing)
+      throw new HTTPException(409, {
+        message:
+          'Only reversed receipts can be deleted. Reverse this receipt first, or reload if its details changed.',
+      });
+    const deleted = await c.env.DB.prepare(
+      'SELECT id FROM deleted_receipt_requests WHERE id=?',
+    )
+      .bind(key)
+      .first();
+    if (!deleted)
+      throw new HTTPException(404, { message: 'Payment receipt not found.' });
+    return c.json({ ok: true });
+  })
   .post('/:id/reverse', async (c) => {
     const key = id.parse(c.req.param('id'));
     const input = z

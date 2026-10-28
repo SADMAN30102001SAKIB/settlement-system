@@ -194,6 +194,129 @@ it('uploads, replaces and deletes private stamp artwork without breaking setting
     (await fixture.env.DB.prepare('PRAGMA foreign_key_check').all()).results,
   ).toHaveLength(0);
 }, 15000);
+it('only deletes reversed receipts, preserves balances and blocks old payment retries', async () => {
+  const s = await seed(),
+    other = await seed(),
+    input = await inputFor(s);
+  const proofId = crypto.randomUUID();
+  await fixture.env.DB.prepare(
+    "INSERT INTO files (id,object_key,filename,mime,size,kind,created_at) VALUES (?,?,?,'image/png',100,'proof',1)",
+  )
+    .bind(proofId, proofId, 'receipt-proof.png')
+    .run();
+  const receipt = await create({ ...input, proofFileId: proofId });
+  const body = { receiptNumber: receipt.number };
+  const active = await account(s.brandId);
+  expect(
+    (await request(`/api/manage/receipts/${receipt.id}`, 'DELETE', body))
+      .status,
+  ).toBe(409);
+  await expect(
+    fixture.env.DB.prepare('DELETE FROM payment_receipts WHERE id=?')
+      .bind(receipt.id)
+      .run(),
+  ).rejects.toThrow('RECEIPT_DELETE_BLOCKED');
+  expect(await account(s.brandId)).toEqual(active);
+  const another = await create(await inputFor(other));
+  expect(
+    (
+      await request(`/api/manage/receipts/${receipt.id}/reverse`, 'POST', {
+        reason: 'Delete an incorrect test receipt',
+        version: active.version,
+      })
+    ).status,
+  ).toBe(200);
+  const before = await account(s.brandId),
+    untouched = await account(other.brandId);
+  expect(
+    (
+      await request(`/api/manage/receipts/${receipt.id}`, 'DELETE', {
+        receiptNumber: 'wrong',
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (await request(`/api/manage/receipts/${receipt.id}`, 'DELETE', {})).status,
+  ).toBe(422);
+  expect(
+    (await request(`/api/manage/receipts/${receipt.id}`, 'DELETE', body))
+      .status,
+  ).toBe(200);
+  expect(await account(s.brandId)).toEqual(before);
+  expect(await account(other.brandId)).toEqual(untouched);
+  expect((await request(`/api/manage/receipts/${another.id}`)).status).toBe(
+    200,
+  );
+  expect((await request(`/api/manage/receipts/${receipt.id}`)).status).toBe(
+    404,
+  );
+  expect(
+    (await request(`/api/manage/receipts/${receipt.id}`, 'DELETE', body))
+      .status,
+  ).toBe(200);
+  expect(
+    (
+      await request(
+        `/api/manage/receipts/${crypto.randomUUID()}`,
+        'DELETE',
+        body,
+      )
+    ).status,
+  ).toBe(404);
+  expect(
+    (
+      await fixture.env.DB.prepare(
+        'SELECT id FROM receipt_lines WHERE receipt_id=?',
+      )
+        .bind(receipt.id)
+        .all()
+    ).results,
+  ).toEqual([]);
+  expect(
+    await fixture.env.DB.prepare('SELECT id FROM files WHERE id=?')
+      .bind(proofId)
+      .first(),
+  ).toEqual({ id: proofId });
+  const marker = await fixture.env.DB.prepare(
+    'SELECT id FROM deleted_receipt_requests WHERE id=?',
+  )
+    .bind(receipt.id)
+    .first();
+  expect(marker).toEqual({ id: receipt.id });
+  expect(
+    (
+      await request('/api/manage/receipts', 'POST', {
+        ...input,
+        proofFileId: proofId,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request('/api/manage/receipts', 'POST', {
+        ...input,
+        proofFileId: proofId,
+        version: before.version,
+      })
+    ).status,
+  ).toBe(409);
+  await expect(
+    fixture.env.DB.prepare(
+      "INSERT INTO payment_receipts (id,number,brand_id,date,request_hash,data,total,created_at) VALUES (?,'RETRY',?,'2026-10-28','x','{}',10,1)",
+    )
+      .bind(receipt.id, s.brandId)
+      .run(),
+  ).rejects.toThrow('RECEIPT_DELETED');
+  expect(
+    (await request(`/api/manage/settlements/${s.settlementId}`)).status,
+  ).toBe(200);
+  expect((await request(`/api/manage/advertising/${s.adId}`)).status).toBe(200);
+  expect(await account(s.brandId)).toEqual(before);
+  expect(
+    (await fixture.env.DB.prepare('PRAGMA foreign_key_check').all()).results,
+  ).toEqual([]);
+}, 15000);
+
 function request(path: string, method = 'GET', body?: unknown) {
   return app.request(
     path,

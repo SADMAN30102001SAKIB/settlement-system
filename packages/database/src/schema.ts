@@ -365,6 +365,11 @@ export const paymentReceipts = sqliteTable(
   ],
 );
 
+export const deletedReceiptRequests = sqliteTable('deleted_receipt_requests', {
+  id: text().primaryKey(),
+  deletedAt: integer('deleted_at').notNull(),
+});
+
 export const invoiceStatuses = sqliteTable(
   'invoice_statuses',
   {
