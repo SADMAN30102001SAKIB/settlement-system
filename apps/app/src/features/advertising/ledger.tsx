@@ -14,6 +14,7 @@ import {
 import { useConfirmation } from '../../components/confirmation-context';
 import { dateLabel, money, formText } from '../../lib/format';
 import { paymentStatus } from '@settlement/domain/payments';
+import { confirmInvoiceDeletion } from '../settlements/delete-invoice';
 import {
   InvoiceActionDialog,
   InvoiceRowActions,
@@ -106,14 +107,7 @@ export function AdvertisingLedger({
     }
   }
   async function remove(item: z.infer<typeof ledgerSchema>['items'][number]) {
-    if (
-      !(await confirm({
-        title: 'Delete advertising invoice?',
-        message: `Delete ${item.invoiceNumber} for ${item.brandName} and its direct payments? Brand account payments will be reallocated to remaining invoices.`,
-        action: 'Delete invoice',
-        destructive: true,
-      }))
-    )
+    if (!(await confirmInvoiceDeletion('advertising', item, confirm, navigate)))
       return;
     setPending(true);
     setError('');

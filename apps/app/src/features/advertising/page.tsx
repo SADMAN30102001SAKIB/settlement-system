@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
+import { confirmInvoiceDeletion } from '../settlements/delete-invoice';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import { calculateAdvertising } from '@settlement/domain/advertising';
@@ -287,12 +288,12 @@ function Detail({
   async function remove() {
     if (
       data === null ||
-      !(await confirm({
-        title: 'Delete advertising invoice?',
-        message: `Delete ${data.item.invoiceNumber} and its direct payments? Account payments will be reallocated to the remaining invoices.`,
-        action: 'Delete invoice',
-        destructive: true,
-      }))
+      !(await confirmInvoiceDeletion(
+        'advertising',
+        data.item,
+        confirm,
+        navigate,
+      ))
     )
       return;
     try {

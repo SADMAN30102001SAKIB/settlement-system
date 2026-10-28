@@ -399,12 +399,9 @@ export const receiptLines = sqliteTable(
     receiptId: text('receipt_id')
       .notNull()
       .references(() => paymentReceipts.id, { onDelete: 'restrict' }),
-    settlementId: text('settlement_id').references(() => settlements.id, {
-      onDelete: 'restrict',
-    }),
-    adInvoiceId: text('ad_invoice_id').references(() => adInvoices.id, {
-      onDelete: 'restrict',
-    }),
+    // Historical identifiers survive source deletion; triggers guard active receipts.
+    settlementId: text('settlement_id'),
+    adInvoiceId: text('ad_invoice_id'),
     paymentId: text('payment_id').notNull().unique(),
   },
   (table) => [

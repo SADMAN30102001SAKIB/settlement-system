@@ -24,6 +24,7 @@ import { z } from 'zod';
 import type { AppEnvironment } from '../environment';
 import { date, id, range, revision, settlementFields } from '../validation';
 import { settlementStatus } from '../invoice-status/routes';
+import { invoiceDeletion } from '../invoice-deletion';
 
 const listQuery = range.safeExtend({
   before: date.optional(),
@@ -256,6 +257,15 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       },
     });
   })
+  .get('/:id/deletion', async (context) =>
+    context.json(
+      await invoiceDeletion(
+        context.env.DB,
+        'settlement',
+        id.parse(context.req.param('id')),
+      ),
+    ),
+  )
   .delete('/:id', async (context) => {
     const key = id.parse(context.req.param('id'));
     const input = z

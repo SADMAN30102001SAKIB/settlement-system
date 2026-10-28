@@ -31,6 +31,7 @@ import type { Brand, Report, Settings as SettingsData } from './lib/api';
 import { today } from './lib/format';
 import { ThemePicker } from './components/theme-picker';
 import { useConfirmation } from './components/confirmation-context';
+import { confirmInvoiceDeletion } from './features/settlements/delete-invoice';
 
 function ReportView({
   id,
@@ -70,12 +71,7 @@ function ReportView({
   async function remove() {
     if (
       report === null ||
-      !(await confirm({
-        title: 'Delete settlement?',
-        message: `Permanently delete ${report.invoiceNumber} and all of its payment records? This cannot be undone.`,
-        action: 'Delete settlement',
-        destructive: true,
-      }))
+      !(await confirmInvoiceDeletion('settlements', report, confirm, navigate))
     )
       return;
     await api(`/manage/settlements/${id}`, okSchema, {

@@ -43,8 +43,7 @@ export function ReceiptView({
     if (
       !(await confirm({
         title: 'Reverse this payment receipt?',
-        message:
-          'All allocations on this receipt will be reversed together. The original receipt and its figures remain in the audit history. This cannot be undone; record a new receipt for corrected details.',
+        message: `All ${String(item.data.lines.length)} allocation(s) on this receipt will be reversed together: ${item.data.lines.map((line) => line.invoiceNumber).join(', ')}. If it covers other invoices, their balances will also increase. No invoice is deleted by reversal. The original receipt and figures remain in history. This cannot be undone; record a new receipt for corrected details.`,
         action: 'Reverse receipt',
         destructive: true,
       }))
@@ -200,6 +199,11 @@ export function ReceiptView({
                 <tr key={line.kind + line.invoiceId}>
                   <td>
                     {line.invoiceNumber}
+                    {item.deletedInvoiceIds.includes(line.invoiceId) ? (
+                      <small>
+                        Source invoice deleted · historical figures retained
+                      </small>
+                    ) : null}
                     <small>{line.period}</small>
                     <small>Bill date {dateLabel(line.date)}</small>
                   </td>

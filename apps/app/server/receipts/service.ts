@@ -55,7 +55,20 @@ export async function receiptById(
   if (!row) return null;
   const data = z.string().parse(row['data']);
   const decoded: unknown = JSON.parse(data);
-  return receiptSchema.parse({ ...row, data: decoded });
+  const deleted = await db
+    .prepare(
+      `SELECT COALESCE(l.settlement_id,l.ad_invoice_id) AS id
+    FROM receipt_lines l LEFT JOIN settlements s ON s.id=l.settlement_id
+    LEFT JOIN ad_invoices a ON a.id=l.ad_invoice_id
+    WHERE l.receipt_id=? AND s.id IS NULL AND a.id IS NULL`,
+    )
+    .bind(key)
+    .all<{ id: string }>();
+  return receiptSchema.parse({
+    ...row,
+    data: decoded,
+    deletedInvoiceIds: deleted.results.map((line) => line.id),
+  });
 }
 export async function requestHash(value: unknown) {
   const bytes = await crypto.subtle.digest(

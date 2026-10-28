@@ -5,6 +5,48 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { contrastFailures } from './contrast';
 import { readSheet } from 'read-excel-file/node';
+import { receiptListSchema } from '../shared/receipts';
+
+async function reverseLinkedReceipt(
+  page: Page,
+  kind: 'settlements' | 'advertising',
+  invoiceId: string,
+) {
+  const detail = z
+    .object({ item: z.object({ brandId: z.string() }) })
+    .parse(
+      await (await page.request.get(`/api/manage/${kind}/${invoiceId}`)).json(),
+    );
+  const records = receiptListSchema.parse(
+    await (
+      await page.request.get(
+        `/api/manage/receipts?brandId=${detail.item.brandId}`,
+      )
+    ).json(),
+  );
+  const receipt = records.items.find(
+    (r) =>
+      r.reversedAt === null &&
+      r.data.lines.some((line) => line.invoiceId === invoiceId),
+  );
+  if (!receipt) throw new Error('Expected an active linked receipt');
+  await page.goto(`/payments/${receipt.id}`);
+  await page
+    .getByLabel('Reversal reason')
+    .fill('Reverse browser test payment before deleting source invoice');
+  await page
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation).toContainText('All 1 allocation(s)');
+  await confirmation
+    .getByRole('button', { name: 'Reverse receipt', exact: true })
+    .click();
+  await expect(
+    page.getByText('REVERSED — NOT AN ACTIVE PAYMENT', { exact: true }),
+  ).toBeVisible();
+  return receipt.id;
+}
 
 async function signIn(page: Page) {
   await page.goto('/');
@@ -698,12 +740,33 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await page
     .getByRole('alertdialog')
+    .getByRole('button', { name: 'View payments', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/payments\/brand\//);
+  const receiptId = await reverseLinkedReceipt(page, 'settlements', item.id);
+  await page.goto('/settlements');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toContainText(
+    'Reversed receipt snapshots remain',
+  );
+  await page
+    .getByRole('alertdialog')
     .getByRole('button', { name: 'Delete settlement', exact: true })
     .click();
-  await expect(ledger.getByRole('alert')).toContainText(
-    'referenced by a payment receipt',
-  );
-  await expect(row).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await page.goto(`/payments/${receiptId}`);
+  await expect(
+    page.getByText('Source invoice deleted · historical figures retained', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const historicalDownload = page.waitForEvent('download');
+  await page
+    .getByRole('button', { name: 'Download receipt PDF', exact: true })
+    .click();
+  await (
+    await historicalDownload
+  ).saveAs(testInfo.outputPath('deleted-source-receipt.pdf'));
 });
 
 test('all-brand ledger provides direct view, edit, payment, PDF and safe delete actions', async ({
@@ -825,14 +888,29 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await page
     .getByRole('alertdialog')
+    .getByRole('button', { name: 'View payments', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/payments\/brand\//);
+  const receiptId = await reverseLinkedReceipt(
+    page,
+    'advertising',
+    String(ids[0]),
+  );
+  await page.goto('/advertising');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
     .getByRole('button', { name: 'Delete invoice', exact: true })
     .click();
-  await expect(ledger.getByRole('alert')).toContainText(
-    'referenced by a payment receipt',
-  );
-  await expect(row).toBeVisible();
+  await expect(row).toHaveCount(0);
   await expect(
     ledger.getByRole('cell', { name: names[1], exact: true }),
+  ).toBeVisible();
+  await page.goto(`/payments/${receiptId}`);
+  await expect(
+    page.getByText('Source invoice deleted · historical figures retained', {
+      exact: true,
+    }),
   ).toBeVisible();
 });
 

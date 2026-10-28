@@ -25,6 +25,7 @@ import type { Brand, ReportRow, Settings } from '../../lib/api';
 import { dateLabel, money, today } from '../../lib/format';
 import { useConfirmation } from '../../components/confirmation-context';
 import { InvoiceActionDialog, InvoiceRowActions } from './ledger-actions';
+import { confirmInvoiceDeletion } from './delete-invoice';
 
 export function History({
   brands,
@@ -132,14 +133,7 @@ export function History({
     }
   }
   async function remove(item: ReportRow) {
-    if (
-      !(await confirm({
-        title: 'Delete settlement?',
-        message: `Permanently delete ${item.invoiceNumber} for ${item.brandName} and all of its payment records? This cannot be undone.`,
-        action: 'Delete settlement',
-        destructive: true,
-      }))
-    )
+    if (!(await confirmInvoiceDeletion('settlements', item, confirm, navigate)))
       return;
     setActionPending(true);
     setError('');

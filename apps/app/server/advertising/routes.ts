@@ -26,6 +26,7 @@ import { z } from 'zod';
 import type { AppEnvironment } from '../environment';
 import { date, id, money, name, revision, rate } from '../validation';
 import { advertisingAccount, advertisingAccounts } from './accounts';
+import { invoiceDeletion } from '../invoice-deletion';
 
 const fields = z
   .object({
@@ -359,6 +360,15 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
       });
     return context.json({ id: key });
   })
+  .get('/:id/deletion', async (context) =>
+    context.json(
+      await invoiceDeletion(
+        context.env.DB,
+        'ads',
+        id.parse(context.req.param('id')),
+      ),
+    ),
+  )
   .delete('/:id', async (context) => {
     const key = id.parse(context.req.param('id'));
     const input = z

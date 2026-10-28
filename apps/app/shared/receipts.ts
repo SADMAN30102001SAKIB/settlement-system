@@ -61,6 +61,7 @@ export const receiptDataSchema = z.object({
   ),
 });
 export const receiptSchema = z.object({
+  deletedInvoiceIds: z.array(z.string()).default([]),
   id: z.string(),
   number: z.string(),
   brandId: z.string(),

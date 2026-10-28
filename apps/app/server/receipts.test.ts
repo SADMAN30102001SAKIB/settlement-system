@@ -465,6 +465,9 @@ it('reverses every allocation together, retains original receipts and protects s
       })
     ).status,
   ).toBe(200);
+  const corrected = await create(await inputFor(s, 5000000, 5000000));
+  expect(corrected.id).not.toBe(receipt.id);
+  // A second active receipt must still block deletion after the first is reversed.
   expect(
     (
       await request(`/api/manage/settlements/${s.settlementId}`, 'DELETE', {
@@ -472,8 +475,141 @@ it('reverses every allocation together, retains original receipts and protects s
       })
     ).status,
   ).toBe(409);
-  const corrected = await create(await inputFor(s, 5000000, 5000000));
-  expect(corrected.id).not.toBe(receipt.id);
+  const active = await account(s.brandId);
+  expect(
+    (
+      await request(`/api/manage/receipts/${corrected.id}/reverse`, 'POST', {
+        reason: 'Reverse replacement before deletion',
+        version: active.version,
+      })
+    ).status,
+  ).toBe(200);
+  const reversed = await account(s.brandId);
+  expect(reversed.commission.due).toBe(15000000);
+  expect(reversed.ads.due).toBe(22000000);
+  expect(
+    (await request(`/api/manage/settlements/${s.settlementId}/deletion`))
+      .status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/manage/settlements/${s.settlementId}`, 'DELETE', {
+        revision: 1,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/settlements/${s.settlementId}`, 'DELETE', {
+        revision: 2,
+      })
+    ).status,
+  ).toBe(200);
+  expect((await account(s.brandId)).commission.due).toBe(0);
+  expect((await account(s.brandId)).ads.due).toBe(22000000);
+  expect(
+    (
+      await request(`/api/manage/advertising/${s.adId}`, 'DELETE', {
+        revision: 1,
+      })
+    ).status,
+  ).toBe(200);
+  expect((await account(s.brandId)).ads.due).toBe(0);
+  expect(
+    (
+      await request(`/api/manage/settlements/${s.settlementId}`, 'DELETE', {
+        revision: 2,
+      })
+    ).status,
+  ).toBe(409);
+  for (const original of [receipt, corrected]) {
+    const retained = z
+      .object({ item: receiptSchema })
+      .parse(
+        await (await request(`/api/manage/receipts/${original.id}`)).json(),
+      ).item;
+    expect(retained.data).toEqual(original.data);
+    expect(retained.total).toBe(original.total);
+    expect(retained.deletedInvoiceIds.sort()).toEqual(
+      [s.settlementId, s.adId].sort(),
+    );
+    expect(retained.reversedAt).not.toBeNull();
+  }
+  expect(
+    (await fixture.env.DB.prepare('PRAGMA foreign_key_check').all()).results,
+  ).toEqual([]);
+}, 15000);
+
+it('preflights shared receipts, preserves unrelated invoices, and rejects fabricated historical links', async () => {
+  const source = await seed(),
+    other = await seed();
+  const receipt = await create(await inputFor(source));
+  const before = await account(other.brandId);
+  const schema = z.object({
+    allowed: z.boolean(),
+    receipts: z.array(z.object({ id: z.string(), shared: z.boolean() })),
+  });
+  const preflight = schema.parse(
+    await (
+      await request(`/api/manage/advertising/${source.adId}/deletion`)
+    ).json(),
+  );
+  expect(preflight.allowed).toBe(false);
+  expect(preflight.receipts).toEqual([{ id: receipt.id, shared: true }]);
+  expect(
+    (await request(`/api/manage/advertising/${crypto.randomUUID()}/deletion`))
+      .status,
+  ).toBe(404);
+  await expect(
+    fixture.env.DB.prepare(
+      'INSERT INTO receipt_lines (id,receipt_id,settlement_id,payment_id) VALUES (?,?,?,?)',
+    )
+      .bind(
+        crypto.randomUUID(),
+        receipt.id,
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      )
+      .run(),
+  ).rejects.toThrow('RECEIPT_PAYMENT_LOCKED');
+  await expect(
+    fixture.env.DB.prepare(
+      'INSERT INTO receipt_lines (id,receipt_id,settlement_id,payment_id) VALUES (?,?,?,?)',
+    )
+      .bind(
+        crypto.randomUUID(),
+        receipt.id,
+        other.settlementId,
+        crypto.randomUUID(),
+      )
+      .run(),
+  ).rejects.toThrow('RECEIPT_PAYMENT_LOCKED');
+  await expect(
+    fixture.env.DB.prepare('DELETE FROM receipt_lines WHERE receipt_id=?')
+      .bind(receipt.id)
+      .run(),
+  ).rejects.toThrow('RECEIPT_PAYMENT_LOCKED');
+  const current = await account(source.brandId);
+  await request(`/api/manage/receipts/${receipt.id}/reverse`, 'POST', {
+    reason: 'Test cleanup after full receipt reversal',
+    version: current.version,
+  });
+  expect(
+    schema.parse(
+      await (
+        await request(`/api/manage/advertising/${source.adId}/deletion`)
+      ).json(),
+    ).allowed,
+  ).toBe(true);
+  expect(
+    (
+      await request(`/api/manage/advertising/${source.adId}`, 'DELETE', {
+        revision: 1,
+      })
+    ).status,
+  ).toBe(200);
+  expect(await account(other.brandId)).toEqual(before);
+  expect((await account(source.brandId)).commission.due).toBe(15000000);
 }, 15000);
 
 it('preserves legacy payments and advertising advances without inventing historical receipts', async () => {

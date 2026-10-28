@@ -88,7 +88,7 @@ export const app = new Hono<AppEnvironment>()
       return context.json(
         {
           error:
-            'This invoice is referenced by a payment receipt. Reverse its active receipts before editing; referenced invoices cannot be deleted.',
+            'This invoice is referenced by a payment receipt. Reverse every active receipt in Payments before editing or deleting it. Reversing a shared receipt also reverses its payments to other invoices. Historical receipts will be preserved.',
         },
         409,
       );

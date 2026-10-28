@@ -83,6 +83,24 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
     await migrate('0007_receipt_history_guards.sql');
     await migrate('0008_classy_miss_america.sql');
     await migrate('0009_stamp-file-cleanup.sql');
+    await db
+      .prepare(
+        "INSERT INTO payment_receipts (id,number,brand_id,date,request_hash,data,total,created_at) VALUES ('receipt','PAY-1','brand','2026-10-01','hash','{}',10000,1)",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO receipt_lines (id,receipt_id,settlement_id,payment_id) VALUES ('line','receipt','legacy','allocation')",
+      )
+      .run();
+    const history = await db.prepare('SELECT * FROM receipt_lines').all();
+    await migrate('0010_safe-receipt-invoice-deletion.sql');
+    expect(
+      (await db.prepare('SELECT * FROM receipt_lines').all()).results,
+    ).toEqual(history.results);
+    await expect(
+      db.prepare("DELETE FROM settlements WHERE id='legacy'").run(),
+    ).rejects.toThrow('PAYMENT_RECEIPT_ACTIVE');
     expect(
       (await db.prepare('SELECT vat_added_to_agency FROM settlements').all())
         .results,
@@ -122,7 +140,7 @@ it('migrates legacy/v2 invoices without changing amounts or losing linked paymen
       await db
         .prepare('SELECT COUNT(*) AS count FROM payment_receipts')
         .first(),
-    ).toEqual({ count: 0 });
+    ).toEqual({ count: 1 });
     expect(
       (
         await db
