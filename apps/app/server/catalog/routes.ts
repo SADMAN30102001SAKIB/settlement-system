@@ -5,7 +5,7 @@ import {
   settings,
   settlements,
 } from '@settlement/database/schema';
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, lt, or, gt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -54,6 +54,12 @@ export const catalogRoutes = new Hono<AppEnvironment>()
     return context.json({ brands: brandItems, settings: item });
   })
   .get('/brands', async (context) => {
+    const query = z
+      .object({
+        after: z.string().max(80).optional(),
+        q: z.string().trim().max(80).optional(),
+      })
+      .parse(context.req.query());
     const items = await context
       .get('database')()
       .select({
@@ -62,9 +68,23 @@ export const catalogRoutes = new Hono<AppEnvironment>()
         makingCost: brands.makingCost,
       })
       .from(brands)
+      .where(
+        and(
+          query.after ? gt(brands.normalizedName, query.after) : undefined,
+          query.q
+            ? sql`${brands.normalizedName} LIKE ${'%' + query.q.toLowerCase().replace(/[\\%_]/g, '\\$&') + '%'} ESCAPE ${'\\'}`
+            : undefined,
+        ),
+      )
       .orderBy(brands.normalizedName)
-      .limit(500);
-    return context.json({ items });
+      .limit(21);
+    const page = items.slice(0, 20),
+      last = page.at(-1);
+    return context.json({
+      items: page,
+      next:
+        items.length > 20 && last ? { after: last.name.toLowerCase() } : null,
+    });
   })
   .post('/brands', async (context) => {
     const input = brandFields.parse(await context.req.json<unknown>());
@@ -200,12 +220,12 @@ export const catalogRoutes = new Hono<AppEnvironment>()
         ),
       )
       .orderBy(desc(notes.createdAt), desc(notes.id))
-      .limit(201);
-    const last = items[199];
+      .limit(21);
+    const last = items[19];
     return context.json({
-      items: items.slice(0, 200),
+      items: items.slice(0, 20),
       next:
-        items.length > 200 && last !== undefined
+        items.length > 20 && last !== undefined
           ? { before: last.createdAt, beforeId: last.id }
           : null,
     });
@@ -245,12 +265,12 @@ export const catalogRoutes = new Hono<AppEnvironment>()
         ),
       )
       .orderBy(desc(table.date), desc(table.id))
-      .limit(51);
-    const last = items[49];
+      .limit(21);
+    const last = items[19];
     return context.json({
-      items: items.slice(0, 50),
+      items: items.slice(0, 20),
       next:
-        items.length > 50 && last !== undefined
+        items.length > 20 && last !== undefined
           ? { before: last.date, beforeId: last.id }
           : null,
     });

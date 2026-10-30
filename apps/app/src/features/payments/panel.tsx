@@ -10,6 +10,8 @@ import type { Payment } from '../../lib/api';
 import { dateLabel, formText, money, today } from '../../lib/format';
 import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
+import { Pagination } from '../../components/pagination';
+import { usePage } from '../../lib/pagination';
 
 export function PaymentsPanel({
   target,
@@ -36,6 +38,7 @@ export function PaymentsPanel({
   const [hasMore, setHasMore] = useState(true);
   const [uploading, setUploading] = useState(false);
   const history = [...payments, ...olderPayments];
+  const historyPage = usePage(history, `${target.kind}:${target.targetId}`);
   async function refreshHistory() {
     await refresh();
     setOlderPayments([]);
@@ -53,6 +56,8 @@ export function PaymentsPanel({
       );
       setOlderPayments((current) => [...current, ...result.items]);
       setHasMore(result.hasMore);
+      if (result.items.length || historyPage.controls.hasNext)
+        historyPage.setPage(historyPage.controls.page);
     } catch (reason) {
       setError(ErrorMessage(reason));
     } finally {
@@ -143,7 +148,7 @@ export function PaymentsPanel({
       <div className="split-layout">
         <div>
           {history.length ? (
-            history.map((payment) => (
+            historyPage.items.map((payment) => (
               <div className="payment-row" key={payment.id}>
                 <div>
                   <strong>{money(payment.amount)}</strong>
@@ -186,19 +191,25 @@ export function PaymentsPanel({
           ) : (
             <p className="muted">No payments recorded.</p>
           )}
-          {payments.length >= 200 && hasMore ? (
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
+          <Pagination
+            label="payments"
+            {...historyPage.controls}
+            pending={pending}
+            hasNext={
+              historyPage.controls.hasNext || (payments.length >= 21 && hasMore)
+            }
+            onNext={() => {
+              if (
+                payments.length >= 21 &&
+                hasMore &&
+                history.length - historyPage.controls.page * 20 < 20
+              )
                 loadOlder().catch((reason: unknown) => {
                   setError(ErrorMessage(reason));
                 });
-              }}
-            >
-              Load older payments
-            </button>
-          ) : null}
+              else historyPage.controls.onNext();
+            }}
+          />
         </div>
         {editingProof ? (
           <div>

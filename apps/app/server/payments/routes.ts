@@ -76,10 +76,10 @@ export const paymentRoutes = new Hono<AppEnvironment>()
         ),
       )
       .orderBy(desc(payments.date), desc(payments.id))
-      .limit(101);
+      .limit(21);
     return context.json({
-      items: items.slice(0, 100),
-      hasMore: items.length > 100,
+      items: items.slice(0, 20),
+      hasMore: items.length > 20,
     });
   })
   .post('/', async (context) => {

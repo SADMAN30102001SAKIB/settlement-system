@@ -189,6 +189,22 @@ test('brand payments split commission and ads into immutable receipts and suppor
     ['/advertising', adInvoice.invoiceNumber, 'advertising'],
   ] as const) {
     await page.goto(route);
+    const filterInvoice = async () => {
+      await page
+        .getByLabel(
+          kind === 'advertising' ? 'Search invoices' : 'Search invoice',
+          { exact: true },
+        )
+        .fill(number);
+      await page
+        .getByRole('button', {
+          name:
+            kind === 'advertising' ? 'Apply invoice filters' : 'Apply filters',
+          exact: true,
+        })
+        .click();
+    };
+    await filterInvoice();
     const status = page.getByLabel(`Status for ${number}`, { exact: true });
     await expect(status.locator('option')).toHaveText([
       'Unpaid',
@@ -240,6 +256,7 @@ test('brand payments split commission and ads into immutable receipts and suppor
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     }
     await page.reload();
+    await filterInvoice();
     await expect(status).toHaveValue('Paid');
   }
   await page.goto('/payments');
@@ -1099,7 +1116,17 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     await importer
       .getByLabel('CSV / XLSX / PDF', { exact: true })
       .setInputFiles(join(import.meta.dirname, '../../../assets', courierFile));
-    await expect(importer.locator('tbody tr')).toHaveCount(391);
+    await expect(importer.locator('tbody tr')).toHaveCount(20);
+    await importer
+      .getByRole('button', { name: 'Next preview rows', exact: true })
+      .click();
+    await expect(
+      importer.getByRole('navigation', { name: 'preview rows pagination' }),
+    ).toContainText('Page 2');
+    await expect(importer.locator('tbody tr')).toHaveCount(20);
+    await importer
+      .getByRole('button', { name: 'Previous preview rows', exact: true })
+      .click();
     await expect(
       importer.getByRole('button', { name: 'Confirm & import 391 orders' }),
     ).toBeDisabled();
@@ -2115,4 +2142,173 @@ test('settings use themed confirmations, custom checkboxes and reduced-motion pr
     .getByRole('button', { name: 'Delete file', exact: true })
     .click();
   await expect(file).toHaveCount(0);
+});
+
+test('daily summaries page by twenty and payment allocations retain selections across pages', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120000);
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const name = `Pagination ${testInfo.project.name} ${String(Date.now())}`;
+  const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
+    await (
+      await page.request.post('/api/manage/brands', {
+        headers,
+        data: { name, makingCost: 100000 },
+      })
+    ).json(),
+  ).item;
+  for (let i = 0; i < 43; i++) {
+    const orderDate = new Date(Date.UTC(2026, 8, 1 + i))
+      .toISOString()
+      .slice(0, 10);
+    expect(
+      (
+        await page.request.put('/api/manage/business/ads', {
+          headers,
+          data: { brandId: brand.id, date: orderDate, amount: 100000 },
+        })
+      ).ok(),
+    ).toBe(true);
+  }
+  await page.goto('/business');
+  const filters = page.locator('.business-summary-filters');
+  await filters.getByLabel('Summary brand').selectOption(brand.id);
+  await filters.getByLabel('From', { exact: true }).fill('2026-09-01');
+  await filters.getByLabel('To', { exact: true }).fill('2026-10-31');
+  await filters
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  const rows = page.locator('.business-daily-table tbody tr');
+  await expect(rows).toHaveCount(20);
+  await expect(rows.first()).toContainText('2026-10-13');
+  await page.getByRole('button', { name: 'Next days', exact: true }).click();
+  await expect(rows.first()).toContainText('2026-09-23');
+  await expect(rows).toHaveCount(20);
+  await page.getByRole('button', { name: 'Next days', exact: true }).click();
+  await expect(rows).toHaveCount(3);
+  await page
+    .getByRole('button', { name: 'Previous days', exact: true })
+    .click();
+  await expect(rows.first()).toContainText('2026-09-23');
+  await filters.getByLabel('Summary brand').selectOption('');
+  await filters
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  await expect(
+    page.getByRole('navigation', { name: 'days pagination' }),
+  ).toContainText('Page 1');
+  await filters.getByLabel('Summary brand').selectOption(brand.id);
+  await filters
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  await expect(rows.first()).toContainText('2026-10-13');
+  const invoiceIds: string[] = [];
+  for (let i = 0; i < 23; i++) {
+    const response = await page.request.post('/api/manage/advertising', {
+      headers,
+      data: {
+        brandId: brand.id,
+        date: '2026-08-01',
+        period: `Page ${String(i)}`,
+        campaigns: [{ name: 'Campaign', amount: 100000 }],
+      },
+    });
+    expect(response.ok()).toBe(true);
+    invoiceIds.push(
+      z.object({ id: z.string() }).parse(await response.json()).id,
+    );
+  }
+  await page.goto(`/payments/brand/${brand.id}`);
+  const group = page.locator('.receipt-allocation-group').filter({
+    has: page.getByRole('heading', {
+      name: 'Advertising allocations',
+      exact: true,
+    }),
+  });
+  await expect(group.getByRole('textbox')).toHaveCount(20);
+  await group.getByRole('textbox').first().fill('10');
+  await group
+    .getByRole('button', { name: 'Next advertising bills', exact: true })
+    .click();
+  await expect(group.getByRole('textbox')).toHaveCount(3);
+  await group.getByRole('textbox').first().fill('10');
+  await group
+    .getByRole('button', { name: 'Previous advertising bills', exact: true })
+    .click();
+  await expect(group.getByRole('textbox').first()).toHaveValue('10');
+  await expect(page.locator('.receipt-payment-total')).toContainText(
+    'Total received ৳20.00',
+  );
+  await page
+    .getByRole('button', {
+      name: 'Record payment & create receipt',
+      exact: true,
+    })
+    .click();
+  await expect(page).toHaveURL(/\/payments\/[0-9a-f-]+$/);
+  await expect(
+    page.locator('.invoice-receipt section').first().locator('tbody tr'),
+  ).toHaveCount(2);
+  const receiptId = page.url().split('/').at(-1);
+  const receipt = z
+    .object({
+      item: z.object({
+        data: z.object({ lines: z.array(z.object({ invoiceId: z.string() })) }),
+      }),
+    })
+    .parse(
+      await (
+        await page.request.get(`/api/manage/receipts/${receiptId ?? ''}`)
+      ).json(),
+    ).item;
+  const historyInvoice = invoiceIds.find(
+    (id) => !receipt.data.lines.some((line) => line.invoiceId === id),
+  );
+  if (!historyInvoice) throw new Error('Expected an unpaid invoice');
+  for (let i = 0; i < 43; i++)
+    expect(
+      (
+        await page.request.post('/api/manage/payments', {
+          headers,
+          data: {
+            target: { kind: 'ads', targetId: historyInvoice },
+            amount: 1000,
+            date: '2026-10-30',
+            note: `History ${String(i)}`,
+            requestId: crypto.randomUUID(),
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+  await page.goto(`/advertising/${historyInvoice}`);
+  const payments = page.locator('.payment-panel');
+  await expect(payments.locator('.payment-row')).toHaveCount(20);
+  await payments
+    .getByRole('button', { name: 'Next payments', exact: true })
+    .click();
+  await expect(
+    payments.getByRole('navigation', { name: 'payments pagination' }),
+  ).toContainText('Page 2');
+  await expect(payments.locator('.payment-row')).toHaveCount(20);
+  await payments
+    .getByRole('button', { name: 'Next payments', exact: true })
+    .click();
+  await expect(payments.locator('.payment-row')).toHaveCount(3);
+  await expect(
+    payments.getByRole('button', { name: 'Next payments', exact: true }),
+  ).toBeDisabled();
+  await payments
+    .getByRole('button', { name: 'Previous payments', exact: true })
+    .click();
+  await expect(payments.locator('.payment-row')).toHaveCount(20);
+  await expect(payments).toContainText('Paid ৳43.00');
+  await page.screenshot({
+    path: testInfo.outputPath('twenty-payment-history.png'),
+  });
+  await page.goto('/brands');
+  await page.getByLabel('Search brands', { exact: true }).fill(name);
+  await expect(page.locator('.brand-list .brand-row')).toHaveCount(1);
+  await expect(page.locator('.brand-list')).toContainText(name);
 });

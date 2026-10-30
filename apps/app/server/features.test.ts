@@ -41,6 +41,171 @@ function request(path: string, method = 'GET', body?: unknown) {
     fixture.env,
   );
 }
+
+async function dailyPaginationTest() {
+  const a = await brand('Pagination daily A'),
+    b = await brand('Pagination daily B');
+  const dates = Array.from({ length: 43 }, (_, i) =>
+    new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10),
+  );
+  await fixture.env.DB.batch(
+    dates.map((date, i) =>
+      fixture.env.DB.prepare(
+        'INSERT INTO daily_ads (brand_id,order_date,amount,updated_at) VALUES (?,?,?,1)',
+      ).bind(a, date, (i + 1) * 10000),
+    ),
+  );
+  await fixture.env.DB.prepare(
+    "INSERT INTO orders (id,brand_id,order_date,status,quantity,cod_amount,shipping,cod_charge,ads,revision,created_at,updated_at) VALUES (?,?,?,'Pending',1,0,0,0,0,1,1,1)",
+  )
+    .bind(crypto.randomUUID(), b, dates[42])
+    .run();
+  const schema = z.object({
+    days: z.array(
+      z.object({
+        brandId: z.string(),
+        date: z.string(),
+        count: z.number(),
+        amount: z.number().nullable(),
+      }),
+    ),
+    next: z.object({ before: z.string(), beforeBrand: z.string() }).nullable(),
+  });
+  const seen: string[] = [];
+  let cursor: z.infer<typeof schema>['next'] = null;
+  do {
+    const params = new URLSearchParams({
+      from: '2026-09-01',
+      to: '2026-10-13',
+      ...(cursor ?? {}),
+    });
+    const response = await request(
+      `/api/manage/business/daily?${params.toString()}`,
+    );
+    expect(response.status).toBe(200);
+    const page = schema.parse(await response.json());
+    expect(page.days.length).toBeLessThanOrEqual(20);
+    for (const day of page.days)
+      if (day.brandId === a || day.brandId === b) {
+        seen.push(day.brandId + day.date);
+        expect(day.count).toBe(day.brandId === a ? 0 : 1);
+      }
+    cursor = page.next;
+  } while (cursor);
+  expect(new Set(seen).size).toBe(44);
+  expect(seen).toHaveLength(44);
+  const filtered = schema.parse(
+    await (
+      await request(
+        `/api/manage/business/daily?from=2026-09-01&to=2026-10-13&brandId=${a}`,
+      )
+    ).json(),
+  );
+  expect(filtered.days).toHaveLength(20);
+  expect(filtered.days.every((day) => day.brandId === a)).toBe(true);
+  expect(filtered.days[0]?.amount).toBe(430000);
+}
+
+async function recordPaginationTest() {
+  const brandId = await brand('Pagination records');
+  const template = await fixture.env.DB.prepare(
+    'SELECT id FROM settlements LIMIT 1',
+  ).first<{ id: string }>();
+  if (!template) throw new Error('Expected settlement fixture');
+  const ids = Array.from({ length: 43 }, () => crypto.randomUUID());
+  await fixture.env.DB.batch(
+    ids.flatMap((key, index) => [
+      fixture.env.DB.prepare(
+        "INSERT INTO notes (id,brand_id,period,type,content,created_at,updated_at) VALUES (?,?,'Pagination','Other','note',?,1)",
+      ).bind(key, brandId, index),
+      fixture.env.DB.prepare(
+        "INSERT INTO files (id,object_key,filename,mime,size,kind,created_at) VALUES (?,?,?,'image/png',10,'proof',?)",
+      ).bind(key, key, key, index),
+      fixture.env.DB.prepare(
+        `INSERT INTO settlements (id,invoice_number,brand_id,brand_name,date,period,rule,delivered_qty,delivered_amount,cancelled_qty,cancelled_amount,partial_qty,partial_amount,shipping,cod_charge,ads,product_cost,agency_basis_points,gross,net,commission,created_at,updated_at)
+      SELECT ?,?,?,brand_name,'2026-10-01','Pagination','v2',delivered_qty,delivered_amount,cancelled_qty,cancelled_amount,partial_qty,partial_amount,shipping,cod_charge,ads,product_cost,agency_basis_points,gross,net,commission,created_at,updated_at FROM settlements WHERE id=?`,
+      ).bind(key, `PAGE-${key}`, brandId, template.id),
+    ]),
+  );
+  const schema = z.object({
+    items: z.array(z.object({ id: z.string() })),
+    next: z.record(z.string(), z.union([z.string(), z.number()])).nullable(),
+  });
+  for (const path of [
+    `notes?brandId=${brandId}`,
+    `files?`,
+    `progress?kind=settlements&brandId=${brandId}`,
+    `settlements?brandId=${brandId}`,
+  ]) {
+    const firstResponse = await request(`/api/manage/${path}`);
+    expect(firstResponse.status).toBe(200);
+    const first = schema.parse(await firstResponse.json());
+    expect(first.items).toHaveLength(20);
+    expect(first.next).not.toBeNull();
+    const cursor = new URLSearchParams(
+      Object.entries(first.next ?? {}).map(([k, v]) => [k, String(v)]),
+    );
+    const second = schema.parse(
+      await (await request(`/api/manage/${path}&${cursor.toString()}`)).json(),
+    );
+    expect(second.items).toHaveLength(20);
+    expect(
+      new Set([...first.items, ...second.items].map((item) => item.id)).size,
+    ).toBe(40);
+  }
+  const summary = z.object({ summary: z.object({ count: z.number() }) });
+  expect(
+    summary.parse(
+      await (
+        await request(`/api/manage/settlements?brandId=${brandId}`)
+      ).json(),
+    ).summary.count,
+  ).toBe(43);
+}
+
+it('paginates searchable brand directories and account overviews beyond twenty brands', async () => {
+  const ids = Array.from({ length: 43 }, () => crypto.randomUUID());
+  await fixture.env.DB.batch(
+    ids.map((key, index) =>
+      fixture.env.DB.prepare(
+        'INSERT INTO brands (id,name,normalized_name,making_cost,created_at,updated_at) VALUES (?,?,?,0,1,1)',
+      ).bind(
+        key,
+        `Pager ${String(index).padStart(2, '0')}`,
+        `pager ${String(index).padStart(2, '0')}`,
+      ),
+    ),
+  );
+  const schema = z.object({
+    items: z.array(z.object({ id: z.string() })),
+    next: z.object({ after: z.string() }).nullable(),
+  });
+  for (const path of ['brands?q=Pager', 'advertising/overview?']) {
+    let cursor: z.infer<typeof schema>['next'] = null;
+    const seen: string[] = [];
+    do {
+      const response = await request(
+        `/api/manage/${path}&${new URLSearchParams(cursor ?? {}).toString()}`,
+      );
+      expect(response.status).toBe(200);
+      const page = schema.parse(await response.json());
+      expect(page.items.length).toBeLessThanOrEqual(20);
+      seen.push(
+        ...page.items
+          .filter((row) => ids.includes(row.id))
+          .map((row) => row.id),
+      );
+      cursor = page.next;
+    } while (cursor);
+    expect(seen).toHaveLength(43);
+    expect(new Set(seen)).toEqual(new Set(ids));
+  }
+  const literal = await brand('Pager % literal');
+  const search = schema.parse(
+    await (await request('/api/manage/brands?q=%25')).json(),
+  );
+  expect(search.items.map((row) => row.id)).toEqual([literal]);
+}, 20000);
 async function brand(name: string) {
   const response = await request('/api/manage/brands', 'POST', {
     name,
@@ -420,18 +585,31 @@ it('lists all advertising brands and paginates invoices with VAT-inclusive accou
     date: '2026-10-25',
     note: '',
   });
-  const overview = z
-    .object({
-      items: z.array(
-        z.object({
-          id: z.string(),
-          count: z.number(),
-          total: z.number(),
-          paid: z.number(),
-        }),
-      ),
-    })
-    .parse(await (await request('/api/manage/advertising/overview')).json());
+  const overviewSchema = z.object({
+    next: z.object({ after: z.string() }).nullable(),
+    items: z.array(
+      z.object({
+        id: z.string(),
+        count: z.number(),
+        total: z.number(),
+        paid: z.number(),
+      }),
+    ),
+  });
+  let overview = overviewSchema.parse(
+    await (await request('/api/manage/advertising/overview')).json(),
+  );
+  while (overview.next) {
+    const page = overviewSchema.parse(
+      await (
+        await request(
+          '/api/manage/advertising/overview?' +
+            new URLSearchParams(overview.next).toString(),
+        )
+      ).json(),
+    );
+    overview = { items: [...overview.items, ...page.items], next: page.next };
+  }
   expect(overview.items.find((item) => item.id === empty)).toMatchObject({
     count: 0,
     total: 0,
@@ -675,3 +853,14 @@ it('restores original image assets privately and resets only company identity', 
     ).first(),
   ).toEqual(before);
 });
+
+it(
+  'paginates brand/day groups including advertising-only days without duplicates or omissions',
+  dailyPaginationTest,
+  20000,
+);
+it(
+  'returns twenty notes, files, progress and settlements per cursor page while preserving all-range totals',
+  recordPaginationTest,
+  20000,
+);

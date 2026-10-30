@@ -5,7 +5,6 @@ import { z } from 'zod';
 
 import {
   Alert,
-  Empty,
   ErrorMessage,
   Field,
   PageHeading,
@@ -14,6 +13,7 @@ import {
 import { api, brandSchema } from '../../lib/api';
 import type { Brand } from '../../lib/api';
 import { amountInput, formText, money } from '../../lib/format';
+import { BrandList } from '../../components/brand-list';
 
 export function Brands({
   brands,
@@ -64,38 +64,33 @@ export function Brands({
         <section className="panel">
           <div className="section-heading">
             <h2>Brand directory</h2>
-            <span className="pill">{brands.length} brands</span>
+            <span className="pill">20 per page</span>
           </div>
-          {brands.length ? (
-            <div className="brand-list">
-              {brands.map((brand) => (
-                <article key={brand.id} className="brand-row">
-                  <span className="avatar">{brand.name.slice(0, 1)}</span>
-                  <div>
-                    <strong>{brand.name}</strong>
-                    <small className="muted">
-                      {brand.makingCost === null
-                        ? 'Making cost not set'
-                        : `${money(brand.makingCost)} / piece`}
-                    </small>
-                  </div>
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      setEditing(brand);
-                      setError('');
-                    }}
-                  >
-                    Edit
-                  </button>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <Empty title="Your first brand starts here">
-              Add a brand and its making cost to begin.
-            </Empty>
-          )}
+          <BrandList
+            revision={brands}
+            render={(brand) => (
+              <article key={brand.id} className="brand-row">
+                <span className="avatar">{brand.name.slice(0, 1)}</span>
+                <div>
+                  <strong>{brand.name}</strong>
+                  <small className="muted">
+                    {brand.makingCost === null
+                      ? 'Making cost not set'
+                      : `${money(brand.makingCost)} / piece`}
+                  </small>
+                </div>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setEditing(brand);
+                    setError('');
+                  }}
+                >
+                  Edit
+                </button>
+              </article>
+            )}
+          />
         </section>
         <section className="panel">
           <h2>{editing ? 'Edit brand' : 'Add a brand'}</h2>

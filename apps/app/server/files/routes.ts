@@ -113,12 +113,12 @@ export const fileRoutes = new Hono<AppEnvironment>()
             ),
       )
       .orderBy(desc(files.createdAt), desc(files.id))
-      .limit(201);
-    const last = items[199];
+      .limit(21);
+    const last = items[19];
     return context.json({
-      items: items.slice(0, 200),
+      items: items.slice(0, 20),
       next:
-        items.length > 200 && last !== undefined
+        items.length > 20 && last !== undefined
           ? { before: last.createdAt, beforeId: last.id }
           : null,
     });

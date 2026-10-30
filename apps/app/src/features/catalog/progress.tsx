@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { api } from '../../lib/api';
-import {
-  Alert,
-  ErrorMessage,
-  Field,
-  SkeletonTable,
-  Spinner,
-} from '../../components/ui';
+import { Alert, ErrorMessage, Field, SkeletonTable } from '../../components/ui';
+import { Pagination } from '../../components/pagination';
+import { useCursor } from '../../lib/pagination';
 
 const schema = z.object({
   items: z.array(
@@ -28,7 +24,9 @@ export function Progress({ brandId }: { brandId: string }) {
     items: [],
     next: null,
   });
-  const [cursor, setCursor] = useState<z.infer<typeof schema>['next']>(null);
+  const { cursor, setCursor, page, hasPrevious, back } = useCursor<
+    NonNullable<z.infer<typeof schema>['next']>
+  >(`${brandId}:${kind}`);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(true);
   useEffect(() => {
@@ -43,10 +41,7 @@ export function Progress({ brandId }: { brandId: string }) {
       signal: controller.signal,
     })
       .then((result) => {
-        setData((previous) => ({
-          items: cursor ? [...previous.items, ...result.items] : result.items,
-          next: result.next,
-        }));
+        setData(result);
         setError('');
       })
       .catch((reason: unknown) => {
@@ -114,24 +109,23 @@ export function Progress({ brandId }: { brandId: string }) {
       {!pending && !data.items.length ? (
         <p className="muted">No saved invoices in this view.</p>
       ) : null}
-      {data.next ? (
-        <button
-          className="secondary"
-          disabled={pending}
-          onClick={() => {
-            setCursor(data.next);
+      <Pagination
+        label="completed invoices"
+        page={page}
+        hasPrevious={hasPrevious}
+        hasNext={data.next !== null}
+        pending={pending}
+        onPrevious={() => {
+          setPending(true);
+          back();
+        }}
+        onNext={() => {
+          if (data.next) {
             setPending(true);
-          }}
-        >
-          {pending ? (
-            <>
-              <Spinner size={12} /> Loading…
-            </>
-          ) : (
-            'Load 50 older completed invoices'
-          )}
-        </button>
-      ) : null}
+            setCursor(data.next);
+          }
+        }}
+      />
     </section>
   );
 }

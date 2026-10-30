@@ -16,6 +16,8 @@ import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
 import { PaymentDateLedger } from './date-ledger';
 import { stampStatusSchema } from '../../../shared/invoice-status';
+import { usePage } from '../../lib/pagination';
+import { Pagination } from '../../components/pagination';
 
 export function ReceiptComposer({
   account,
@@ -38,6 +40,14 @@ export function ReceiptComposer({
   const confirm = useConfirmation();
   const outstanding = account.invoices.filter(
     (row) => row.due > 0 && (!billDate || row.date === billDate),
+  );
+  const commissionPage = usePage(
+    outstanding.filter((row) => row.kind === 'commission'),
+    billDate,
+  );
+  const adsPage = usePage(
+    outstanding.filter((row) => row.kind === 'ads'),
+    billDate,
   );
   const billDates = [
     ...new Set(
@@ -233,9 +243,8 @@ export function ReceiptComposer({
                 allocations
               </h3>
               {outstanding.filter((row) => row.kind === kind).length ? (
-                outstanding
-                  .filter((row) => row.kind === kind)
-                  .map((row) => (
+                (kind === 'commission' ? commissionPage : adsPage).items.map(
+                  (row) => (
                     <div className="receipt-allocation" key={row.id}>
                       <div>
                         <strong>{row.invoiceNumber}</strong>
@@ -259,7 +268,8 @@ export function ReceiptComposer({
                         />
                       </Field>
                     </div>
-                  ))
+                  ),
+                )
               ) : (
                 <p className="muted">
                   No outstanding{' '}
@@ -267,6 +277,15 @@ export function ReceiptComposer({
                   invoices.
                 </p>
               )}
+              <Pagination
+                label={
+                  kind === 'commission'
+                    ? 'commission bills'
+                    : 'advertising bills'
+                }
+                {...(kind === 'commission' ? commissionPage : adsPage).controls}
+                pending={pending || uploading}
+              />
             </section>
           ))}
           <div className="receipt-payment-total" aria-live="polite">

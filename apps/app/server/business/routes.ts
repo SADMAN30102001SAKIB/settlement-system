@@ -67,7 +67,9 @@ function reallocate(binding: D1Database, brandId: string, orderDate: string) {
 
 export const businessRoutes = new Hono<AppEnvironment>()
   .get('/daily', async (context) => {
-    const query = filterFields.parse(context.req.query());
+    const query = filterFields
+      .extend({ before: date.optional(), beforeBrand: id.optional() })
+      .parse(context.req.query());
     if (
       query.to < query.from ||
       (Date.parse(query.to) - Date.parse(query.from)) / 86400000 > 366
@@ -75,75 +77,49 @@ export const businessRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(422, {
         message: 'Choose a valid range of up to 366 days.',
       });
-    const database = context.get('database')();
-    const [counts, budgets] = await database.batch([
-      database
-        .select({
-          date: orders.orderDate,
-          brandId: orders.brandId,
-          count: sql<number>`COUNT(*)`,
-          delivered: sql<number>`SUM(CASE WHEN ${orders.status} = 'Delivered' THEN 1 ELSE 0 END)`,
-          cancelled: sql<number>`SUM(CASE WHEN ${orders.status} = 'Cancelled' THEN 1 ELSE 0 END)`,
-          partial: sql<number>`SUM(CASE WHEN ${orders.status} = 'Partial Delivered' THEN 1 ELSE 0 END)`,
-          pending: sql<number>`SUM(CASE WHEN ${orders.status} = 'Pending' THEN 1 ELSE 0 END)`,
-        })
-        .from(orders)
-        .where(
-          and(
-            gte(orders.orderDate, query.from),
-            lte(orders.orderDate, query.to),
-            query.brandId ? eq(orders.brandId, query.brandId) : undefined,
-          ),
-        )
-        .groupBy(orders.orderDate, orders.brandId)
-        .limit(1001),
-      database
-        .select({
-          date: dailyAds.orderDate,
-          brandId: dailyAds.brandId,
-          amount: dailyAds.amount,
-        })
-        .from(dailyAds)
-        .where(
-          and(
-            gte(dailyAds.orderDate, query.from),
-            lte(dailyAds.orderDate, query.to),
-            query.brandId ? eq(dailyAds.brandId, query.brandId) : undefined,
-          ),
-        )
-        .limit(1001),
-    ]);
-    if (counts.length > 1000 || budgets.length > 1000)
-      throw new HTTPException(422, {
-        message: 'Narrow the range to at most 1,000 brand/day groups.',
-      });
-    const days = counts.map((row) => ({
-      ...row,
-      amount:
-        budgets.find(
-          (budget) =>
-            budget.date === row.date && budget.brandId === row.brandId,
-        )?.amount ?? null,
-    }));
-    for (const budget of budgets)
-      if (
-        !days.some(
-          (row) => row.date === budget.date && row.brandId === budget.brandId,
-        )
-      )
-        days.push({
-          ...budget,
-          count: 0,
-          delivered: 0,
-          cancelled: 0,
-          partial: 0,
-          pending: 0,
-        });
+    const cursor = query.before && query.beforeBrand;
+    const where = `order_date BETWEEN ? AND ? ${query.brandId ? 'AND brand_id=?' : ''}
+      ${cursor ? 'AND (order_date<? OR (order_date=? AND brand_id>?))' : ''}`;
+    const params = [
+      query.from,
+      query.to,
+      ...(query.brandId ? [query.brandId] : []),
+      ...(cursor ? [query.before, query.before, query.beforeBrand] : []),
+    ];
+    const result = await context.env.DB.prepare(
+      `WITH order_keys AS (
+      SELECT DISTINCT order_date AS date,brand_id AS brandId FROM orders WHERE ${where} ORDER BY date DESC,brandId LIMIT 21
+    ), ad_keys AS (
+      SELECT order_date AS date,brand_id AS brandId FROM daily_ads WHERE ${where} ORDER BY date DESC,brandId LIMIT 21
+    ), page AS (SELECT * FROM order_keys UNION SELECT * FROM ad_keys ORDER BY date DESC,brandId LIMIT 21)
+    SELECT p.date,p.brandId,COUNT(o.id) AS count,
+      SUM(CASE WHEN o.status='Delivered' THEN 1 ELSE 0 END) AS delivered,
+      SUM(CASE WHEN o.status='Cancelled' THEN 1 ELSE 0 END) AS cancelled,
+      SUM(CASE WHEN o.status='Partial Delivered' THEN 1 ELSE 0 END) AS partial,
+      SUM(CASE WHEN o.status='Pending' THEN 1 ELSE 0 END) AS pending,a.amount
+    FROM page p LEFT JOIN orders o ON o.brand_id=p.brandId AND o.order_date=p.date
+    LEFT JOIN daily_ads a ON a.brand_id=p.brandId AND a.order_date=p.date
+    GROUP BY p.date,p.brandId ORDER BY p.date DESC,p.brandId`,
+    )
+      .bind(...params, ...params)
+      .all<{
+        date: string;
+        brandId: string;
+        count: number;
+        delivered: number;
+        cancelled: number;
+        partial: number;
+        pending: number;
+        amount: number | null;
+      }>();
+    const days = result.results.slice(0, 20),
+      last = days.at(-1);
     return context.json({
-      days: days.sort(
-        (a, b) =>
-          b.date.localeCompare(a.date) || a.brandId.localeCompare(b.brandId),
-      ),
+      days,
+      next:
+        result.results.length > 20 && last
+          ? { before: last.date, beforeBrand: last.brandId }
+          : null,
     });
   })
   .get('/settlement', async (context) => {

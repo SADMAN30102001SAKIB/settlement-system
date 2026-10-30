@@ -12,6 +12,8 @@ import type { Brand } from '../../lib/api';
 import { money } from '../../lib/format';
 import { readImport } from './import-file';
 import { FilePicker } from '../../components/file-picker';
+import { usePage } from '../../lib/pagination';
+import { Pagination } from '../../components/pagination';
 
 const labels = {
   id: 'Order ID',
@@ -64,6 +66,7 @@ export function Importer({
   const [mappingOpen, setMappingOpen] = useState(false);
   const [sourceName, setSourceName] = useState('Pasted spreadsheet');
   function loadRows(data: string[][]) {
+    previewPage.setPage(0);
     setRows(data);
     setHeader(0);
     setBlankCodChargeIsZero(false);
@@ -138,6 +141,18 @@ export function Importer({
     }
   });
   const invalid = preview.some((row) => row.error);
+  const previewPage = usePage(
+    preview,
+    JSON.stringify([
+      sourceName,
+      header,
+      mapping,
+      mode,
+      format,
+      blankCodAmountIsZero,
+      blankCodChargeIsZero,
+    ]),
+  );
   const blanks = (key: 'codAmount' | 'codCharge') =>
     mapping[key] < 0
       ? 0
@@ -534,7 +549,7 @@ export function Importer({
                 </tr>
               </thead>
               <tbody>
-                {preview.map((row) => (
+                {previewPage.items.map((row) => (
                   <tr key={row.row}>
                     <td>{row.row}</td>
                     <td>{row.order?.orderDate ?? '—'}</td>
@@ -552,6 +567,11 @@ export function Importer({
             </table>
           </div>
           <div className="import-footer">
+            <Pagination
+              label="preview rows"
+              {...previewPage.controls}
+              pending={pending}
+            />
             <p className="muted">
               Review the totals and rows above. Confirming updates existing IDs
               without duplicating orders.

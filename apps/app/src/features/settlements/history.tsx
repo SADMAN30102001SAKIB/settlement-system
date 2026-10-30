@@ -26,6 +26,8 @@ import { dateLabel, money, today } from '../../lib/format';
 import { useConfirmation } from '../../components/confirmation-context';
 import { InvoiceActionDialog, InvoiceRowActions } from './ledger-actions';
 import { confirmInvoiceDeletion } from './delete-invoice';
+import { Pagination } from '../../components/pagination';
+import { useCursor } from '../../lib/pagination';
 
 export function History({
   brands,
@@ -74,10 +76,10 @@ export function History({
   const [next, setNext] = useState<{ before: string; beforeId: string } | null>(
     null,
   );
-  const [cursor, setCursor] = useState<{
+  const { cursor, setCursor, page, hasPrevious, back } = useCursor<{
     before: string;
     beforeId: string;
-  } | null>(null);
+  }>(JSON.stringify(filters));
   const [pending, setPending] = useState(true);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -96,9 +98,7 @@ export function History({
     })
       .then((data) => {
         setTotals(data.summary);
-        setItems((current) =>
-          cursor ? [...current, ...data.items] : data.items,
-        );
+        setItems(data.items);
         setNext(data.next);
         setError('');
       })
@@ -456,26 +456,23 @@ export function History({
             refresh();
           }}
         />
-        {next ? (
-          <div className="load-more">
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                setCursor(next);
-                setPending(true);
-              }}
-            >
-              {pending ? (
-                <>
-                  <Spinner size={12} /> Loading…
-                </>
-              ) : (
-                'Load 50 more reports'
-              )}
-            </button>
-          </div>
-        ) : null}
+        <Pagination
+          label="reports"
+          page={page}
+          hasPrevious={hasPrevious}
+          hasNext={next !== null}
+          pending={pending}
+          onPrevious={() => {
+            setPending(true);
+            back();
+          }}
+          onNext={() => {
+            if (next) {
+              setPending(true);
+              setCursor(next);
+            }
+          }}
+        />
       </section>
     </>
   );

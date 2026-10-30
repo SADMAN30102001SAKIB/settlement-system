@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
 import { confirmInvoiceDeletion } from '../settlements/delete-invoice';
+import { useCursor } from '../../lib/pagination';
+import { Pagination } from '../../components/pagination';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import { calculateAdvertising } from '@settlement/domain/advertising';
@@ -26,6 +28,7 @@ import { amountInput, money, today } from '../../lib/format';
 import { Invoice } from '../settlements/invoice';
 import { PaymentsPanel } from '../payments/panel';
 const accountOverviewSchema = z.object({
+  next: z.object({ after: z.string() }).nullable(),
   items: z.array(
     z.object({
       id: z.string(),
@@ -381,18 +384,24 @@ export function Advertising({
     z.infer<typeof accountOverviewSchema>['items']
   >([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  const overviewPage = useCursor<{ after: string }>();
+  const [overviewNext, setOverviewNext] = useState<{ after: string } | null>(
+    null,
+  );
+  const overviewQuery = new URLSearchParams(
+    overviewPage.cursor ?? {},
+  ).toString();
   const parts = path.split('/');
   const listing = !parts[2];
   async function reloadAccount() {
     setReloading(true);
     setError('');
     try {
-      const [account, all] = await Promise.all([
-        api(`/manage/advertising/account/${brandId}`, adAccountSchema),
-        api('/manage/advertising/overview', accountOverviewSchema),
-      ]);
+      const account = await api(
+        `/manage/advertising/account/${brandId}`,
+        adAccountSchema,
+      );
       setData(account);
-      setOverview(all.items);
       setLedgerVersion((value) => value + 1);
     } finally {
       setReloading(false);
@@ -401,11 +410,16 @@ export function Advertising({
   useEffect(() => {
     if (!listing) return;
     const controller = new AbortController();
-    api('/manage/advertising/overview', accountOverviewSchema, {
-      signal: controller.signal,
-    })
+    api(
+      `/manage/advertising/overview?${overviewQuery}`,
+      accountOverviewSchema,
+      {
+        signal: controller.signal,
+      },
+    )
       .then((result) => {
         setOverview(result.items);
+        setOverviewNext(result.next);
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(ErrorMessage(reason));
@@ -416,7 +430,7 @@ export function Advertising({
     return () => {
       controller.abort();
     };
-  }, [listing]);
+  }, [listing, overviewQuery, ledgerVersion]);
   useEffect(() => {
     if (!listing || !brandId) return;
     const controller = new AbortController();
@@ -558,6 +572,23 @@ export function Advertising({
           </div>
         )}
       </section>
+      <Pagination
+        label="brand accounts"
+        page={overviewPage.page}
+        hasPrevious={overviewPage.hasPrevious}
+        hasNext={overviewNext !== null}
+        pending={overviewLoading}
+        onPrevious={() => {
+          setOverviewLoading(true);
+          overviewPage.back();
+        }}
+        onNext={() => {
+          if (overviewNext) {
+            setOverviewLoading(true);
+            overviewPage.setCursor(overviewNext);
+          }
+        }}
+      />
       <AdvertisingLedger
         brands={brands}
         settings={settings}

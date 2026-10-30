@@ -91,7 +91,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
         .from(settlements)
         .where(pageFilters)
         .orderBy(desc(settlements.date), desc(settlements.id))
-        .limit(51),
+        .limit(21),
       database
         .select({
           count: sql<number>`COUNT(*)`,
@@ -113,12 +113,12 @@ export const settlementRoutes = new Hono<AppEnvironment>()
         .from(settlements)
         .where(filters),
     ]);
-    const last = items[49];
+    const last = items[19];
     return context.json({
       summary: summaries[0],
-      items: items.slice(0, 50),
+      items: items.slice(0, 20),
       next:
-        items.length > 50 && last !== undefined
+        items.length > 20 && last !== undefined
           ? { before: last.date, beforeId: last.id }
           : null,
     });
@@ -149,7 +149,7 @@ export const settlementRoutes = new Hono<AppEnvironment>()
       .from(payments)
       .where(eq(payments.settlementId, key))
       .orderBy(desc(payments.date), desc(payments.id))
-      .limit(200);
+      .limit(21);
     return context.json({ item, payments: history });
   })
   .post('/', async (context) => {

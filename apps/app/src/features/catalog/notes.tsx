@@ -16,6 +16,8 @@ import { api, noteSchema, okSchema } from '../../lib/api';
 import type { Brand, Note } from '../../lib/api';
 import { formText } from '../../lib/format';
 import { Progress } from './progress';
+import { Pagination } from '../../components/pagination';
+import { useCursor } from '../../lib/pagination';
 const noteListSchema = z.object({
   items: z.array(noteSchema),
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
@@ -29,8 +31,8 @@ export function Notes({ brands }: { brands: Brand[] }) {
   const [pending, setPending] = useState(false);
   const [reload, setReload] = useState(0);
   const [brandFilter, setBrandFilter] = useState('');
-  const [cursor, setCursor] =
-    useState<z.infer<typeof noteListSchema>['next']>(null);
+  const { cursor, setCursor, page, hasPrevious, back } =
+    useCursor<NonNullable<z.infer<typeof noteListSchema>['next']>>(brandFilter);
   const [next, setNext] =
     useState<z.infer<typeof noteListSchema>['next']>(null);
   useEffect(() => {
@@ -45,9 +47,7 @@ export function Notes({ brands }: { brands: Brand[] }) {
       signal: controller.signal,
     })
       .then((data) => {
-        setItems((current) =>
-          cursor ? [...current, ...data.items] : data.items,
-        );
+        setItems(data.items);
         setNext(data.next);
       })
       .catch((reason: unknown) => {
@@ -208,24 +208,23 @@ export function Notes({ brands }: { brands: Brand[] }) {
               Keep a note of completed invoices and settlement work.
             </Empty>
           )}
-          {next ? (
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
+          <Pagination
+            label="notes"
+            page={page}
+            hasPrevious={hasPrevious}
+            hasNext={next !== null}
+            pending={pending}
+            onPrevious={() => {
+              setPending(true);
+              back();
+            }}
+            onNext={() => {
+              if (next) {
                 setPending(true);
                 setCursor(next);
-              }}
-            >
-              {pending ? (
-                <>
-                  <Spinner size={12} /> Loading…
-                </>
-              ) : (
-                'Load 200 older notes'
-              )}
-            </button>
-          ) : null}
+              }
+            }}
+          />
         </section>
         <section className="panel">
           <h2>{editing ? 'Edit note' : 'Add a note'}</h2>

@@ -17,8 +17,11 @@ import { orderListSchema } from './contracts';
 import type { Order } from './contracts';
 import { Importer } from './importer';
 import { OrderRow } from './order-row';
+import { Pagination } from '../../components/pagination';
+import { useCursor } from '../../lib/pagination';
 
 const dailySchema = z.object({
+  next: z.object({ before: z.string(), beforeBrand: z.string() }).nullable(),
   days: z.array(
     z.object({
       date: z.string(),
@@ -42,6 +45,12 @@ export function Business({ brands }: { brands: Brand[] }) {
     brandId: '',
   });
   const [days, setDays] = useState<z.infer<typeof dailySchema>['days']>([]);
+  const daily = useCursor<NonNullable<z.infer<typeof dailySchema>['next']>>(
+    JSON.stringify(filters),
+  );
+  const [dailyNext, setDailyNext] =
+    useState<z.infer<typeof dailySchema>['next']>(null);
+  const [dailyLoading, setDailyLoading] = useState(true);
   const [items, setItems] = useState<Order[]>([]);
   const [next, setNext] = useState<Cursor>(null);
   const [cursor, setCursor] = useState<Cursor>(null);
@@ -61,6 +70,7 @@ export function Business({ brands }: { brands: Brand[] }) {
   const name = (id: string) =>
     brands.find((brand) => brand.id === id)?.name ?? 'Brand';
   function refresh() {
+    setDailyLoading(true);
     setRevision((value) => value + 1);
     setCursor(null);
     setPrevious([]);
@@ -69,19 +79,28 @@ export function Business({ brands }: { brands: Brand[] }) {
     const controller = new AbortController();
     const query = new URLSearchParams({ from: filters.from, to: filters.to });
     if (filters.brandId) query.set('brandId', filters.brandId);
+    if (daily.cursor) {
+      query.set('before', daily.cursor.before);
+      query.set('beforeBrand', daily.cursor.beforeBrand);
+    }
     api('/manage/business/daily?' + query.toString(), dailySchema, {
       signal: controller.signal,
     })
       .then((data) => {
         setDays(data.days);
+        setDailyNext(data.next);
+        setDailyLoading(false);
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
+        if (!controller.signal.aborted) {
+          setError(ErrorMessage(reason));
+          setDailyLoading(false);
+        }
       });
     return () => {
       controller.abort();
     };
-  }, [filters, revision]);
+  }, [filters, revision, daily.cursor]);
   useEffect(() => {
     const controller = new AbortController();
     const query = new URLSearchParams({
@@ -286,6 +305,7 @@ export function Business({ brands }: { brands: Brand[] }) {
             setError('');
             setLoading(true);
             setFilters({ from, to, brandId: formText(form, 'brandId') });
+            setDailyLoading(true);
             setCursor(null);
             setPrevious([]);
           }}
@@ -316,7 +336,7 @@ export function Business({ brands }: { brands: Brand[] }) {
           </button>
         </form>
         <div className="table-scroll">
-          <table className="business-daily-table">
+          <table className="business-daily-table" aria-busy={dailyLoading}>
             <thead>
               <tr>
                 {[
@@ -394,6 +414,23 @@ export function Business({ brands }: { brands: Brand[] }) {
             </tbody>
           </table>
         </div>
+        <Pagination
+          label="days"
+          page={daily.page}
+          hasPrevious={daily.hasPrevious}
+          hasNext={dailyNext !== null}
+          pending={dailyLoading}
+          onPrevious={() => {
+            setDailyLoading(true);
+            daily.back();
+          }}
+          onNext={() => {
+            if (dailyNext) {
+              setDailyLoading(true);
+              daily.setCursor(dailyNext);
+            }
+          }}
+        />
         <p className="caption">
           Allocation is rounded to paisa. Any remainder is assigned
           deterministically to orders so the allocated total always equals the

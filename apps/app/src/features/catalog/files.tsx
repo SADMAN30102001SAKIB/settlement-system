@@ -5,10 +5,11 @@ import {
   ErrorMessage,
   PageHeading,
   SkeletonTable,
-  Spinner,
 } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import { useConfirmation } from '../../components/confirmation-context';
+import { Pagination } from '../../components/pagination';
+import { useCursor } from '../../lib/pagination';
 const fileList = z.object({
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
   items: z.array(
@@ -28,7 +29,8 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [pending, setPending] = useState(true);
-  const [cursor, setCursor] = useState<z.infer<typeof fileList>['next']>(null);
+  const { cursor, setCursor, page, hasPrevious, back } =
+    useCursor<NonNullable<z.infer<typeof fileList>['next']>>();
   const [next, setNext] = useState<z.infer<typeof fileList>['next']>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -38,9 +40,7 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
         : `?${new URLSearchParams({ before: String(cursor.before), beforeId: cursor.beforeId }).toString()}`;
     api(`/manage/files${query}`, fileList, { signal: controller.signal })
       .then((data) => {
-        setItems((current) =>
-          cursor === null ? data.items : [...current, ...data.items],
-        );
+        setItems(data.items);
         setNext(data.next);
       })
       .catch((reason: unknown) => {
@@ -148,24 +148,23 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
             ) : null}
           </div>
         )}
-        {next ? (
-          <button
-            className="secondary"
-            disabled={pending}
-            onClick={() => {
+        <Pagination
+          label="files"
+          page={page}
+          hasPrevious={hasPrevious}
+          hasNext={next !== null}
+          pending={pending}
+          onPrevious={() => {
+            setPending(true);
+            back();
+          }}
+          onNext={() => {
+            if (next) {
               setPending(true);
               setCursor(next);
-            }}
-          >
-            {pending ? (
-              <>
-                <Spinner size={12} /> Loading…
-              </>
-            ) : (
-              'Load 200 older files'
-            )}
-          </button>
-        ) : null}
+            }
+          }}
+        />
       </section>
     </>
   );

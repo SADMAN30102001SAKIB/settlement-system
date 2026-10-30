@@ -121,26 +121,34 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
     });
   })
   .get('/overview', async (context) => {
+    const query = z
+      .object({ after: z.string().max(80).optional() })
+      .parse(context.req.query());
     const result = await context.env.DB.prepare(
-      `WITH invoice_totals AS (
-      SELECT brand_id, COUNT(*) AS count, SUM(total) AS total FROM ad_invoices GROUP BY brand_id
-    ), direct_totals AS (
-      SELECT a.brand_id, SUM(p.amount) AS paid FROM payments p JOIN ad_invoices a ON a.id = p.ad_invoice_id GROUP BY a.brand_id
-    ), account_totals AS (
-      SELECT brand_id, SUM(amount) AS paid FROM payments WHERE brand_id IS NOT NULL GROUP BY brand_id
-    ) SELECT b.id, b.name, COALESCE(i.count, 0) AS count, COALESCE(i.total, 0) AS total,
-      COALESCE(d.paid, 0) + COALESCE(a.paid, 0) AS paid
-      FROM brands b LEFT JOIN invoice_totals i ON i.brand_id = b.id
-      LEFT JOIN direct_totals d ON d.brand_id = b.id LEFT JOIN account_totals a ON a.brand_id = b.id
-      ORDER BY b.normalized_name LIMIT 500`,
-    ).all<{
-      id: string;
-      name: string;
-      count: number;
-      total: number;
-      paid: number;
-    }>();
-    return context.json({ items: result.results });
+      `SELECT b.id,b.name,
+      (SELECT COUNT(*) FROM ad_invoices WHERE brand_id=b.id) AS count,
+      COALESCE((SELECT SUM(total) FROM ad_invoices WHERE brand_id=b.id),0) AS total,
+      COALESCE((SELECT SUM(p.amount) FROM ad_invoices a JOIN payments p ON p.ad_invoice_id=a.id WHERE a.brand_id=b.id),0)
+      + COALESCE((SELECT SUM(amount) FROM payments WHERE brand_id=b.id),0) AS paid
+      FROM brands b ${query.after ? 'WHERE b.normalized_name>?' : ''} ORDER BY b.normalized_name LIMIT 21`,
+    )
+      .bind(...(query.after ? [query.after] : []))
+      .all<{
+        id: string;
+        name: string;
+        count: number;
+        total: number;
+        paid: number;
+      }>();
+    const items = result.results.slice(0, 20),
+      last = items.at(-1);
+    return context.json({
+      items,
+      next:
+        result.results.length > 20 && last
+          ? { after: last.name.toLowerCase() }
+          : null,
+    });
   })
   .get('/account/:brandId', async (context) => {
     const brandId = id.parse(context.req.param('brandId'));
@@ -164,7 +172,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           ),
         )
         .orderBy(desc(payments.date), desc(payments.id))
-        .limit(200),
+        .limit(21),
     ]);
     return context.json({ ...account, payments: history });
   })
@@ -202,7 +210,7 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
         .from(payments)
         .where(eq(payments.adInvoiceId, key))
         .orderBy(desc(payments.date), desc(payments.id))
-        .limit(200),
+        .limit(21),
       advertisingAccount(context.env.DB, item.brandId),
     ]);
     return context.json({

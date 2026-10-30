@@ -26,6 +26,8 @@ import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
 import { useConfirmation } from '../../components/confirmation-context';
 import { deleteReceipt } from './delete-receipt';
+import { Pagination } from '../../components/pagination';
+import { BrandList } from '../../components/brand-list';
 
 const cursorSchema = z.object({ before: z.string(), beforeId: z.string() });
 type Cursor = z.infer<typeof cursorSchema> | null;
@@ -47,7 +49,8 @@ function PriorPayments({ brandId }: { brandId: string }) {
   const [data, setData] = useState<z.infer<typeof legacySchema> | null>(null),
     [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  async function load(cursor: Cursor = null) {
+  const [pages, setPages] = useState<Cursor[]>([null]);
+  async function load(cursor: Cursor = null, history: Cursor[] = [null]) {
     setPending(true);
     setError('');
     try {
@@ -58,6 +61,7 @@ function PriorPayments({ brandId }: { brandId: string }) {
           legacySchema,
         ),
       );
+      setPages(history);
     } catch (e) {
       setError(ErrorMessage(e));
     } finally {
@@ -115,19 +119,25 @@ function PriorPayments({ brandId }: { brandId: string }) {
               </tbody>
             </table>
           </div>
-          {data.next ? (
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                load(data.next).catch((e: unknown) => {
+          <Pagination
+            label="prior payments"
+            page={pages.length}
+            hasPrevious={pages.length > 1}
+            hasNext={data.next !== null}
+            pending={pending}
+            onPrevious={() => {
+              const previous = pages.slice(0, -1);
+              load(previous.at(-1) ?? null, previous).catch((e: unknown) => {
+                setError(ErrorMessage(e));
+              });
+            }}
+            onNext={() => {
+              if (data.next)
+                load(data.next, [...pages, data.next]).catch((e: unknown) => {
                   setError(ErrorMessage(e));
                 });
-              }}
-            >
-              Next prior payments
-            </button>
-          ) : null}
+            }}
+          />
         </>
       ) : null}
     </section>
@@ -254,8 +264,10 @@ export function Payments({
             and payments are kept; creating a receipt never creates another
             debt.
           </p>
-          <div className="brand-account-directory">
-            {brands.map((brand) => (
+          <BrandList
+            revision={brands}
+            className="brand-account-directory"
+            render={(brand) => (
               <button
                 key={brand.id}
                 className="secondary"
@@ -266,8 +278,8 @@ export function Payments({
                 <strong>{brand.name}</strong>
                 <small>Open account →</small>
               </button>
-            ))}
-          </div>
+            )}
+          />
           {!brands.length ? (
             <p className="muted">Add a brand in Brands & costs to begin.</p>
           ) : null}
