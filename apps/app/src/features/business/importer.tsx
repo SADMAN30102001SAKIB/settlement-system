@@ -287,14 +287,6 @@ export function Importer({
           </Field>
         ) : null}
       </div>
-      {courier === 'pathao' ? (
-        <p className="muted">
-          Pathao: Return → Cancelled; otherwise a positive collected amount →
-          Delivered, zero → Pending. Revenue uses collected money, not the
-          collectable amount. Product cost applies only to Delivered parcels.
-          Blank collected amounts must be corrected.
-        </p>
-      ) : null}
       {!rows.length ? (
         <>
           <Field label="Or paste spreadsheet cells (including headers)">
