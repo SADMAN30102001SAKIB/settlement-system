@@ -1,5 +1,125 @@
 import { expect, it } from 'vitest';
-import { importDate, mapOrder, parseDelimited } from './imports';
+import {
+  courierPdfRows,
+  importDate,
+  importMapping,
+  mapOrder,
+  parseDelimited,
+} from './imports';
+
+const pathaoHeaders = [
+  'Order consignment id',
+  'Order created at',
+  'Collectable Amount',
+  'Collected amount',
+  'Cod fee',
+  'Delivery fee',
+  'Order status updated at',
+  'Order type',
+];
+const pathaoRow = [
+  'P0001',
+  '2026-10-30 23:59:59',
+  '1200',
+  '900',
+  '6',
+  '60',
+  '2026-10-31T00:10:00.000Z',
+  'Delivery',
+];
+const pathaoMapping = importMapping(pathaoHeaders, 'pathao');
+function pathao(row: string[]) {
+  return mapOrder(row, pathaoMapping, 'ISO', 'courier', false, false, 'pathao');
+}
+
+it('maps Pathao collectable and collected separately and uses explicit outcome precedence', () => {
+  expect(pathao(pathaoRow)).toMatchObject({
+    courier: 'pathao',
+    id: 'P0001',
+    status: 'Delivered',
+    codAmount: 1200000,
+    collectedAmount: 900000,
+    orderDate: '2026-10-30',
+    deliveryDate: '2026-10-31',
+    quantity: 1,
+  });
+  expect(pathao(pathaoRow.map((v, i) => (i === 3 ? '0' : v))).status).toBe(
+    'Pending',
+  );
+  for (const amount of ['0', '900'])
+    expect(
+      pathao(
+        pathaoRow.map((v, i) => (i === 3 ? amount : i === 7 ? ' Return ' : v)),
+      ).status,
+    ).toBe('Cancelled');
+  for (const amount of ['', '-1', 'not money'])
+    expect(() =>
+      pathao(pathaoRow.map((v, i) => (i === 3 ? amount : v))),
+    ).toThrow();
+  expect(() =>
+    pathao(pathaoRow.map((v, i) => (i === 7 ? 'Partial' : v))),
+  ).toThrow('Unknown Pathao');
+  expect(() =>
+    pathao(pathaoRow.map((v, i) => (i === 1 ? '2026-02-30' : v))),
+  ).toThrow();
+  expect(() => pathao(pathaoRow.map((v, i) => (i === 6 ? '' : v)))).toThrow();
+  expect(
+    importMapping([...pathaoHeaders, 'Collected amount'], 'pathao')
+      .collectedAmount,
+  ).toBe(-1);
+  expect(() =>
+    mapOrder(
+      pathaoRow,
+      { ...pathaoMapping, collectedAmount: 2 },
+      'ISO',
+      'courier',
+      false,
+      false,
+      'pathao',
+    ),
+  ).toThrow('different source');
+  expect(() =>
+    mapOrder(
+      pathaoRow,
+      importMapping(pathaoHeaders, 'steadfast'),
+      'ISO',
+      'courier',
+    ),
+  ).toThrow();
+  expect(
+    mapOrder(
+      pathaoRow.slice(0, 2),
+      pathaoMapping,
+      'ISO',
+      'orders',
+      false,
+      false,
+      'pathao',
+    ),
+  ).toMatchObject({ status: 'Pending', collectedAmount: null, codAmount: 0 });
+});
+
+it('extracts supported Pathao text-PDF columns and rejects unsupported layouts', () => {
+  const cells = pathaoHeaders.map((text, index) => ({
+    text,
+    x: index * 150,
+    y: 700,
+    width: 130,
+  }));
+  const body = pathaoRow.map((text, index) => ({
+    text,
+    x: index * 150,
+    y: 650,
+    width: 130,
+  }));
+  expect(courierPdfRows([[...cells, ...body]], 'pathao')).toEqual([
+    pathaoHeaders,
+    pathaoRow,
+  ]);
+  expect(() =>
+    courierPdfRows([[...cells.slice(0, 7), ...body]], 'pathao'),
+  ).toThrow('eight-column');
+});
 
 it('imports explicit item quantities without guessing invalid or missing mapped values', () => {
   const mapping = {

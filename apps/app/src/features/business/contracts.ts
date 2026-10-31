@@ -11,6 +11,8 @@ const orderSchema = z.object({
   salesOverride: integer.nullable(),
   costPerPiece: integer.nullable(),
   codAmount: integer,
+  courier: z.enum(['steadfast', 'pathao']),
+  collectedAmount: integer.nullable(),
   shipping: integer,
   codCharge: integer,
   ads: integer,

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { z } from 'zod';
 import { app } from './app';
 import { testEnvironment } from './test-environment';
+import { importMapping, mapOrder } from '@settlement/domain/imports';
 
 let fixture: Awaited<ReturnType<typeof testEnvironment>>;
 let cookie = '';
@@ -214,6 +215,129 @@ async function brand(name: string) {
   expect(response.status).toBe(201);
   return itemId.parse(await response.json()).item.id;
 }
+
+it('stores Pathao collectable and collected separately, refreshes collection outcomes, and rejects cross-courier overwrites atomically', async () => {
+  const brandId = await brand('Pathao integration');
+  const headers = [
+    'Order consignment id',
+    'Order created at',
+    'Collectable Amount',
+    'Collected amount',
+    'Cod fee',
+    'Delivery fee',
+    'Order status updated at',
+    'Order type',
+  ];
+  const mapping = importMapping(headers, 'pathao');
+  const mapped = (id: string, amount: string, type = 'Delivery') =>
+    mapOrder(
+      [id, '2026-10-30', '1200', amount, '6', '60', '2026-10-31', type],
+      mapping,
+      'ISO',
+      'courier',
+      false,
+      false,
+      'pathao',
+    );
+  const rows = [
+    mapped('PATHAO-TEST-1', '900'),
+    mapped('PATHAO-TEST-2', '0'),
+    mapped('PATHAO-TEST-3', '0', 'Return'),
+  ];
+  const save = (items: typeof rows) =>
+    request('/api/manage/business/import', 'POST', { brandId, rows: items });
+  for (let i = 0; i < 2; i++) expect((await save(rows)).status).toBe(200);
+  const result = async (): Promise<unknown> => {
+    const response = await request(
+      `/api/manage/business/settlement?brandId=${brandId}&from=2026-10-01&to=2026-10-31`,
+    );
+    return response.json();
+  };
+  expect(await result()).toMatchObject({
+    deliveredQty: 1,
+    pendingQty: 1,
+    cancelledQty: 1,
+    partialQty: 0,
+    deliveredAmount: 900000,
+    productCost: 100000,
+    deliveredCodCharge: 6000,
+    shipping: 120000,
+  });
+  const stored = await fixture.env.DB.prepare(
+    'SELECT courier,collected_amount,cod_amount FROM orders WHERE id = ?',
+  )
+    .bind(rows[0]?.id)
+    .first();
+  expect(stored).toMatchObject({
+    courier: 'pathao',
+    collected_amount: 900000,
+    cod_amount: 1200000,
+  });
+  const invalid = { ...rows[0], collectedAmount: null };
+  expect(
+    (
+      await request('/api/manage/business/import', 'POST', {
+        brandId,
+        rows: [invalid],
+      })
+    ).status,
+  ).toBe(422);
+  expect(
+    (await save([{ ...rows[0], status: 'Pending' } as (typeof rows)[number]]))
+      .status,
+  ).toBe(422);
+  expect((await save([mapped('PATHAO-TEST-2', '1200')])).status).toBe(200);
+  expect(await result()).toMatchObject({
+    deliveredQty: 2,
+    pendingQty: 0,
+    deliveredAmount: 2100000,
+    productCost: 200000,
+  });
+  expect(
+    (
+      await request('/api/manage/business/import', 'POST', {
+        brandId,
+        rows: [
+          {
+            ...mapped('PATHAO-NEW', '100'),
+            courier: 'steadfast',
+            collectedAmount: null,
+          },
+          { ...rows[0], courier: 'steadfast', collectedAmount: null },
+        ],
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    await fixture.env.DB.prepare('SELECT id FROM orders WHERE id = ?')
+      .bind('PATHAO-NEW')
+      .first(),
+  ).toBeNull();
+  const orders = z
+    .object({
+      items: z.array(
+        z.object({
+          id: z.string(),
+          courier: z.string(),
+          collectedAmount: z.number(),
+          codAmount: z.number(),
+        }),
+      ),
+    })
+    .parse(
+      await (
+        await request(
+          `/api/manage/business/orders?brandId=${brandId}&from=2026-10-01&to=2026-10-31`,
+        )
+      ).json(),
+    );
+  expect(orders.items).toHaveLength(3);
+  expect(orders.items.every((item) => item.courier === 'pathao')).toBe(true);
+  const legacy = await fixture.env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM orders WHERE courier = 'steadfast' AND collected_amount IS NOT NULL",
+  ).first<{ count: number }>();
+  expect(legacy?.count).toBe(0);
+});
 
 it('atomically edits campaigns and applies direct, account and advance payments FIFO', async () => {
   const brandId = await brand('Advertising test');

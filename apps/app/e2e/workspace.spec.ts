@@ -78,6 +78,123 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+test('Pathao workbook imports all parcels with collected-based settlement totals and responsive preview', async ({
+  page,
+}, testInfo) => {
+  const file = join('..', '..', 'assets', 'pathao_deliveries_2026-10-31.xlsx');
+  test.skip(!existsSync(file), 'Local Pathao workbook is unavailable');
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const brandName = 'Pathao workbook fixture';
+  const existing = z
+    .object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
+    .parse(
+      await (
+        await page.request.get(
+          `/api/manage/brands?q=${encodeURIComponent(brandName)}`,
+        )
+      ).json(),
+    );
+  let brandId = existing.items.find((item) => item.name === brandName)?.id;
+  if (!brandId) {
+    const created = await page.request.post('/api/manage/brands', {
+      headers,
+      data: { name: brandName, makingCost: 100000 },
+    });
+    expect(created.status()).toBe(201);
+    brandId = z
+      .object({ item: z.object({ id: z.string() }) })
+      .parse(await created.json()).item.id;
+  }
+  await page.goto('/business');
+  const importer = page.locator('.importer');
+  await importer.getByLabel('Brand', { exact: true }).selectOption(brandId);
+  await expect(importer.getByLabel('Courier', { exact: true })).toHaveValue(
+    'steadfast',
+  );
+  await importer.getByLabel('Courier', { exact: true }).selectOption('pathao');
+  await importer.locator('input[type=file]').setInputFiles(file);
+  await expect(
+    importer.getByText('216 valid rows', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    importer
+      .getByRole('region', { name: 'Imported order preview' })
+      .locator('tbody tr'),
+  ).toHaveCount(20);
+  const totals = importer.getByRole('region', {
+    name: 'Source reconciliation',
+  });
+  await expect(totals).toContainText('৳2,04,869.00');
+  await expect(totals).toContainText('৳1,17,979.00');
+  await importer
+    .getByRole('button', { name: 'Next preview rows', exact: true })
+    .click();
+  await expect(
+    importer.getByRole('navigation', { name: 'preview rows pagination' }),
+  ).toContainText('Page 2');
+  await importer
+    .getByRole('button', { name: 'Previous preview rows', exact: true })
+    .click();
+  await importer
+    .getByLabel('Courier', { exact: true })
+    .selectOption('steadfast');
+  await expect(
+    importer.getByRole('button', { name: 'Confirm & import 216 orders' }),
+  ).toBeDisabled();
+  await importer.getByLabel('Courier', { exact: true }).selectOption('pathao');
+  await expect(
+    importer.getByRole('button', { name: 'Confirm & import 216 orders' }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await importer.screenshot({
+    path: testInfo.outputPath('pathao-preview.png'),
+  });
+  await importer
+    .getByRole('button', { name: 'Confirm & import 216 orders' })
+    .click();
+  await expect(importer.getByRole('status')).toContainText(
+    '216 orders imported',
+  );
+  const values: unknown = await (
+    await page.request.get(
+      `/api/manage/business/settlement?brandId=${brandId}&from=2026-01-01&to=2026-12-31`,
+    )
+  ).json();
+  expect(values).toMatchObject({
+    deliveredQty: 119,
+    cancelledQty: 52,
+    pendingQty: 45,
+    partialQty: 0,
+    deliveredAmount: 117979000,
+    productCost: 11900000,
+    deliveredCodCharge: 922050,
+    shipping: 10567500,
+  });
+  await page.goto('/settlements/new');
+  await page
+    .getByRole('button', { name: 'Load settlement totals', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Courier file', exact: true }).click();
+  const source = page.locator('.importer');
+  await source.getByLabel('Brand', { exact: true }).selectOption(brandId);
+  await source.getByLabel('Courier', { exact: true }).selectOption('pathao');
+  await source.locator('input[type=file]').setInputFiles(file);
+  await source
+    .getByRole('button', { name: 'Confirm & use rows in settlement' })
+    .click();
+  await expect(
+    page.getByLabel('Delivered amount (৳)', { exact: true }),
+  ).toHaveValue('117979');
+  await expect(
+    page.getByLabel('Delivered parcels', { exact: true }),
+  ).toHaveValue('119');
+});
+
 async function uploadStamps(page: Page) {
   await page.goto('/settings');
   for (const kind of ['paid', 'unpaid', 'due']) {

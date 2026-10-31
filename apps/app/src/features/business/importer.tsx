@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { z } from 'zod';
 import {
   importColumns,
+  importMapping,
   mapOrder,
   parseDelimited,
 } from '@settlement/domain/imports';
-import type { ImportColumn } from '@settlement/domain/imports';
+import type { Courier, ImportColumn } from '@settlement/domain/imports';
 import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { Brand } from '../../lib/api';
@@ -42,12 +43,13 @@ export function Importer({
 }) {
   const [brandId, setBrandId] = useState(initialBrandId);
   const [mode, setMode] = useState<'orders' | 'courier'>('courier');
+  const [courier, setCourier] = useState<Courier>('steadfast');
   const [format, setFormat] = useState<'ISO' | 'DMY'>('ISO');
   const [text, setText] = useState('');
   const [rows, setRows] = useState<string[][]>([]);
   const [header, setHeader] = useState(0);
   const [mapping, setMapping] = useState<
-    Record<ImportColumn, number> & { quantity: number }
+    Record<ImportColumn, number> & { quantity: number; collectedAmount: number }
   >({
     quantity: -1,
     id: -1,
@@ -57,6 +59,7 @@ export function Importer({
     codAmount: -1,
     shipping: -1,
     codCharge: -1,
+    collectedAmount: -1,
   });
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -71,51 +74,7 @@ export function Importer({
     setHeader(0);
     setBlankCodChargeIsZero(false);
     setBlankCodAmountIsZero(false);
-    const aliases: Record<ImportColumn, string[]> = {
-      id: ['order id'],
-      orderDate: ['created at', 'order date'],
-      deliveryDate: ['delivery time', 'delivery date'],
-      status: ['delivery status', 'status'],
-      codAmount: ['cod amount'],
-      shipping: ['shipping charge'],
-      codCharge: ['cod charge'],
-    };
-    setMapping({
-      quantity:
-        data[0]?.findIndex((cell) =>
-          ['quantity', 'qty', 'item quantity'].includes(
-            cell.toLowerCase().trim(),
-          ),
-        ) ?? -1,
-      id:
-        data[0]?.findIndex((cell) =>
-          aliases.id.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      orderDate:
-        data[0]?.findIndex((cell) =>
-          aliases.orderDate.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      deliveryDate:
-        data[0]?.findIndex((cell) =>
-          aliases.deliveryDate.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      status:
-        data[0]?.findIndex((cell) =>
-          aliases.status.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      codAmount:
-        data[0]?.findIndex((cell) =>
-          aliases.codAmount.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      shipping:
-        data[0]?.findIndex((cell) =>
-          aliases.shipping.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-      codCharge:
-        data[0]?.findIndex((cell) =>
-          aliases.codCharge.includes(cell.toLowerCase().trim()),
-        ) ?? -1,
-    });
+    setMapping(importMapping(data[0] ?? [], courier));
   }
   const seen = new Set<string>();
   const preview = rows.slice(header + 1).map((row, index) => {
@@ -127,6 +86,7 @@ export function Importer({
         mode,
         blankCodChargeIsZero,
         blankCodAmountIsZero,
+        courier,
       );
       if (seen.has(order.id))
         throw new Error('Duplicate order ID in this file.');
@@ -148,6 +108,7 @@ export function Importer({
       header,
       mapping,
       mode,
+      courier,
       format,
       blankCodAmountIsZero,
       blankCodChargeIsZero,
@@ -176,17 +137,18 @@ export function Importer({
   const reconciliation = valid.reduce(
     (sum, row) => ({
       cod: sum.cod + row.codAmount,
+      collected: sum.collected + (row.collectedAmount ?? 0),
       shipping: sum.shipping + row.shipping,
       codCharge: sum.codCharge + row.codCharge,
       quantity: sum.quantity + row.quantity,
     }),
-    { cod: 0, shipping: 0, codCharge: 0, quantity: 0 },
+    { cod: 0, collected: 0, shipping: 0, codCharge: 0, quantity: 0 },
   );
   async function upload(file: File) {
     setPending(true);
     setError('');
     try {
-      loadRows(await readImport(file));
+      loadRows(await readImport(file, courier));
       setSourceName(file.name);
       setMessage(
         /\.pdf$/i.test(file.name)
@@ -272,6 +234,26 @@ export function Importer({
             ))}
           </select>
         </Field>
+        <Field label="Courier">
+          <select
+            value={courier}
+            disabled={pending}
+            onChange={(event) => {
+              const next =
+                event.target.value === 'pathao' ? 'pathao' : 'steadfast';
+              setCourier(next);
+              setMapping(importMapping(rows[header] ?? [], next));
+              setBlankCodChargeIsZero(false);
+              setBlankCodAmountIsZero(false);
+              setFormat('ISO');
+              setError('');
+              setMessage('');
+            }}
+          >
+            <option value="steadfast">Steadfast</option>
+            <option value="pathao">Pathao</option>
+          </select>
+        </Field>
         {onReviewed === undefined ? (
           <Field label="Import type">
             <select
@@ -305,6 +287,14 @@ export function Importer({
           </Field>
         ) : null}
       </div>
+      {courier === 'pathao' ? (
+        <p className="muted">
+          Pathao: Return → Cancelled; otherwise a positive collected amount →
+          Delivered, zero → Pending. Revenue uses collected money, not the
+          collectable amount. Product cost applies only to Delivered parcels.
+          Blank collected amounts must be corrected.
+        </p>
+      ) : null}
       {!rows.length ? (
         <>
           <Field label="Or paste spreadsheet cells (including headers)">
@@ -315,7 +305,9 @@ export function Importer({
                 setText(event.target.value);
               }}
               placeholder={
-                'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
+                courier === 'pathao'
+                  ? 'Order consignment id\tOrder created at\tCollectable Amount\tCollected amount\tCod fee\tDelivery fee\tOrder status updated at\tOrder type'
+                  : 'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
               }
             />
           </Field>
@@ -390,6 +382,12 @@ export function Importer({
                     value={header}
                     onChange={(event) => {
                       setHeader(Number(event.target.value));
+                      setMapping(
+                        importMapping(
+                          rows[Number(event.target.value)] ?? [],
+                          courier,
+                        ),
+                      );
                     }}
                   >
                     {rows.slice(0, 100).map((row, index) => (
@@ -405,7 +403,16 @@ export function Importer({
                       mode === 'courier' || key === 'id' || key === 'orderDate',
                   )
                   .map((key) => (
-                    <Field key={key} label={labels[key]}>
+                    <Field
+                      key={key}
+                      label={
+                        courier === 'pathao' && key === 'codAmount'
+                          ? 'Collectable amount'
+                          : courier === 'pathao' && key === 'status'
+                            ? 'Order type (Return / Delivery)'
+                            : labels[key]
+                      }
+                    >
                       <select
                         value={mapping[key]}
                         onChange={(event) => {
@@ -424,6 +431,26 @@ export function Importer({
                       </select>
                     </Field>
                   ))}
+                {courier === 'pathao' && mode === 'courier' ? (
+                  <Field label="Collected amount (required)">
+                    <select
+                      value={mapping.collectedAmount}
+                      onChange={(event) => {
+                        setMapping((current) => ({
+                          ...current,
+                          collectedAmount: Number(event.target.value),
+                        }));
+                      }}
+                    >
+                      <option value={-1}>Map a column</option>
+                      {rows[header]?.map((cell, index) => (
+                        <option key={index} value={index}>
+                          {index + 1}: {cell}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
                 <Field
                   label="Item quantity column (optional)"
                   hint="Without a quantity column each parcel starts with one item. Correct multi-item orders before settling."
@@ -511,9 +538,19 @@ export function Importer({
             </p>
             <dl className="summary-grid">
               <div>
-                <dt>Source COD total</dt>
+                <dt>
+                  {courier === 'pathao'
+                    ? 'Source collectable total'
+                    : 'Source COD total'}
+                </dt>
                 <dd>{money(reconciliation.cod)}</dd>
               </div>
+              {courier === 'pathao' ? (
+                <div>
+                  <dt>Source collected total</dt>
+                  <dd>{money(reconciliation.collected)}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Source delivery charges</dt>
                 <dd>{money(reconciliation.shipping)}</dd>
@@ -541,7 +578,8 @@ export function Importer({
                   <th>Order ID</th>
                   <th>Status</th>
                   <th>Delivery time</th>
-                  <th>COD</th>
+                  <th>{courier === 'pathao' ? 'Collectable' : 'COD'}</th>
+                  {courier === 'pathao' ? <th>Collected</th> : null}
                   <th>Shipping</th>
                   <th>COD charge</th>
                   <th>Item quantity</th>
@@ -557,6 +595,14 @@ export function Importer({
                     <td>{row.order?.status ?? '—'}</td>
                     <td>{row.order?.deliveryDate ?? '—'}</td>
                     <td>{row.order ? money(row.order.codAmount) : '—'}</td>
+                    {courier === 'pathao' ? (
+                      <td>
+                        {row.order?.collectedAmount === null ||
+                        row.order?.collectedAmount === undefined
+                          ? '—'
+                          : money(row.order.collectedAmount)}
+                      </td>
+                    ) : null}
                     <td>{row.order ? money(row.order.shipping) : '—'}</td>
                     <td>{row.order ? money(row.order.codCharge) : '—'}</td>
                     <td>{row.order?.quantity ?? '—'}</td>

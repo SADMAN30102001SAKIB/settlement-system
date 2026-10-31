@@ -1,7 +1,10 @@
 import { courierPdfRows, parseDelimited } from '@settlement/domain/imports';
-import type { PdfCell } from '@settlement/domain/imports';
+import type { Courier, PdfCell } from '@settlement/domain/imports';
 
-export async function readImport(file: File): Promise<string[][]> {
+export async function readImport(
+  file: File,
+  courier: Courier = 'steadfast',
+): Promise<string[][]> {
   if (file.size > 10_000_000)
     throw new Error('Choose a file smaller than 10 MB.');
   if (/\.(csv|tsv|txt)$/i.test(file.name))
@@ -52,7 +55,7 @@ export async function readImport(file: File): Promise<string[][]> {
         pages.push(cells);
         page.cleanup();
       }
-      const rows = courierPdfRows(pages);
+      const rows = courierPdfRows(pages, courier);
       if (rows.length === 1)
         throw new Error(
           'This PDF has no readable orders. Use its original Excel/CSV; scanned amounts cannot be imported safely.',

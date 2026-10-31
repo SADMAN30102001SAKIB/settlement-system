@@ -72,24 +72,92 @@ export const importColumns = [
   'codCharge',
 ] as const;
 export type ImportColumn = (typeof importColumns)[number];
+export type Courier = 'steadfast' | 'pathao';
+export function importMapping(headers: readonly string[], courier: Courier) {
+  const aliases: Record<
+    ImportColumn | 'collectedAmount' | 'quantity',
+    string[]
+  > = {
+    id: courier === 'pathao' ? ['order consignment id'] : ['order id'],
+    orderDate:
+      courier === 'pathao'
+        ? ['order created at']
+        : ['created at', 'order date'],
+    deliveryDate:
+      courier === 'pathao'
+        ? ['order status updated at']
+        : ['delivery time', 'delivery date'],
+    status:
+      courier === 'pathao' ? ['order type'] : ['delivery status', 'status'],
+    codAmount: courier === 'pathao' ? ['collectable amount'] : ['cod amount'],
+    collectedAmount: courier === 'pathao' ? ['collected amount'] : [],
+    shipping: courier === 'pathao' ? ['delivery fee'] : ['shipping charge'],
+    codCharge: courier === 'pathao' ? ['cod fee'] : ['cod charge'],
+    quantity: ['quantity', 'qty', 'item quantity'],
+  };
+  const find = (key: keyof typeof aliases) => {
+    const matches = headers.flatMap((header, index) =>
+      aliases[key].includes(header.trim().toLowerCase()) ? [index] : [],
+    );
+    return matches.length === 1 ? (matches[0] ?? -1) : -1;
+  };
+  return {
+    id: find('id'),
+    orderDate: find('orderDate'),
+    deliveryDate: find('deliveryDate'),
+    status: find('status'),
+    codAmount: find('codAmount'),
+    collectedAmount: find('collectedAmount'),
+    shipping: find('shipping'),
+    codCharge: find('codCharge'),
+    quantity: find('quantity'),
+  };
+}
+export function pathaoStatus(orderType: string, collectedAmount: number) {
+  const type = orderType.trim().toLowerCase();
+  if (type === 'return') return 'Cancelled';
+  if (type !== 'delivery')
+    throw new Error(`Unknown Pathao order type: ${orderType || '(empty)'}.`);
+  return collectedAmount > 0 ? 'Delivered' : 'Pending';
+}
 export function mapOrder(
   row: readonly string[],
   mapping: Readonly<Record<ImportColumn, number>> & {
     readonly quantity?: number;
+    readonly collectedAmount?: number;
   },
   format: 'ISO' | 'DMY',
   mode: 'orders' | 'courier',
   blankCodChargeIsZero = false,
   blankCodAmountIsZero = false,
+  courier: Courier = 'steadfast',
 ) {
   const mapped = (
     mode === 'orders'
       ? [mapping.id, mapping.orderDate, mapping.quantity]
-      : [...importColumns.map((key) => mapping[key]), mapping.quantity]
+      : [
+          ...importColumns.map((key) => mapping[key]),
+          mapping.quantity,
+          ...(courier === 'pathao' ? [mapping.collectedAmount] : []),
+        ]
   ).filter((index): index is number => index !== undefined && index >= 0);
   if (new Set(mapped).size !== mapped.length)
     throw new Error('Map each field to a different source column.');
-  const get = (key: ImportColumn) => row[mapping[key]]?.trim() ?? '';
+  const get = (key: ImportColumn | 'collectedAmount') =>
+    row[mapping[key] ?? -1]?.trim() ?? '';
+  const collectedAmount =
+    courier === 'pathao' && mode === 'courier'
+      ? (() => {
+          if (!get('collectedAmount'))
+            throw new Error(
+              'Missing Pathao collected amount. An explicit zero is required for uncollected parcels.',
+            );
+          const value = parseMoney(get('collectedAmount'));
+          if (value < 0)
+            throw new Error('Collected amount cannot be negative.');
+          return value;
+        })()
+      : null;
   const id = get('id');
   if (!id || id.length > 100) throw new Error('Missing or invalid order ID.');
   const statuses = {
@@ -104,9 +172,11 @@ export function mapOrder(
   const status =
     mode === 'orders'
       ? 'Pending'
-      : Object.hasOwn(statuses, rawStatus)
-        ? statuses[rawStatus as keyof typeof statuses]
-        : undefined;
+      : courier === 'pathao'
+        ? pathaoStatus(get('status'), collectedAmount ?? 0)
+        : Object.hasOwn(statuses, rawStatus)
+          ? statuses[rawStatus as keyof typeof statuses]
+          : undefined;
   if (status === undefined)
     throw new Error(`Unknown delivery status: ${get('status') || '(empty)'}.`);
   const amount = (key: ImportColumn) => {
@@ -123,11 +193,21 @@ export function mapOrder(
   };
   return {
     id,
-    orderDate: importDate(get('orderDate'), format),
+    courier,
+    collectedAmount,
+    orderDate: importDate(
+      courier === 'pathao' ? pathaoDate(get('orderDate')) : get('orderDate'),
+      format,
+    ),
     deliveryDate:
       mode === 'orders' || (!get('deliveryDate') && status === 'Pending')
         ? null
-        : importDate(get('deliveryDate'), format),
+        : importDate(
+            courier === 'pathao'
+              ? pathaoDate(get('deliveryDate'))
+              : get('deliveryDate'),
+            format,
+          ),
     status,
     quantity: (() => {
       const value =
@@ -148,6 +228,14 @@ export function mapOrder(
   };
 }
 
+function pathaoDate(value: string) {
+  const timestamp =
+    /^(\d{4}-\d{2}-\d{2})[ T](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/.exec(
+      value,
+    );
+  return timestamp?.[1] ?? value;
+}
+
 export interface PdfCell {
   text: string;
   x: number;
@@ -165,15 +253,37 @@ const courierHeaders = [
 ];
 export function courierPdfRows(
   pages: readonly (readonly PdfCell[])[],
+  courier: Courier = 'steadfast',
 ): string[][] {
-  const rows: string[][] = [courierHeaders];
+  const headers =
+    courier === 'pathao'
+      ? [
+          'Order consignment id',
+          'Order created at',
+          'Collectable Amount',
+          'Collected amount',
+          'Cod fee',
+          'Delivery fee',
+          'Order status updated at',
+          'Order type',
+        ]
+      : courierHeaders;
+  const rows: string[][] = [headers];
   let boundaries: number[] | undefined;
   for (const page of pages) {
-    const headerCells = courierHeaders.map((header) =>
+    const headerCells = headers.map((header) =>
       page.find((cell) => cell.text === header),
     );
     if (headerCells.every((cell) => cell !== undefined)) {
       const centers = headerCells.map((cell) => cell.x + cell.width / 2);
+      if (
+        centers.some(
+          (center, index) => index > 0 && center <= (centers[index - 1] ?? 0),
+        )
+      )
+        throw new Error(
+          'The PDF columns are not in the supported order. Use its original Excel/CSV.',
+        );
       boundaries = centers
         .slice(1)
         .map((center, index) => (center + (centers[index] ?? center)) / 2);
@@ -182,7 +292,9 @@ export function courierPdfRows(
       headerCells.some((cell) => cell !== undefined)
     )
       throw new Error(
-        'The PDF does not have the verified seven-column Steadfast layout. Use its original Excel/CSV.',
+        courier === 'pathao'
+          ? 'The PDF does not have the supported eight-column Pathao layout. Use its original Excel/CSV.'
+          : 'The PDF does not have the verified seven-column Steadfast layout. Use its original Excel/CSV.',
       );
     const lines = new Map<number, PdfCell[]>();
     for (const cell of page) {
@@ -192,25 +304,27 @@ export function courierPdfRows(
       lines.set(key, line);
     }
     for (const [, line] of [...lines.entries()].sort(([a], [b]) => b - a)) {
-      if (line.some((cell) => courierHeaders.includes(cell.text))) continue;
-      const cells = Array.from({ length: 7 }, () => '');
+      if (line.some((cell) => headers.includes(cell.text))) continue;
+      const cells = Array.from({ length: headers.length }, () => '');
       for (const cell of line.sort((a, b) => a.x - b.x)) {
         const merged =
           /^(Partially Delivered|Partial Delivered|Delivered|Cancelled|Pending)\s+(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2} (?:am|pm))$/i.exec(
             cell.text,
           );
-        if (merged !== null) {
+        if (courier === 'steadfast' && merged !== null) {
           cells[2] = merged[1] ?? '';
           cells[3] = merged[2] ?? '';
           continue;
         }
         const center = cell.x + cell.width / 2;
         const found = boundaries.findIndex((boundary) => center < boundary);
-        const index = found === -1 ? 6 : found;
+        const index = found === -1 ? headers.length - 1 : found;
         cells[index] = [cells[index], cell.text].filter(Boolean).join(' ');
       }
       if (cells.every((cell) => !cell)) continue;
-      if (!/^\d{4}-\d{2}-\d{2}/.test(cells[0] ?? '')) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}/.test(cells[courier === 'pathao' ? 1 : 0] ?? '')
+      ) {
         if (
           /^\d+$/.test(cells.join('').trim()) &&
           cells.join('').trim().length <= 2

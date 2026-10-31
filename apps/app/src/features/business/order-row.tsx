@@ -52,7 +52,12 @@ export function OrderRow({
   return (
     <tr>
       <td>{item.orderDate}</td>
-      <td className="order-id">{item.id}</td>
+      <td className="order-id">
+        {item.id}
+        {item.courier === 'pathao' ? (
+          <small className="muted">Pathao</small>
+        ) : null}
+      </td>
       <td className="numeric">{money(item.ads)}</td>
       <td>
         <select
@@ -76,8 +81,13 @@ export function OrderRow({
           aria-label={`Sales amount for ${item.id}`}
           inputMode="decimal"
           value={sales}
-          placeholder={amountInput(item.codAmount)}
-          disabled={pending}
+          placeholder={amountInput(item.collectedAmount ?? item.codAmount)}
+          disabled={pending || item.courier === 'pathao'}
+          title={
+            item.courier === 'pathao'
+              ? 'Pathao revenue uses the courier’s collected amount.'
+              : undefined
+          }
           onChange={(event) => {
             setSales(event.target.value);
             setError('');
@@ -88,7 +98,14 @@ export function OrderRow({
         <span className="order-status">{item.status}</span>
       </td>
       <td>{item.deliveryDate ?? '—'}</td>
-      <td className="numeric">{money(item.codAmount)}</td>
+      <td className="numeric">
+        {money(item.codAmount)}
+        {item.collectedAmount !== null ? (
+          <small className="muted">
+            Collected {money(item.collectedAmount)}
+          </small>
+        ) : null}
+      </td>
       <td className="numeric">{money(item.shipping)}</td>
       <td className="numeric">{money(item.codCharge)}</td>
       <td className="numeric">

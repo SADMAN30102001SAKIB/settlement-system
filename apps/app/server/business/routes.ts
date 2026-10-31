@@ -23,6 +23,8 @@ const orderFields = z
     partialQuantity: z.number().int().min(0).max(10000).nullable(),
     salesOverride: money.nullable(),
     codAmount: money,
+    courier: z.enum(['steadfast', 'pathao']).default('steadfast'),
+    collectedAmount: money.nullable().default(null),
     shipping: money,
     codCharge: money,
   })
@@ -34,7 +36,19 @@ const orderFields = z
   )
   .refine((item) => item.status === 'Pending' || item.deliveryDate !== null, {
     message: 'Finalized orders require a delivery date.',
-  });
+  })
+  .refine(
+    (item) =>
+      item.courier === 'steadfast'
+        ? item.collectedAmount === null
+        : item.collectedAmount === null
+          ? item.status === 'Pending'
+          : item.status === 'Cancelled' ||
+            (item.collectedAmount > 0
+              ? item.status === 'Delivered'
+              : item.status === 'Pending'),
+    { message: 'Pathao requires a matching collection and delivery outcome.' },
+  );
 const filterFields = z.object({
   from: date,
   to: date,
@@ -42,7 +56,7 @@ const filterFields = z.object({
   basis: z.enum(['order', 'delivery']).default('order'),
 });
 const finalized = sql`${orders.status} IN ('Delivered','Partial Delivered')`;
-const revenue = sql<number>`CASE WHEN ${finalized} THEN COALESCE(${orders.salesOverride}, ${orders.codAmount}) ELSE 0 END`;
+const revenue = sql<number>`CASE WHEN ${finalized} THEN COALESCE(${orders.collectedAmount}, ${orders.salesOverride}, ${orders.codAmount}) ELSE 0 END`;
 const product = sql<number>`CASE WHEN ${orders.status} = 'Delivered' THEN COALESCE(${orders.costPerPiece}, 0) * ${orders.quantity} ELSE 0 END`;
 
 // Recompute only the touched brand/day, in the same transaction as each import.
@@ -413,6 +427,8 @@ export const businessRoutes = new Hono<AppEnvironment>()
         salesOverride: orders.salesOverride,
         costPerPiece: orders.costPerPiece,
         codAmount: orders.codAmount,
+        courier: orders.courier,
+        collectedAmount: orders.collectedAmount,
         shipping: orders.shipping,
         codCharge: orders.codCharge,
         ads: orders.ads,
@@ -462,6 +478,15 @@ export const businessRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(422, {
         message: 'The import contains duplicate order IDs.',
       });
+    if (
+      input.mode === 'courier' &&
+      input.rows.some(
+        (row) => row.courier === 'pathao' && row.collectedAmount === null,
+      )
+    )
+      throw new HTTPException(422, {
+        message: 'Pathao courier updates require an explicit collected amount.',
+      });
     const database = context.get('database')();
     const [brand] = await database
       .select({ makingCost: brands.makingCost })
@@ -476,11 +501,11 @@ export const businessRoutes = new Hono<AppEnvironment>()
       binding
         .prepare(
           `INSERT INTO orders
-      (id, brand_id, order_date, delivery_date, status, quantity, partial_quantity, sales_override, cost_per_piece, cod_amount, shipping, cod_charge, ads, revision, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
+      (id, brand_id, order_date, delivery_date, status, quantity, partial_quantity, sales_override, cost_per_piece, cod_amount, shipping, cod_charge, courier, collected_amount, ads, revision, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
-      brand_id = CASE WHEN orders.brand_id = excluded.brand_id THEN orders.brand_id ELSE NULL END,
-      order_date = excluded.order_date, ${input.mode === 'courier' ? 'delivery_date = excluded.delivery_date, status = excluded.status, cod_amount = excluded.cod_amount, shipping = excluded.shipping, cod_charge = excluded.cod_charge,' : ''}
+      brand_id = CASE WHEN orders.brand_id = excluded.brand_id AND orders.courier = excluded.courier THEN orders.brand_id ELSE NULL END,
+      order_date = excluded.order_date, ${input.mode === 'courier' ? 'delivery_date = excluded.delivery_date, status = excluded.status, cod_amount = excluded.cod_amount, shipping = excluded.shipping, cod_charge = excluded.cod_charge, collected_amount = excluded.collected_amount,' : ''}
       revision = orders.revision + 1, updated_at = excluded.updated_at`,
         )
         .bind(
@@ -496,6 +521,8 @@ export const businessRoutes = new Hono<AppEnvironment>()
           row.codAmount,
           row.shipping,
           row.codCharge,
+          row.courier,
+          row.collectedAmount,
           Date.now(),
           Date.now(),
         ),
@@ -522,7 +549,7 @@ export const businessRoutes = new Hono<AppEnvironment>()
       )
         throw new HTTPException(409, {
           message:
-            'An order ID already belongs to another brand. No orders were imported.',
+            'An order ID already belongs to another brand or courier. No orders were imported.',
         });
       throw error;
     }

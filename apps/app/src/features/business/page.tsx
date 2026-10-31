@@ -535,8 +535,9 @@ export function Business({ brands }: { brands: Brand[] }) {
         )}
         <p className="caption">
           Edit Brand or Sales amount in the row, then save changes. Blank sales
-          uses COD. Product cost uses delivered item quantity and the saved
-          making cost; “Edit order” manages quantities and cost corrections.
+          uses COD for Steadfast; Pathao always uses its collected amount.
+          Product cost uses delivered item quantity and the saved making cost;
+          “Edit order” manages quantities and cost corrections.
         </p>
         <div className="pagination-actions">
           <button
@@ -603,7 +604,10 @@ export function Business({ brands }: { brands: Brand[] }) {
                     formText(form, 'partialQuantity') === ''
                       ? null
                       : Number(formText(form, 'partialQuantity')),
-                  salesOverride: amount('salesOverride'),
+                  salesOverride:
+                    editing.courier === 'pathao'
+                      ? editing.salesOverride
+                      : amount('salesOverride'),
                   costPerPiece: amount('costPerPiece'),
                 };
                 setPending(true);
@@ -656,11 +660,20 @@ export function Business({ brands }: { brands: Brand[] }) {
                   defaultValue={editing.partialQuantity ?? ''}
                 />
               </Field>
-              <Field label="Actual sales amount (blank uses COD)">
+              <Field
+                label={
+                  editing.courier === 'pathao'
+                    ? 'Pathao collected amount (updated by courier import)'
+                    : 'Actual sales amount (blank uses COD)'
+                }
+              >
                 <input
                   name="salesOverride"
                   inputMode="decimal"
-                  defaultValue={amountInput(editing.salesOverride)}
+                  readOnly={editing.courier === 'pathao'}
+                  defaultValue={amountInput(
+                    editing.collectedAmount ?? editing.salesOverride,
+                  )}
                 />
               </Field>
               <Field label="Making cost per piece (blank means missing)">

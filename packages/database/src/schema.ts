@@ -141,6 +141,10 @@ export const orders = sqliteTable(
     salesOverride: integer('sales_override'),
     costPerPiece: integer('cost_per_piece'),
     codAmount: integer('cod_amount').notNull(),
+    courier: text({ enum: ['steadfast', 'pathao'] })
+      .notNull()
+      .default('steadfast'),
+    collectedAmount: integer('collected_amount'),
     shipping: integer().notNull(),
     codCharge: integer('cod_charge').notNull(),
     ads: integer().notNull().default(0),

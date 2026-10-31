@@ -266,7 +266,8 @@ export function SettlementSource({
                     if (row.status === 'Delivered') {
                       values.deliveredQty++;
                       values.deliveredUnits += row.quantity;
-                      values.deliveredAmount += row.codAmount;
+                      values.deliveredAmount +=
+                        row.collectedAmount ?? row.codAmount;
                       values.deliveredCodCharge += row.codCharge;
                     } else if (row.status === 'Cancelled') {
                       values.cancelledQty++;
