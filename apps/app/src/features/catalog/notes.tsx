@@ -183,7 +183,7 @@ export function Notes({ brands }: { brands: Brand[] }) {
                         Edit
                       </button>
                       <button
-                        className="text-button danger-text"
+                        className="secondary compact danger-text"
                         disabled={pending}
                         onClick={() => {
                           remove(note).catch((reason: unknown) => {

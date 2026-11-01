@@ -122,7 +122,7 @@ export function Brands({
               <div className="actions">
                 <button
                   disabled={pending}
-                  className="secondary"
+                  className="secondary compact"
                   onClick={() => {
                     setEditing(brand);
                     setError('');
@@ -132,7 +132,7 @@ export function Brands({
                   Edit
                 </button>
                 <button
-                  className="secondary danger-text"
+                  className="secondary compact danger-text"
                   disabled={pending}
                   onClick={() => {
                     remove(brand).catch((reason: unknown) => {

@@ -172,35 +172,39 @@ export function PaymentsPanel({
                         {payment.note ? ` · ${payment.note}` : ''}
                       </small>
                     </div>
-                    <button
-                      className="text-button"
-                      disabled={pending}
-                      onClick={() => {
-                        setEditingProof(payment);
-                      }}
-                    >
-                      {payment.proofFileId ? 'View / edit proof' : 'Add proof'}
-                    </button>
-                    {payment.receiptId ? (
-                      <a
-                        className="secondary compact"
-                        href={`/payments/${payment.receiptId}`}
-                      >
-                        View receipt
-                      </a>
-                    ) : (
+                    <div className="actions">
                       <button
+                        className="secondary compact"
                         disabled={pending}
-                        className="text-button danger-text"
                         onClick={() => {
-                          remove(payment).catch((reason: unknown) => {
-                            setError(ErrorMessage(reason));
-                          });
+                          setEditingProof(payment);
                         }}
                       >
-                        Remove
+                        {payment.proofFileId
+                          ? 'View / edit proof'
+                          : 'Add proof'}
                       </button>
-                    )}
+                      {payment.receiptId ? (
+                        <a
+                          className="secondary compact"
+                          href={`/payments/${payment.receiptId}`}
+                        >
+                          View receipt
+                        </a>
+                      ) : (
+                        <button
+                          disabled={pending}
+                          className="secondary compact danger-text"
+                          onClick={() => {
+                            remove(payment).catch((reason: unknown) => {
+                              setError(ErrorMessage(reason));
+                            });
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </VirtualItems>

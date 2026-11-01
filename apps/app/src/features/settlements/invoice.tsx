@@ -116,7 +116,7 @@ export function Invoice({
                   <div className="invoice-action-popover">
                     <p className="caption">Invoice management</p>
                     <button
-                      className="text-button danger-text"
+                      className="secondary danger-text"
                       onClick={() => {
                         setMoreOpen(false);
                         onDelete();

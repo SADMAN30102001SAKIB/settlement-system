@@ -400,7 +400,7 @@ export function App() {
               <small>Administrator</small>
             </div>
             <button
-              className="text-button"
+              className="secondary compact sidebar-signout"
               disabled={working}
               onClick={() => {
                 logout().catch((reason: unknown) => {

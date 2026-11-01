@@ -346,7 +346,7 @@ export function Business({ brands }: { brands: Brand[] }) {
                         Edit ad spend
                       </button>
                       <button
-                        className="text-button danger-text"
+                        className="secondary compact danger-text"
                         disabled={pending}
                         onClick={() => {
                           removeDay(day).catch((reason: unknown) => {

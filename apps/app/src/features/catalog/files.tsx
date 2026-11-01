@@ -100,7 +100,7 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
                     <td data-label="Actions" className="file-actions">
                       <div className="actions">
                         <a
-                          className="text-button"
+                          className="secondary compact"
                           href={`/api/manage/files/${item.id}`}
                           target="_blank"
                           rel="noreferrer"
@@ -108,7 +108,7 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
                           View
                         </a>
                         <button
-                          className="text-button danger-text"
+                          className="secondary compact danger-text"
                           disabled={pending}
                           onClick={() => {
                             remove(item.id).catch((reason: unknown) => {

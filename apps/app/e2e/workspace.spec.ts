@@ -2480,6 +2480,145 @@ test('daily summaries scroll in batches and payment allocations retain offscreen
   );
 });
 
+test('row actions and sidebar sign out use consistent themed buttons', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const name = `AAA Button ${testInfo.project.name} ${String(Date.now())}`;
+  const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
+    await (
+      await page.request.post('/api/manage/brands', {
+        headers,
+        data: { name, makingCost: 100000 },
+      })
+    ).json(),
+  ).item;
+  expect(
+    (
+      await page.request.post('/api/manage/notes', {
+        headers,
+        data: {
+          brandId: brand.id,
+          period: '31 October 2026',
+          type: 'Other',
+          content: 'Button consistency check',
+        },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await page.request.put('/api/manage/business/ads', {
+        headers,
+        data: { brandId: brand.id, date: '2026-10-31', amount: 100000 },
+      })
+    ).ok(),
+  ).toBe(true);
+  const filename = `button-actions-${testInfo.project.name}.png`;
+  expect(
+    (
+      await page.request.post('/api/manage/files/proof', {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/octet-stream',
+          'X-File-Name': filename,
+        },
+        data: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jx9sAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      })
+    ).ok(),
+  ).toBe(true);
+  for (const theme of ['Light', 'Dark']) {
+    await page.goto('/brands');
+    await page.getByLabel('Color theme').selectOption({ label: theme });
+    const brandRow = page.locator('.brand-row').filter({ hasText: name });
+    await scrollUntil(
+      page.getByRole('region', { name: 'Brands', exact: true }),
+      brandRow,
+    );
+    const reference = brandRow.getByRole('button', {
+      name: 'Delete',
+      exact: true,
+    });
+    await expect(reference).toHaveCSS('border-top-style', 'solid');
+    const radius = await reference.evaluate(
+      (element) => getComputedStyle(element).borderRadius,
+    );
+    const color = await reference.evaluate(
+      (element) => getComputedStyle(element).color,
+    );
+    for (const route of ['notes', 'business', 'files']) {
+      await page.goto(`/${route}`);
+      const row =
+        route === 'notes'
+          ? page.locator('.note-item').filter({ hasText: name })
+          : route === 'business'
+            ? page
+                .locator('.business-daily-table tbody tr')
+                .filter({ hasText: name })
+            : page.getByRole('row').filter({ hasText: filename });
+      const region = page.getByRole('region', {
+        name:
+          route === 'notes'
+            ? 'Work notes'
+            : route === 'files'
+              ? 'Private files'
+              : 'Daily summary',
+        exact: true,
+      });
+      await scrollUntil(region, row);
+      const destructive = row.getByRole('button', {
+        name: route === 'business' ? 'Remove day' : 'Delete',
+        exact: true,
+      });
+      await expect(destructive).toHaveClass(/secondary compact danger-text/);
+      await expect(destructive).toHaveCSS('border-radius', radius);
+      await expect(destructive).toHaveCSS('color', color);
+      await expect(destructive).toHaveCSS('border-top-width', '1px');
+      await destructive.click();
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: 'Cancel', exact: true })
+        .click();
+      if (route === 'files') {
+        const view = row.getByRole('link', { name: 'View', exact: true });
+        await expect(view).toHaveClass('secondary compact');
+        await expect(view).toHaveCSS('border-top-width', '1px');
+        await expect(view).toHaveCSS('border-radius', radius);
+        await expect(view).toHaveCSS('align-items', 'center');
+        await expect(view).toHaveCSS('text-decoration-line', 'none');
+      }
+      await row.screenshot({
+        path: testInfo.outputPath(`actions-${route}-${theme}.png`),
+      });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > innerWidth,
+        ),
+      ).toBe(false);
+    }
+    if (testInfo.project.name === 'mobile')
+      await page.getByRole('button', { name: 'Toggle navigation' }).click();
+    const signout = page.getByRole('button', { name: 'Sign out', exact: true });
+    await expect(signout).toHaveClass('secondary compact sidebar-signout');
+    await expect(signout).toHaveCSS('border-top-width', '1px');
+    await page
+      .locator('.user-row')
+      .screenshot({ path: testInfo.outputPath(`signout-${theme}.png`) });
+    if (testInfo.project.name === 'mobile')
+      await page.getByRole('link', { name: /Private files/ }).click();
+  }
+  if (testInfo.project.name === 'mobile')
+    await page.getByRole('button', { name: 'Toggle navigation' }).click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Sign in to workspace', exact: true }),
+  ).toBeVisible();
+});
+
 test('numeric inputs hide spinner controls while preserving native constraints and keyboard entry', async ({
   page,
 }, testInfo) => {
@@ -2612,9 +2751,10 @@ test('payment brand directory has separated compact rows and responsive account 
         .locator('.brand-account-link')
         .filter({ hasText: names[0] ?? '' });
       await scrollUntil(directory, first);
-      const next = first
-        .locator('xpath=../following-sibling::div[1]')
-        .locator('.brand-account-link');
+      await first.scrollIntoViewIfNeeded();
+      const next = directory
+        .locator('.brand-account-link')
+        .filter({ hasText: names[1] ?? '' });
       const bounds = await first.boundingBox(),
         nextBounds = await next.boundingBox();
       expect(

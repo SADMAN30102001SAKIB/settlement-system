@@ -202,7 +202,7 @@ function Editor({
             </Field>
             <button
               type="button"
-              className="secondary compact"
+              className="secondary compact danger-text"
               disabled={lines.length === 1 || pending}
               onClick={() => {
                 setLines((current) =>
@@ -553,7 +553,11 @@ export function Advertising({
       {!overview.length && overviewList.error ? (
         <Alert>
           {overviewList.error}
-          <button type="button" onClick={overviewList.retry}>
+          <button
+            type="button"
+            className="secondary compact"
+            onClick={overviewList.retry}
+          >
             Retry loading
           </button>
         </Alert>
