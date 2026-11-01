@@ -2,7 +2,7 @@ import { beforeAll, afterAll, it, expect } from 'vitest';
 import { z } from 'zod';
 import { app } from '../app';
 import { testEnvironment } from '../test-environment';
-import { receiptSchema } from '../../shared/receipts';
+import { receiptSchema, paymentSummarySchema } from '../../shared/receipts';
 import { portalListSchema } from '../../shared/access';
 
 let fixture: Awaited<ReturnType<typeof testEnvironment>>;
@@ -489,6 +489,48 @@ it(
     expect((await login('01999999999', 'wrong', '198.51.100.100')).status).toBe(
       429,
     );
+  },
+);
+
+it(
+  'returns the same balances as the admin, scoped only to the signed-in brand',
+  { timeout: 20000 },
+  async () => {
+    const expected = paymentSummarySchema.parse(
+      await (await call('/api/manage/receipts/account/' + a)).json(),
+    );
+    const response = await call(
+      '/api/portal/payment-summary',
+      'GET',
+      undefined,
+      aCookie,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expected);
+    expect(expected.ads.paid).toBe(10000);
+    expect(expected.ads.due).toBeGreaterThan(0);
+    expect(
+      (await call('/api/portal/payment-summary', 'GET', undefined, '')).status,
+    ).toBe(401);
+    expect(
+      (
+        await call(
+          '/api/portal/payment-summary?brandId=' + b,
+          'GET',
+          undefined,
+          aCookie,
+        )
+      ).status,
+    ).toBe(422);
+    const empty = await makeBrand('Empty portal balance');
+    expect((await provision(empty, 'empty-balance-owner')).status).toBe(200);
+    const cookie = cookieFrom(await login('empty-balance-owner'));
+    const zero = { billed: 0, paid: 0, due: 0, credit: 0 };
+    expect(
+      await (
+        await call('/api/portal/payment-summary', 'GET', undefined, cookie)
+      ).json(),
+    ).toEqual({ commission: zero, ads: zero });
   },
 );
 

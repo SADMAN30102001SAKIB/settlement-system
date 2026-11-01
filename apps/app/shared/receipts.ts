@@ -29,6 +29,10 @@ export const paymentAccountSchema = z.object({
   commission: totalsSchema,
   ads: totalsSchema,
 });
+export const paymentSummarySchema = paymentAccountSchema.pick({
+  commission: true,
+  ads: true,
+});
 export const receiptDataSchema = z.object({
   brandName: z.string(),
   companyName: z.string(),

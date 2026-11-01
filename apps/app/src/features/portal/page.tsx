@@ -6,7 +6,7 @@ import {
   documentKind,
   portalListSchema,
 } from '../../../shared/access';
-import { receiptSchema } from '../../../shared/receipts';
+import { receiptSchema, paymentSummarySchema } from '../../../shared/receipts';
 import {
   api,
   okSchema,
@@ -17,8 +17,15 @@ import {
 } from '../../lib/api';
 import type { Settings } from '../../lib/api';
 import { useInfiniteQuery } from '../../lib/infinite-query';
-import { formText, dateLabel } from '../../lib/format';
-import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
+import { formText, dateLabel, money } from '../../lib/format';
+import {
+  Alert,
+  ErrorMessage,
+  Field,
+  Spinner,
+  Metric,
+  SkeletonMetrics,
+} from '../../components/ui';
 import { PasswordField } from '../../components/password-field';
 import { ThemePicker } from '../../components/theme-picker';
 import { ScrollList, VirtualBody } from '../../components/scroll-list';
@@ -103,6 +110,63 @@ function PortalDocument({
   );
 }
 
+function PaymentSummary() {
+  const [item, setItem] = useState<z.infer<typeof paymentSummarySchema> | null>(
+    null,
+  );
+  const [error, setError] = useState(''),
+    [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    api('/portal/payment-summary', paymentSummarySchema, {
+      signal: controller.signal,
+    })
+      .then(setItem)
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(ErrorMessage(reason));
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [retry]);
+  return (
+    <section className="portal-payment-summary" aria-label="Payment balances">
+      {error ? (
+        <Alert>
+          {error}
+          <button
+            className="secondary compact"
+            onClick={() => {
+              setError('');
+              setRetry((value) => value + 1);
+            }}
+          >
+            Retry balances
+          </button>
+        </Alert>
+      ) : !item ? (
+        <SkeletonMetrics count={4} />
+      ) : (
+        <div className="metrics">
+          <Metric
+            label="Commission outstanding"
+            value={money(item.commission.due)}
+          />
+          <Metric label="Advertising outstanding" value={money(item.ads.due)} />
+          <Metric
+            label="Commission payments received"
+            value={money(item.commission.paid)}
+          />
+          <Metric
+            label="Advertising payments received"
+            value={money(item.ads.paid)}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
   const [kind, setKind] = useState<z.infer<typeof documentKind>>(() => {
     const value = documentKind.safeParse(
@@ -111,6 +175,7 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
     return value.success ? value.data : 'settlements';
   });
   const [settings, setSettings] = useState<Settings | null>(null),
+    [summaryRevision, setSummaryRevision] = useState(0),
     [error, setError] = useState(''),
     [selected, setSelected] = useState<{
       kind: z.infer<typeof documentKind>;
@@ -219,11 +284,15 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
           <button
             className="secondary compact"
             disabled={list.loading}
-            onClick={list.refresh}
+            onClick={() => {
+              list.refresh();
+              if (kind === 'receipts') setSummaryRevision((value) => value + 1);
+            }}
           >
             Refresh
           </button>
         </div>
+        {kind === 'receipts' ? <PaymentSummary key={summaryRevision} /> : null}
         <ScrollList
           {...list.scrollProps}
           count={list.items.length}

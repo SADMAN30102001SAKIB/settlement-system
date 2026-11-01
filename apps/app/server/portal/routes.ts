@@ -15,9 +15,18 @@ import { requireBrand } from './auth';
 import { settlementStatus, advertisingStatus } from '../invoice-status/routes';
 import { advertisingAccount } from '../advertising/accounts';
 import { receiptById } from '../receipts/service';
+import { loadPaymentAccount } from '../receipts/account';
 
 export const portalRoutes = new Hono<AppEnvironment>()
   .use('*', requireBrand)
+  .get('/payment-summary', async (c) => {
+    z.object({}).strict().parse(c.req.query());
+    const { commission, ads } = await loadPaymentAccount(
+      c.env.DB,
+      c.get('brandId'),
+    );
+    return c.json({ commission, ads });
+  })
   .get('/settings', async (c) => {
     const [item] = await c
       .get('database')()

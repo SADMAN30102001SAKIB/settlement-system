@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { paymentSummarySchema } from '../shared/receipts';
+import { money } from '../src/lib/format';
 
 const adminUsername = 'browser-admin';
 const adminPassword = 'browser-test-long-password';
@@ -236,6 +238,29 @@ test('admin provisions brand access and owners can only view and export their th
       owner.getByRole('heading', { name, exact: true }),
     ).toBeVisible();
     await expect(owner.locator('.sidebar')).toHaveCount(0);
+    let failSummary = true;
+    await owner.route('**/api/portal/payment-summary', async (route) => {
+      if (failSummary) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Temporary balance failure' }),
+        });
+      } else await route.continue();
+    });
+    const expectedBalances = async () => {
+      const summary = paymentSummarySchema.parse(
+        await (
+          await page.request.get('/api/manage/receipts/account/' + brandId)
+        ).json(),
+      );
+      return [
+        summary.commission.due,
+        summary.ads.due,
+        summary.commission.paid,
+        summary.ads.paid,
+      ].map(money);
+    };
     const documents = [
       ['Settlement invoices', settlement.invoiceNumber],
       ['Advertising invoices', ads.invoiceNumber],
@@ -246,6 +271,23 @@ test('admin provisions brand access and owners can only view and export their th
       for (const [label, number] of documents) {
         await owner.getByRole('tab', { name: label, exact: true }).click();
         await expect(owner.getByRole('tabpanel')).toContainText(number);
+        if (label === 'Payment receipts') {
+          if (theme === 'Light') {
+            await expect(
+              owner.getByRole('button', { name: 'Retry balances' }),
+            ).toBeVisible();
+            failSummary = false;
+            await owner.getByRole('button', { name: 'Retry balances' }).click();
+          }
+          await expect(
+            owner
+              .getByRole('region', { name: 'Payment balances' })
+              .locator('.metric strong'),
+          ).toHaveText(await expectedBalances());
+        } else
+          await expect(
+            owner.getByRole('region', { name: 'Payment balances' }),
+          ).toHaveCount(0);
         const invoice = owner.getByRole('row').filter({ hasText: number });
         await invoice
           .getByRole('button', { name: 'View invoice', exact: true })
@@ -295,6 +337,27 @@ test('admin provisions brand access and owners can only view and export their th
         fullPage: true,
       });
     }
+    expect(
+      (
+        await page.request.post('/api/manage/receipts/from-payment', {
+          headers,
+          data: {
+            requestId: crypto.randomUUID(),
+            target: { kind: 'ads', targetId: adsId },
+            amount: 10000,
+            date: '2026-10-31',
+            note: 'Refresh balances',
+            proofFileId: null,
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+    await owner.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(
+      owner
+        .getByRole('region', { name: 'Payment balances' })
+        .locator('.metric strong'),
+    ).toHaveText(await expectedBalances());
     expect(
       requests.some(
         (path) =>
