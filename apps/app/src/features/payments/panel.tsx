@@ -10,8 +10,7 @@ import type { Payment } from '../../lib/api';
 import { dateLabel, formText, money, today } from '../../lib/format';
 import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
-import { Pagination } from '../../components/pagination';
-import { usePage } from '../../lib/pagination';
+import { ScrollList, VirtualItems } from '../../components/scroll-list';
 
 export function PaymentsPanel({
   target,
@@ -38,7 +37,6 @@ export function PaymentsPanel({
   const [hasMore, setHasMore] = useState(true);
   const [uploading, setUploading] = useState(false);
   const history = [...payments, ...olderPayments];
-  const historyPage = usePage(history, `${target.kind}:${target.targetId}`);
   async function refreshHistory() {
     await refresh();
     setOlderPayments([]);
@@ -56,8 +54,6 @@ export function PaymentsPanel({
       );
       setOlderPayments((current) => [...current, ...result.items]);
       setHasMore(result.hasMore);
-      if (result.items.length || historyPage.controls.hasNext)
-        historyPage.setPage(historyPage.controls.page);
     } catch (reason) {
       setError(ErrorMessage(reason));
     } finally {
@@ -147,69 +143,71 @@ export function PaymentsPanel({
       </div>
       <div className="split-layout">
         <div>
-          {history.length ? (
-            historyPage.items.map((payment) => (
-              <div className="payment-row" key={payment.id}>
-                <div>
-                  <strong>{money(payment.amount)}</strong>
-                  <small className="muted">
-                    {dateLabel(payment.date)}
-                    {payment.note ? ` · ${payment.note}` : ''}
-                  </small>
-                </div>
-                <button
-                  className="text-button"
-                  disabled={pending}
-                  onClick={() => {
-                    setEditingProof(payment);
-                  }}
-                >
-                  {payment.proofFileId ? 'View / edit proof' : 'Add proof'}
-                </button>
-                {payment.receiptId ? (
-                  <a
-                    className="secondary compact"
-                    href={`/payments/${payment.receiptId}`}
-                  >
-                    View receipt
-                  </a>
-                ) : (
-                  <button
-                    disabled={pending}
-                    className="text-button danger-text"
-                    onClick={() => {
-                      remove(payment).catch((reason: unknown) => {
-                        setError(ErrorMessage(reason));
-                      });
-                    }}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))
-          ) : (
-            <p className="muted">No payments recorded.</p>
-          )}
-          <Pagination
-            label="payments"
-            {...historyPage.controls}
-            pending={pending}
-            hasNext={
-              historyPage.controls.hasNext || (payments.length >= 21 && hasMore)
-            }
-            onNext={() => {
-              if (
-                payments.length >= 21 &&
-                hasMore &&
-                history.length - historyPage.controls.page * 20 < 20
-              )
-                loadOlder().catch((reason: unknown) => {
-                  setError(ErrorMessage(reason));
-                });
-              else historyPage.controls.onNext();
+          <ScrollList
+            count={history.length}
+            label="Payment history"
+            loading={pending}
+            error={error}
+            hasMore={payments.length >= 21 && hasMore}
+            resetKey={`${target.kind}:${target.targetId}:${payments.map((row) => row.id).join(',')}`}
+            loadMore={() => {
+              loadOlder().catch((reason: unknown) => {
+                setError(ErrorMessage(reason));
+              });
             }}
-          />
+            retry={() => {
+              loadOlder().catch((reason: unknown) => {
+                setError(ErrorMessage(reason));
+              });
+            }}
+          >
+            {history.length ? (
+              <VirtualItems>
+                {history.map((payment) => (
+                  <div className="payment-row" key={payment.id}>
+                    <div>
+                      <strong>{money(payment.amount)}</strong>
+                      <small className="muted">
+                        {dateLabel(payment.date)}
+                        {payment.note ? ` · ${payment.note}` : ''}
+                      </small>
+                    </div>
+                    <button
+                      className="text-button"
+                      disabled={pending}
+                      onClick={() => {
+                        setEditingProof(payment);
+                      }}
+                    >
+                      {payment.proofFileId ? 'View / edit proof' : 'Add proof'}
+                    </button>
+                    {payment.receiptId ? (
+                      <a
+                        className="secondary compact"
+                        href={`/payments/${payment.receiptId}`}
+                      >
+                        View receipt
+                      </a>
+                    ) : (
+                      <button
+                        disabled={pending}
+                        className="text-button danger-text"
+                        onClick={() => {
+                          remove(payment).catch((reason: unknown) => {
+                            setError(ErrorMessage(reason));
+                          });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </VirtualItems>
+            ) : (
+              <p className="muted">No payments recorded.</p>
+            )}
+          </ScrollList>
         </div>
         {editingProof ? (
           <div>

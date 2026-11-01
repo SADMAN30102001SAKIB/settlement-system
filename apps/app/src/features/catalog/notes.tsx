@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
@@ -16,8 +16,8 @@ import { api, noteSchema, okSchema } from '../../lib/api';
 import type { Brand, Note } from '../../lib/api';
 import { formText } from '../../lib/format';
 import { Progress } from './progress';
-import { Pagination } from '../../components/pagination';
-import { useCursor } from '../../lib/pagination';
+import { ScrollList, VirtualItems } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 const noteListSchema = z.object({
   items: z.array(noteSchema),
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
@@ -25,41 +25,17 @@ const noteListSchema = z.object({
 
 export function Notes({ brands }: { brands: Brand[] }) {
   const confirm = useConfirmation();
-  const [items, setItems] = useState<Note[]>([]);
   const [editing, setEditing] = useState<Note | null>(null);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [reload, setReload] = useState(0);
   const [brandFilter, setBrandFilter] = useState('');
-  const { cursor, setCursor, page, hasPrevious, back } =
-    useCursor<NonNullable<z.infer<typeof noteListSchema>['next']>>(brandFilter);
-  const [next, setNext] =
-    useState<z.infer<typeof noteListSchema>['next']>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    const query = new URLSearchParams();
-    if (brandFilter) query.set('brandId', brandFilter);
-    if (cursor) {
-      query.set('before', String(cursor.before));
-      query.set('beforeId', cursor.beforeId);
-    }
-    api(`/manage/notes?${query.toString()}`, noteListSchema, {
-      signal: controller.signal,
-    })
-      .then((data) => {
-        setItems(data.items);
-        setNext(data.next);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPending(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [reload, brandFilter, cursor]);
+  const list = useInfiniteQuery(
+    `/manage/notes?${new URLSearchParams(brandFilter ? { brandId: brandFilter } : {}).toString()}`,
+    noteListSchema,
+    reload,
+  );
+  const items = list.items;
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -83,7 +59,6 @@ export function Notes({ brands }: { brands: Brand[] }) {
       setEditing(null);
       form.reset();
       setReload((current) => current + 1);
-      setCursor(null);
     } catch (reason) {
       setError(ErrorMessage(reason));
     } finally {
@@ -108,7 +83,6 @@ export function Notes({ brands }: { brands: Brand[] }) {
         body: {},
       });
       setReload((current) => current + 1);
-      setCursor(null);
       if (editing?.id === note.id) setEditing(null);
     } catch (reason) {
       setError(ErrorMessage(reason));
@@ -129,8 +103,6 @@ export function Notes({ brands }: { brands: Brand[] }) {
             value={brandFilter}
             onChange={(event) => {
               setBrandFilter(event.target.value);
-              setCursor(null);
-              setItems([]);
             }}
           >
             <option value="">All brands</option>
@@ -146,85 +118,78 @@ export function Notes({ brands }: { brands: Brand[] }) {
       <div className="split-layout">
         <section className="panel">
           <h2>Work notes</h2>
-          {pending && items.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="panel" style={{ padding: 16 }}>
-                  <Skeleton
-                    width="35%"
-                    height={16}
-                    radius={4}
-                    style={{ marginBottom: 10 }}
-                  />
-                  <Skeleton
-                    width="85%"
-                    height={14}
-                    radius={3}
-                    style={{ marginBottom: 6 }}
-                  />
-                  <Skeleton width="55%" height={14} radius={3} />
-                </div>
-              ))}
-            </div>
-          ) : items.length ? (
-            items.map((note) => (
-              <article key={note.id} className="note-item">
-                <div className="section-heading">
-                  <div>
-                    <strong>{note.brandName}</strong>
-                    <small className="muted">
-                      {note.period} · {note.type}
-                    </small>
+          <ScrollList
+            {...list.scrollProps}
+            count={items.length}
+            label="Work notes"
+          >
+            {list.loading && items.length === 0 ? (
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+              >
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="panel" style={{ padding: 16 }}>
+                    <Skeleton
+                      width="35%"
+                      height={16}
+                      radius={4}
+                      style={{ marginBottom: 10 }}
+                    />
+                    <Skeleton
+                      width="85%"
+                      height={14}
+                      radius={3}
+                      style={{ marginBottom: 6 }}
+                    />
+                    <Skeleton width="55%" height={14} radius={3} />
                   </div>
-                  <div className="actions">
-                    <button
-                      className="secondary compact"
-                      disabled={pending}
-                      onClick={() => {
-                        setEditing(note);
-                        setError('');
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="text-button danger-text"
-                      disabled={pending}
-                      onClick={() => {
-                        remove(note).catch((reason: unknown) => {
-                          setError(ErrorMessage(reason));
-                        });
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                <p>{note.content}</p>
-              </article>
-            ))
-          ) : (
-            <Empty title="Nothing lost between days">
-              Keep a note of completed invoices and settlement work.
-            </Empty>
-          )}
-          <Pagination
-            label="notes"
-            page={page}
-            hasPrevious={hasPrevious}
-            hasNext={next !== null}
-            pending={pending}
-            onPrevious={() => {
-              setPending(true);
-              back();
-            }}
-            onNext={() => {
-              if (next) {
-                setPending(true);
-                setCursor(next);
-              }
-            }}
-          />
+                ))}
+              </div>
+            ) : items.length ? (
+              <VirtualItems>
+                {items.map((note) => (
+                  <article key={note.id} className="note-item">
+                    <div className="section-heading">
+                      <div>
+                        <strong>{note.brandName}</strong>
+                        <small className="muted">
+                          {note.period} · {note.type}
+                        </small>
+                      </div>
+                      <div className="actions">
+                        <button
+                          className="secondary compact"
+                          disabled={pending}
+                          onClick={() => {
+                            setEditing(note);
+                            setError('');
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="text-button danger-text"
+                          disabled={pending}
+                          onClick={() => {
+                            remove(note).catch((reason: unknown) => {
+                              setError(ErrorMessage(reason));
+                            });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <p>{note.content}</p>
+                  </article>
+                ))}
+              </VirtualItems>
+            ) : (
+              <Empty title="Nothing lost between days">
+                Keep a note of completed invoices and settlement work.
+              </Empty>
+            )}
+          </ScrollList>
         </section>
         <section className="panel">
           <h2>{editing ? 'Edit note' : 'Add a note'}</h2>

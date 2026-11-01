@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 import { StatusSelect } from '../../components/status-select';
 import { invoiceStatusSchema } from '../../../shared/invoice-status';
 import { z } from 'zod';
@@ -38,7 +40,6 @@ const ledgerSchema = z.object({
   ),
   next: cursorSchema.nullable(),
 });
-type Cursor = z.infer<typeof cursorSchema> | null;
 
 export function AdvertisingLedger({
   brands,
@@ -60,39 +61,22 @@ export function AdvertisingLedger({
     from: '',
     to: '',
   });
-  const [cursor, setCursor] = useState<Cursor>(null);
-  const [previous, setPrevious] = useState<Cursor[]>([]);
-  const [data, setData] = useState<z.infer<typeof ledgerSchema> | null>(null);
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters))
+    if (value) params.set(key, value);
+  const list = useInfiniteQuery(
+    `/manage/advertising?${params.toString()}`,
+    ledgerSchema,
+    version,
+  );
+  const data = { items: list.items };
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const loading = list.loading;
   const [detail, setDetail] = useState<z.infer<typeof adDetailSchema> | null>(
     null,
   );
   const [mode, setMode] = useState<'view' | 'pdf' | 'payment'>('view');
-  useEffect(() => {
-    const controller = new AbortController();
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(filters))
-      if (value) query.set(key, value);
-    if (cursor) {
-      query.set('before', cursor.before);
-      query.set('beforeId', cursor.beforeId);
-    }
-    api(`/manage/advertising?${query.toString()}`, ledgerSchema, {
-      signal: controller.signal,
-    })
-      .then(setData)
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [filters, cursor, version]);
   async function open(id: string, action: typeof mode) {
     setPending(true);
     setError('');
@@ -144,9 +128,6 @@ export function AdvertisingLedger({
           event.preventDefault();
           const form = new FormData(event.currentTarget);
           setError('');
-          setLoading(true);
-          setCursor(null);
-          setPrevious([]);
           setFilters({
             brandId: formText(form, 'brandId'),
             q: formText(form, 'q'),
@@ -184,10 +165,15 @@ export function AdvertisingLedger({
         </button>
       </form>
       {error ? <Alert>{error}</Alert> : null}
-      {loading ? (
+      {loading && !list.items.length ? (
         <SkeletonTable rows={3} columns={7} />
       ) : (
-        <div className="table-scroll">
+        <ScrollList
+          {...list.scrollProps}
+          count={list.items.length}
+          className="table-scroll"
+          label="Advertising invoices"
+        >
           <table className="invoice-ledger-table">
             <thead>
               <tr>
@@ -204,8 +190,8 @@ export function AdvertisingLedger({
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {data?.items.map((item) => (
+            <VirtualBody columns={7}>
+              {data.items.map((item) => (
                 <tr key={item.id}>
                   <td data-label="Invoice / date" className="ledger-identity">
                     <strong>{item.invoiceNumber}</strong>
@@ -234,17 +220,12 @@ export function AdvertisingLedger({
                       }
                       manual={item.statusOverride !== null}
                       onSaved={(value) => {
-                        setData((current) =>
-                          current
-                            ? {
-                                ...current,
-                                items: current.items.map((row) =>
-                                  row.id === item.id
-                                    ? { ...row, statusOverride: value }
-                                    : row,
-                                ),
-                              }
-                            : current,
+                        list.setItems((rows) =>
+                          rows.map((row) =>
+                            row.id === item.id
+                              ? { ...row, statusOverride: value }
+                              : row,
+                          ),
                         );
                       }}
                     />
@@ -276,46 +257,20 @@ export function AdvertisingLedger({
                   </td>
                 </tr>
               ))}
-              {!data?.items.length ? (
+              {!data.items.length ? (
                 <tr>
                   <td colSpan={7}>No invoices match these filters.</td>
                 </tr>
               ) : null}
-            </tbody>
+            </VirtualBody>
           </table>
-        </div>
+        </ScrollList>
       )}
       {pending ? (
         <p role="status">
           <Spinner size={12} /> Updating invoice…
         </p>
       ) : null}
-      <div className="pagination-actions">
-        <button
-          className="secondary"
-          disabled={loading || !previous.length}
-          onClick={() => {
-            setLoading(true);
-            setCursor(previous.at(-1) ?? null);
-            setPrevious((values) => values.slice(0, -1));
-          }}
-        >
-          Previous invoices
-        </button>
-        <span>Page {previous.length + 1} · 20 invoices per page</span>
-        <button
-          className="secondary"
-          disabled={loading || !data?.next}
-          onClick={() => {
-            if (!data?.next) return;
-            setLoading(true);
-            setPrevious((values) => [...values, cursor]);
-            setCursor(data.next);
-          }}
-        >
-          Next invoices
-        </button>
-      </div>
       <InvoiceActionDialog
         detail={detail}
         mode={mode}

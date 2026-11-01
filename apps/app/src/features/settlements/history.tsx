@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { StatusSelect } from '../../components/status-select';
 import type { z } from 'zod';
 import { paymentStatus } from '@settlement/domain/payments';
@@ -26,8 +26,8 @@ import { dateLabel, money, today } from '../../lib/format';
 import { useConfirmation } from '../../components/confirmation-context';
 import { InvoiceActionDialog, InvoiceRowActions } from './ledger-actions';
 import { confirmInvoiceDeletion } from './delete-invoice';
-import { Pagination } from '../../components/pagination';
-import { useCursor } from '../../lib/pagination';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 
 export function History({
   brands,
@@ -55,8 +55,21 @@ export function History({
   const [brand, setBrand] = useState('');
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState({ from, to, brand, query });
-  const [items, setItems] = useState<ReportRow[]>([]);
-  const [totals, setTotals] = useState({
+  const params = new URLSearchParams({
+    from: filters.from,
+    to: filters.to,
+    brandId: filters.brand,
+    q: filters.query,
+  });
+  for (const [key, value] of [...params.entries()])
+    if (!value) params.delete(key);
+  const list = useInfiniteQuery(
+    `/manage/settlements?${params.toString()}`,
+    reportListSchema,
+    revision,
+  );
+  const { items, setItems, loading: pending } = list;
+  const totals = list.data?.summary ?? {
     count: 0,
     net: 0,
     commission: 0,
@@ -72,51 +85,9 @@ export function History({
     codCharge: 0,
     ads: 0,
     productCost: 0,
-  });
-  const [next, setNext] = useState<{ before: string; beforeId: string } | null>(
-    null,
-  );
-  const { cursor, setCursor, page, hasPrevious, back } = useCursor<{
-    before: string;
-    beforeId: string;
-  }>(JSON.stringify(filters));
-  const [pending, setPending] = useState(true);
+  };
   const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (filters.from) params.set('from', filters.from);
-    if (filters.to) params.set('to', filters.to);
-    if (filters.brand) params.set('brandId', filters.brand);
-    if (filters.query) params.set('q', filters.query);
-    if (cursor) {
-      params.set('before', cursor.before);
-      params.set('beforeId', cursor.beforeId);
-    }
-    api(`/manage/settlements?${params.toString()}`, reportListSchema, {
-      signal: controller.signal,
-    })
-      .then((data) => {
-        setTotals(data.summary);
-        setItems(data.items);
-        setNext(data.next);
-        setError('');
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPending(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [filters, cursor, revision]);
   function refresh() {
-    setCursor(null);
-    setItems([]);
-    setNext(null);
-    setPending(true);
     setRevision((value) => value + 1);
   }
   async function open(id: string, action: typeof mode) {
@@ -236,10 +207,6 @@ export function History({
               setError('The end date cannot be before the start date.');
               return;
             }
-            setItems([]);
-            setNext(null);
-            setCursor(null);
-            setPending(true);
             setError('');
             setFilters({ from, to, brand, query });
           }}
@@ -325,7 +292,12 @@ export function History({
             first settlement.
           </Empty>
         ) : (
-          <div className="table-scroll">
+          <ScrollList
+            {...list.scrollProps}
+            count={items.length}
+            className="table-scroll"
+            label="Settlement invoices"
+          >
             <table className="invoice-ledger-table">
               <thead>
                 <tr>
@@ -338,7 +310,7 @@ export function History({
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <VirtualBody columns={7}>
                 {items.map((item) => {
                   const status = paymentStatus(item.commission, item.paid);
                   return (
@@ -420,9 +392,9 @@ export function History({
                     </tr>
                   );
                 })}
-              </tbody>
+              </VirtualBody>
             </table>
-          </div>
+          </ScrollList>
         )}
         {actionPending ? (
           <p role="status">
@@ -456,23 +428,18 @@ export function History({
             refresh();
           }}
         />
-        <Pagination
-          label="reports"
-          page={page}
-          hasPrevious={hasPrevious}
-          hasNext={next !== null}
-          pending={pending}
-          onPrevious={() => {
-            setPending(true);
-            back();
-          }}
-          onNext={() => {
-            if (next) {
-              setPending(true);
-              setCursor(next);
-            }
-          }}
-        />
+        {!items.length && list.error ? (
+          <Alert>
+            {list.error}
+            <button
+              type="button"
+              className="secondary compact"
+              onClick={list.retry}
+            >
+              Retry loading
+            </button>
+          </Alert>
+        ) : null}
       </section>
     </>
   );

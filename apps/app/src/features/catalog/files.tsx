@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { z } from 'zod';
 import {
   Alert,
@@ -8,8 +8,8 @@ import {
 } from '../../components/ui';
 import { api, okSchema } from '../../lib/api';
 import { useConfirmation } from '../../components/confirmation-context';
-import { Pagination } from '../../components/pagination';
-import { useCursor } from '../../lib/pagination';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 const fileList = z.object({
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
   items: z.array(
@@ -25,34 +25,11 @@ const fileList = z.object({
 
 export function Files({ refresh }: { refresh: () => Promise<void> }) {
   const confirm = useConfirmation();
-  const [items, setItems] = useState<z.infer<typeof fileList>['items']>([]);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
-  const [pending, setPending] = useState(true);
-  const { cursor, setCursor, page, hasPrevious, back } =
-    useCursor<NonNullable<z.infer<typeof fileList>['next']>>();
-  const [next, setNext] = useState<z.infer<typeof fileList>['next']>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    const query =
-      cursor === null
-        ? ''
-        : `?${new URLSearchParams({ before: String(cursor.before), beforeId: cursor.beforeId }).toString()}`;
-    api(`/manage/files${query}`, fileList, { signal: controller.signal })
-      .then((data) => {
-        setItems(data.items);
-        setNext(data.next);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPending(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [reload, cursor]);
+  const [pending, setPending] = useState(false);
+  const list = useInfiniteQuery('/manage/files', fileList, reload);
+  const items = list.items;
   async function remove(id: string) {
     if (
       !(await confirm({
@@ -71,7 +48,6 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
         body: {},
       });
       setReload((value) => value + 1);
-      setCursor(null);
       const kind = items.find((item) => item.id === id)?.kind;
       if (kind === 'watermark' || kind === 'signature') await refresh();
     } catch (reason) {
@@ -89,14 +65,19 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
       />
       {error ? <Alert>{error}</Alert> : null}
       <section className="panel">
-        {pending && items.length === 0 ? (
+        {list.loading && items.length === 0 ? (
           <SkeletonTable
             rows={4}
             columns={4}
             headers={['File', 'Purpose', 'Size', 'Actions']}
           />
         ) : (
-          <div className="table-scroll">
+          <ScrollList
+            {...list.scrollProps}
+            count={items.length}
+            className="table-scroll"
+            label="Private files"
+          >
             <table className="files-table">
               <thead>
                 <tr>
@@ -106,7 +87,7 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
                   <th className="file-actions">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <VirtualBody columns={4}>
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td data-label="File" className="file-name">
@@ -141,30 +122,13 @@ export function Files({ refresh }: { refresh: () => Promise<void> }) {
                     </td>
                   </tr>
                 ))}
-              </tbody>
+              </VirtualBody>
             </table>
-            {items.length === 0 && !pending ? (
+            {items.length === 0 && !list.loading ? (
               <p className="empty">No uploaded files yet.</p>
             ) : null}
-          </div>
+          </ScrollList>
         )}
-        <Pagination
-          label="files"
-          page={page}
-          hasPrevious={hasPrevious}
-          hasNext={next !== null}
-          pending={pending}
-          onPrevious={() => {
-            setPending(true);
-            back();
-          }}
-          onNext={() => {
-            if (next) {
-              setPending(true);
-              setCursor(next);
-            }
-          }}
-        />
       </section>
     </>
   );

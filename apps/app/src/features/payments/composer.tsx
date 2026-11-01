@@ -16,8 +16,7 @@ import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
 import { PaymentDateLedger } from './date-ledger';
 import { stampStatusSchema } from '../../../shared/invoice-status';
-import { usePage } from '../../lib/pagination';
-import { Pagination } from '../../components/pagination';
+import { ScrollList, VirtualItems } from '../../components/scroll-list';
 
 export function ReceiptComposer({
   account,
@@ -40,14 +39,6 @@ export function ReceiptComposer({
   const confirm = useConfirmation();
   const outstanding = account.invoices.filter(
     (row) => row.due > 0 && (!billDate || row.date === billDate),
-  );
-  const commissionPage = usePage(
-    outstanding.filter((row) => row.kind === 'commission'),
-    billDate,
-  );
-  const adsPage = usePage(
-    outstanding.filter((row) => row.kind === 'ads'),
-    billDate,
   );
   const billDates = [
     ...new Set(
@@ -242,50 +233,56 @@ export function ReceiptComposer({
                 {kind === 'commission' ? 'Commission' : 'Advertising'}{' '}
                 allocations
               </h3>
-              {outstanding.filter((row) => row.kind === kind).length ? (
-                (kind === 'commission' ? commissionPage : adsPage).items.map(
-                  (row) => (
-                    <div className="receipt-allocation" key={row.id}>
-                      <div>
-                        <strong>{row.invoiceNumber}</strong>
-                        <small>
-                          {row.period} · {row.date}
-                        </small>
-                        <span>Remaining {money(row.due)}</span>
-                      </div>
-                      <Field label={`Received for ${row.invoiceNumber}`}>
-                        <input
-                          inputMode="decimal"
-                          value={amounts[kind + row.id] ?? ''}
-                          placeholder={amountInput(row.due)}
-                          disabled={pending}
-                          onChange={(event) => {
-                            setAmounts((values) => ({
-                              ...values,
-                              [kind + row.id]: event.target.value,
-                            }));
-                          }}
-                        />
-                      </Field>
-                    </div>
-                  ),
-                )
-              ) : (
-                <p className="muted">
-                  No outstanding{' '}
-                  {kind === 'commission' ? 'commission' : 'advertising'}{' '}
-                  invoices.
-                </p>
-              )}
-              <Pagination
+              <ScrollList
                 label={
                   kind === 'commission'
-                    ? 'commission bills'
-                    : 'advertising bills'
+                    ? 'Commission allocations'
+                    : 'Advertising allocations'
                 }
-                {...(kind === 'commission' ? commissionPage : adsPage).controls}
-                pending={pending || uploading}
-              />
+                count={outstanding.filter((row) => row.kind === kind).length}
+                resetKey={billDate}
+              >
+                {outstanding.filter((row) => row.kind === kind).length ? (
+                  <VirtualItems
+                    entries={outstanding
+                      .filter((row) => row.kind === kind)
+                      .map((row) => ({
+                        key: row.id,
+                        render: () => (
+                          <div className="receipt-allocation" key={row.id}>
+                            <div>
+                              <strong>{row.invoiceNumber}</strong>
+                              <small>
+                                {row.period} · {row.date}
+                              </small>
+                              <span>Remaining {money(row.due)}</span>
+                            </div>
+                            <Field label={`Received for ${row.invoiceNumber}`}>
+                              <input
+                                inputMode="decimal"
+                                value={amounts[kind + row.id] ?? ''}
+                                placeholder={amountInput(row.due)}
+                                disabled={pending}
+                                onChange={(event) => {
+                                  setAmounts((values) => ({
+                                    ...values,
+                                    [kind + row.id]: event.target.value,
+                                  }));
+                                }}
+                              />
+                            </Field>
+                          </div>
+                        ),
+                      }))}
+                  />
+                ) : (
+                  <p className="muted">
+                    No outstanding{' '}
+                    {kind === 'commission' ? 'commission' : 'advertising'}{' '}
+                    invoices.
+                  </p>
+                )}
+              </ScrollList>
             </section>
           ))}
           <div className="receipt-payment-total" aria-live="polite">

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { z } from 'zod';
-import { api, brandSchema } from '../lib/api';
+import { brandSchema } from '../lib/api';
 import type { Brand } from '../lib/api';
-import { useCursor } from '../lib/pagination';
-import { Pagination } from './pagination';
-import { Alert, ErrorMessage, Field, Skeleton } from './ui';
+import { useInfiniteQuery } from '../lib/infinite-query';
+import { ScrollList, VirtualItems } from './scroll-list';
+import { Field } from './ui';
 
 const schema = z.object({
   items: z.array(brandSchema),
@@ -21,35 +21,11 @@ export function BrandList({
   className?: string;
 }) {
   const [search, setSearch] = useState('');
-  const pager = useCursor<{ after: string }>(search);
-  const [data, setData] = useState<z.infer<typeof schema>>({
-    items: [],
-    next: null,
-  });
-  const [error, setError] = useState('');
-  const [loaded, setLoaded] = useState('');
-  const params = new URLSearchParams({ q: search, ...pager.cursor }).toString();
-  const pending = loaded !== params;
-  useEffect(() => {
-    const controller = new AbortController();
-    api(`/manage/brands?${params}`, schema, { signal: controller.signal })
-      .then((result) => {
-        if (!controller.signal.aborted) {
-          setData(result);
-          setLoaded(params);
-          setError('');
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(ErrorMessage(reason));
-          setLoaded(params);
-        }
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [params, revision]);
+  const list = useInfiniteQuery(
+    `/manage/brands?${new URLSearchParams({ q: search }).toString()}`,
+    schema,
+    JSON.stringify(revision),
+  );
   return (
     <>
       <Field label="Search brands">
@@ -60,28 +36,17 @@ export function BrandList({
           }}
         />
       </Field>
-      {error ? <Alert>{error}</Alert> : null}
-      {pending ? (
-        <Skeleton height={80} />
-      ) : (
-        <div className={className}>
-          {data.items.map(render)}
-          {!data.items.length ? (
-            <p className="muted">No matching brands.</p>
-          ) : null}
-        </div>
-      )}
-      <Pagination
-        label="brands"
-        page={pager.page}
-        hasPrevious={pager.hasPrevious}
-        hasNext={data.next !== null}
-        pending={pending}
-        onPrevious={pager.back}
-        onNext={() => {
-          if (data.next) pager.setCursor(data.next);
-        }}
-      />
+      <ScrollList
+        {...list.scrollProps}
+        count={list.items.length}
+        label="Brands"
+        className={className}
+      >
+        <VirtualItems>{list.items.map(render)}</VirtualItems>
+        {!list.items.length && !list.loading ? (
+          <p className="muted">No matching brands.</p>
+        ) : null}
+      </ScrollList>
     </>
   );
 }

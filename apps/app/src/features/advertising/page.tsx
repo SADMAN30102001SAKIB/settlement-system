@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useConfirmation } from '../../components/confirmation-context';
 import { confirmInvoiceDeletion } from '../settlements/delete-invoice';
-import { useCursor } from '../../lib/pagination';
-import { Pagination } from '../../components/pagination';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import { calculateAdvertising } from '@settlement/domain/advertising';
@@ -380,19 +380,16 @@ export function Advertising({
   const [error, setError] = useState('');
   const [reloading, setReloading] = useState(false);
   const [ledgerVersion, setLedgerVersion] = useState(0);
-  const [overview, setOverview] = useState<
-    z.infer<typeof accountOverviewSchema>['items']
-  >([]);
-  const [overviewLoading, setOverviewLoading] = useState(true);
-  const overviewPage = useCursor<{ after: string }>();
-  const [overviewNext, setOverviewNext] = useState<{ after: string } | null>(
-    null,
-  );
-  const overviewQuery = new URLSearchParams(
-    overviewPage.cursor ?? {},
-  ).toString();
   const parts = path.split('/');
   const listing = !parts[2];
+  const overviewList = useInfiniteQuery(
+    '/manage/advertising/overview',
+    accountOverviewSchema,
+    ledgerVersion,
+    listing,
+  );
+  const overview = overviewList.items;
+  const overviewLoading = overviewList.loading;
   async function reloadAccount() {
     setReloading(true);
     setError('');
@@ -407,30 +404,6 @@ export function Advertising({
       setReloading(false);
     }
   }
-  useEffect(() => {
-    if (!listing) return;
-    const controller = new AbortController();
-    api(
-      `/manage/advertising/overview?${overviewQuery}`,
-      accountOverviewSchema,
-      {
-        signal: controller.signal,
-      },
-    )
-      .then((result) => {
-        setOverview(result.items);
-        setOverviewNext(result.next);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setOverviewLoading(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [listing, overviewQuery, ledgerVersion]);
   useEffect(() => {
     if (!listing || !brandId) return;
     const controller = new AbortController();
@@ -517,7 +490,12 @@ export function Advertising({
             </p>
           </div>
         ) : (
-          <div className="table-scroll">
+          <ScrollList
+            {...overviewList.scrollProps}
+            count={overview.length}
+            className="table-scroll"
+            label="Advertising brand accounts"
+          >
             <table>
               <thead>
                 <tr>
@@ -529,7 +507,7 @@ export function Advertising({
                   <th>Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <VirtualBody columns={6}>
                 {overview.map((account) => (
                   <tr key={account.id}>
                     <td>{account.name}</td>
@@ -567,28 +545,19 @@ export function Advertising({
                     </td>
                   </tr>
                 ))}
-              </tbody>
+              </VirtualBody>
             </table>
-          </div>
+          </ScrollList>
         )}
       </section>
-      <Pagination
-        label="brand accounts"
-        page={overviewPage.page}
-        hasPrevious={overviewPage.hasPrevious}
-        hasNext={overviewNext !== null}
-        pending={overviewLoading}
-        onPrevious={() => {
-          setOverviewLoading(true);
-          overviewPage.back();
-        }}
-        onNext={() => {
-          if (overviewNext) {
-            setOverviewLoading(true);
-            overviewPage.setCursor(overviewNext);
-          }
-        }}
-      />
+      {!overview.length && overviewList.error ? (
+        <Alert>
+          {overviewList.error}
+          <button type="button" onClick={overviewList.retry}>
+            Retry loading
+          </button>
+        </Alert>
+      ) : null}
       <AdvertisingLedger
         brands={brands}
         settings={settings}

@@ -26,11 +26,11 @@ import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
 import { useConfirmation } from '../../components/confirmation-context';
 import { deleteReceipt } from './delete-receipt';
-import { Pagination } from '../../components/pagination';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 import { BrandList } from '../../components/brand-list';
 
 const cursorSchema = z.object({ before: z.string(), beforeId: z.string() });
-type Cursor = z.infer<typeof cursorSchema> | null;
 const legacySchema = z.object({
   items: z.array(
     z.object({
@@ -46,28 +46,13 @@ const legacySchema = z.object({
 });
 
 function PriorPayments({ brandId }: { brandId: string }) {
-  const [data, setData] = useState<z.infer<typeof legacySchema> | null>(null),
-    [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
-  const [pages, setPages] = useState<Cursor[]>([null]);
-  async function load(cursor: Cursor = null, history: Cursor[] = [null]) {
-    setPending(true);
-    setError('');
-    try {
-      setData(
-        await api(
-          '/manage/receipts/legacy?' +
-            new URLSearchParams({ brandId, ...(cursor ?? {}) }).toString(),
-          legacySchema,
-        ),
-      );
-      setPages(history);
-    } catch (e) {
-      setError(ErrorMessage(e));
-    } finally {
-      setPending(false);
-    }
-  }
+  const [opened, setOpened] = useState(false);
+  const history = useInfiniteQuery(
+    `/manage/receipts/legacy?${new URLSearchParams({ brandId }).toString()}`,
+    legacySchema,
+    0,
+    opened,
+  );
   return (
     <section className="panel">
       <h2>Prior payment history</h2>
@@ -77,19 +62,22 @@ function PriorPayments({ brandId }: { brandId: string }) {
       </p>
       <button
         className="secondary"
-        disabled={pending}
+        disabled={history.loading}
         onClick={() => {
-          load().catch((e: unknown) => {
-            setError(ErrorMessage(e));
-          });
+          if (opened) history.refresh();
+          else setOpened(true);
         }}
       >
         View prior payments
       </button>
-      {error ? <Alert>{error}</Alert> : null}
-      {data ? (
+      {opened ? (
         <>
-          <div className="table-scroll">
+          <ScrollList
+            {...history.scrollProps}
+            count={history.items.length}
+            className="table-scroll"
+            label="Prior payments"
+          >
             <table>
               <thead>
                 <tr>
@@ -99,8 +87,8 @@ function PriorPayments({ brandId }: { brandId: string }) {
                   <th className="numeric">Paid</th>
                 </tr>
               </thead>
-              <tbody>
-                {data.items.map((row) => (
+              <VirtualBody columns={4}>
+                {history.items.map((row) => (
                   <tr key={row.id}>
                     <td>{dateLabel(row.date)}</td>
                     <td>
@@ -111,33 +99,14 @@ function PriorPayments({ brandId }: { brandId: string }) {
                     <td className="numeric">{money(row.amount)}</td>
                   </tr>
                 ))}
-                {!data.items.length ? (
+                {!history.items.length && !history.loading ? (
                   <tr>
                     <td colSpan={4}>No prior payments.</td>
                   </tr>
                 ) : null}
-              </tbody>
+              </VirtualBody>
             </table>
-          </div>
-          <Pagination
-            label="prior payments"
-            page={pages.length}
-            hasPrevious={pages.length > 1}
-            hasNext={data.next !== null}
-            pending={pending}
-            onPrevious={() => {
-              const previous = pages.slice(0, -1);
-              load(previous.at(-1) ?? null, previous).catch((e: unknown) => {
-                setError(ErrorMessage(e));
-              });
-            }}
-            onNext={() => {
-              if (data.next)
-                load(data.next, [...pages, data.next]).catch((e: unknown) => {
-                  setError(ErrorMessage(e));
-                });
-            }}
-          />
+          </ScrollList>
         </>
       ) : null}
     </section>
@@ -162,14 +131,16 @@ export function Payments({
     receiptId = parts[1] && parts[1] !== 'brand' ? parts[1] : '';
   const [account, setAccount] = useState<PaymentAccount | null>(null),
     [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
-  const [list, setList] = useState<z.infer<typeof receiptListSchema> | null>(
-      null,
-    ),
-    [cursor, setCursor] = useState<Cursor>(null),
-    [previous, setPrevious] = useState<Cursor[]>([]);
   const [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [version, setVersion] = useState(0);
+  const receiptList = useInfiniteQuery(
+    `/manage/receipts?${new URLSearchParams({ brandId }).toString()}`,
+    receiptListSchema,
+    version,
+    Boolean(brandId) && !receiptId,
+  );
+  const list = { items: receiptList.items };
   useEffect(() => {
     if (!brandId && !receiptId) return;
     const controller = new AbortController();
@@ -195,23 +166,6 @@ export function Payments({
       controller.abort();
     };
   }, [brandId, receiptId, version]);
-  useEffect(() => {
-    if (!brandId) return;
-    const controller = new AbortController();
-    api(
-      '/manage/receipts?' +
-        new URLSearchParams({ brandId, ...(cursor ?? {}) }).toString(),
-      receiptListSchema,
-      { signal: controller.signal },
-    )
-      .then(setList)
-      .catch((e: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(e));
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [brandId, cursor, version]);
   if (receiptId)
     return receipt ? (
       <ReceiptView
@@ -370,7 +324,7 @@ export function Payments({
                 </p>
               </div>
             </div>
-            {!list ? (
+            {receiptList.loading && !list.items.length ? (
               error ? (
                 <p>
                   Could not load receipt history. Use Reload balances to retry.
@@ -379,7 +333,12 @@ export function Payments({
                 <SkeletonTable rows={3} columns={7} />
               )
             ) : (
-              <div className="table-scroll">
+              <ScrollList
+                {...receiptList.scrollProps}
+                count={list.items.length}
+                className="table-scroll"
+                label="Payment receipts"
+              >
                 <table className="invoice-ledger-table">
                   <thead>
                     <tr>
@@ -392,7 +351,7 @@ export function Payments({
                       <th>Action</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <VirtualBody columns={7}>
                     {list.items.map((row) => (
                       <tr key={row.id}>
                         <td
@@ -430,21 +389,16 @@ export function Payments({
                             value={receiptStampStatus(row)}
                             disabled={row.reversedAt !== null}
                             onSaved={(value) => {
-                              setList((current) =>
-                                current
-                                  ? {
-                                      ...current,
-                                      items: current.items.map((item) =>
-                                        item.id === row.id
-                                          ? {
-                                              ...item,
-                                              stampStatus:
-                                                stampStatusSchema.parse(value),
-                                            }
-                                          : item,
-                                      ),
-                                    }
-                                  : current,
+                              receiptList.setItems((items) =>
+                                items.map((item) =>
+                                  item.id === row.id
+                                    ? {
+                                        ...item,
+                                        stampStatus:
+                                          stampStatusSchema.parse(value),
+                                      }
+                                    : item,
+                                ),
                               );
                             }}
                           />
@@ -469,8 +423,6 @@ export function Payments({
                                   deleteReceipt(row, confirm)
                                     .then((deleted) => {
                                       if (deleted) {
-                                        setCursor(null);
-                                        setPrevious([]);
                                         setVersion((v) => v + 1);
                                       }
                                     })
@@ -496,36 +448,10 @@ export function Payments({
                         </td>
                       </tr>
                     ) : null}
-                  </tbody>
+                  </VirtualBody>
                 </table>
-              </div>
+              </ScrollList>
             )}
-            <div className="pagination-actions">
-              <button
-                className="secondary"
-                disabled={!previous.length}
-                onClick={() => {
-                  setList(null);
-                  setCursor(previous.at(-1) ?? null);
-                  setPrevious((values) => values.slice(0, -1));
-                }}
-              >
-                Previous receipts
-              </button>
-              <span>Page {previous.length + 1} · 20 receipts per page</span>
-              <button
-                className="secondary"
-                disabled={!list?.next}
-                onClick={() => {
-                  if (!list?.next) return;
-                  setList(null);
-                  setPrevious((values) => [...values, cursor]);
-                  setCursor(list.next);
-                }}
-              >
-                Next receipts
-              </button>
-            </div>
           </section>
           <PriorPayments key={account.version} brandId={brandId} />
         </>

@@ -64,7 +64,6 @@ export function Brands({
         <section className="panel">
           <div className="section-heading">
             <h2>Brand directory</h2>
-            <span className="pill">20 per page</span>
           </div>
           <BrandList
             revision={brands}

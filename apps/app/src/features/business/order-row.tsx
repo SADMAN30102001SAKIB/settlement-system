@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Ref } from 'react';
 import { parseMoney } from '@settlement/domain/money';
 import type { Brand } from '../../lib/api';
 import { api, okSchema } from '../../lib/api';
@@ -11,14 +12,22 @@ export function OrderRow({
   brands,
   onSaved,
   onEdit,
+  draft,
+  onDraft,
+  ref,
+  'data-index': index,
 }: {
   item: Order;
   brands: Brand[];
   onSaved: () => void;
   onEdit: () => void;
+  draft: { brandId: string; sales: string } | undefined;
+  onDraft: (draft: { brandId: string; sales: string }) => void;
+  ref?: Ref<HTMLTableRowElement>;
+  'data-index'?: number;
 }) {
-  const [brandId, setBrandId] = useState(item.brandId);
-  const [sales, setSales] = useState(amountInput(item.salesOverride));
+  const brandId = draft?.brandId ?? item.brandId;
+  const sales = draft?.sales ?? amountInput(item.salesOverride);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const dirty =
@@ -50,7 +59,7 @@ export function OrderRow({
     }
   }
   return (
-    <tr>
+    <tr ref={ref} data-index={index}>
       <td>{item.orderDate}</td>
       <td className="order-id">
         {item.id}
@@ -65,7 +74,7 @@ export function OrderRow({
           value={brandId}
           disabled={pending}
           onChange={(event) => {
-            setBrandId(event.target.value);
+            onDraft({ brandId: event.target.value, sales });
             setError('');
           }}
         >
@@ -89,7 +98,7 @@ export function OrderRow({
               : undefined
           }
           onChange={(event) => {
-            setSales(event.target.value);
+            onDraft({ brandId, sales: event.target.value });
             setError('');
           }}
         />
@@ -140,8 +149,10 @@ export function OrderRow({
                 className="secondary compact"
                 disabled={pending}
                 onClick={() => {
-                  setBrandId(item.brandId);
-                  setSales(amountInput(item.salesOverride));
+                  onDraft({
+                    brandId: item.brandId,
+                    sales: amountInput(item.salesOverride),
+                  });
                   setError('');
                 }}
               >

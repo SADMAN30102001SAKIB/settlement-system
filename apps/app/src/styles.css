@@ -1895,6 +1895,53 @@ article.invoice-advertising {
     margin: 0 auto;
   }
 }
+.scroll-list {
+  max-height: min(65dvh, 720px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  position: relative;
+  overflow-anchor: none;
+}
+.scroll-list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.scroll-list thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.scroll-list-status {
+  min-height: 28px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.scroll-list .virtual-spacer,
+.scroll-list .virtual-spacer td {
+  display: table-row;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.scroll-list .virtual-spacer td {
+  display: table-cell;
+}
+.scroll-list .virtual-spacer td::before {
+  display: none;
+}
+.scroll-list.brand-list,
+.scroll-list.brand-account-directory {
+  display: block;
+}
+.virtual-items > * {
+  margin-block: 0;
+}
 @media print {
   *,
   *::before,
@@ -2129,18 +2176,6 @@ article.invoice-advertising {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.pagination-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 20px;
-}
-.pagination-actions span {
-  font-size: 12px;
-  color: var(--muted);
-}
 .invoice-dialog-body {
   padding: 20px;
 }
@@ -2212,22 +2247,6 @@ article.invoice-advertising {
     align-items: start;
     gap: 8px;
   }
-  .payment-date-ledger .pagination-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .payment-date-ledger .pagination-actions span {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    text-align: center;
-  }
-  .payment-date-ledger .pagination-actions button {
-    justify-self: start;
-  }
-  .payment-date-ledger .pagination-actions button:last-child {
-    justify-self: end;
-  }
   .payment-date-ledger > .table-scroll {
     overflow: visible;
     margin: 0;
@@ -2292,6 +2311,7 @@ article.invoice-advertising {
   gap: 12px;
 }
 .brand-account-directory button {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: start;
@@ -2878,5 +2898,26 @@ article.invoice-advertising {
   }
   button {
     display: none !important;
+  }
+}
+@media screen {
+  div.scroll-list.table-scroll {
+    overflow: auto;
+    max-height: min(65dvh, 720px);
+  }
+  .scroll-list .virtual-spacer,
+  .scroll-list .virtual-spacer td {
+    margin: 0;
+    border: 0;
+    padding: 0;
+  }
+}
+@media screen and (max-width: 900px) {
+  .invoice-ledger-table .virtual-spacer,
+  .invoice-ledger-table .virtual-spacer td,
+  .payment-date-table .virtual-spacer,
+  .payment-date-table .virtual-spacer td {
+    display: block;
+    width: 100%;
   }
 }

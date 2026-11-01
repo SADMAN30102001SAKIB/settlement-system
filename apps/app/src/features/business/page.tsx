@@ -17,25 +17,29 @@ import { orderListSchema } from './contracts';
 import type { Order } from './contracts';
 import { Importer } from './importer';
 import { OrderRow } from './order-row';
-import { Pagination } from '../../components/pagination';
-import { useCursor } from '../../lib/pagination';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useInfiniteQuery } from '../../lib/infinite-query';
 
-const dailySchema = z.object({
-  next: z.object({ before: z.string(), beforeBrand: z.string() }).nullable(),
-  days: z.array(
-    z.object({
-      date: z.string(),
-      brandId: z.string(),
-      count: z.number().int(),
-      delivered: z.number().int(),
-      cancelled: z.number().int(),
-      partial: z.number().int(),
-      pending: z.number().int(),
-      amount: z.number().int().nullable(),
-    }),
-  ),
-});
-type Cursor = z.infer<typeof orderListSchema>['next'];
+const dailySchema = z
+  .object({
+    next: z.object({ before: z.string(), beforeBrand: z.string() }).nullable(),
+    days: z.array(
+      z.object({
+        date: z.string(),
+        brandId: z.string(),
+        count: z.number().int(),
+        delivered: z.number().int(),
+        cancelled: z.number().int(),
+        partial: z.number().int(),
+        pending: z.number().int(),
+        amount: z.number().int().nullable(),
+      }),
+    ),
+  })
+  .transform((data) => ({
+    next: data.next,
+    items: data.days.map((day) => ({ ...day, id: day.brandId + day.date })),
+  }));
 
 export function Business({ brands }: { brands: Brand[] }) {
   const confirm = useConfirmation();
@@ -44,93 +48,44 @@ export function Business({ brands }: { brands: Brand[] }) {
     to: today(),
     brandId: '',
   });
-  const [days, setDays] = useState<z.infer<typeof dailySchema>['days']>([]);
-  const daily = useCursor<NonNullable<z.infer<typeof dailySchema>['next']>>(
-    JSON.stringify(filters),
-  );
-  const [dailyNext, setDailyNext] =
-    useState<z.infer<typeof dailySchema>['next']>(null);
-  const [dailyLoading, setDailyLoading] = useState(true);
-  const [items, setItems] = useState<Order[]>([]);
-  const [next, setNext] = useState<Cursor>(null);
-  const [cursor, setCursor] = useState<Cursor>(null);
-  const [previous, setPrevious] = useState<Cursor[]>([]);
   const [search, setSearch] = useState('');
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
   const [adBrand, setAdBrand] = useState('');
   const [adDate, setAdDate] = useState(today());
   const [adAmount, setAdAmount] = useState('');
   const [message, setMessage] = useState('');
+  const query = new URLSearchParams({
+    from: filters.from,
+    to: filters.to,
+    ...(filters.brandId ? { brandId: filters.brandId } : {}),
+  }).toString();
+  const daily = useInfiniteQuery(
+    `/manage/business/daily?${query}`,
+    dailySchema,
+    revision,
+  );
+  const orderList = useInfiniteQuery(
+    `/manage/business/orders?${query}&basis=order${search ? '&q=' + encodeURIComponent(search) : ''}`,
+    orderListSchema,
+    revision,
+  );
+  const days = daily.items;
+  const items = orderList.items;
+  const dailyLoading = daily.loading;
+  const loading = orderList.loading;
+  const [drafts, setDrafts] = useState<
+    Record<string, { brandId: string; sales: string }>
+  >({});
   const editDialog = useRef<HTMLDialogElement>(null);
   const adsForm = useRef<HTMLFormElement>(null);
   const name = (id: string) =>
     brands.find((brand) => brand.id === id)?.name ?? 'Brand';
   function refresh() {
-    setDailyLoading(true);
     setRevision((value) => value + 1);
-    setCursor(null);
-    setPrevious([]);
   }
-  useEffect(() => {
-    const controller = new AbortController();
-    const query = new URLSearchParams({ from: filters.from, to: filters.to });
-    if (filters.brandId) query.set('brandId', filters.brandId);
-    if (daily.cursor) {
-      query.set('before', daily.cursor.before);
-      query.set('beforeBrand', daily.cursor.beforeBrand);
-    }
-    api('/manage/business/daily?' + query.toString(), dailySchema, {
-      signal: controller.signal,
-    })
-      .then((data) => {
-        setDays(data.days);
-        setDailyNext(data.next);
-        setDailyLoading(false);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(ErrorMessage(reason));
-          setDailyLoading(false);
-        }
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [filters, revision, daily.cursor]);
-  useEffect(() => {
-    const controller = new AbortController();
-    const query = new URLSearchParams({
-      from: filters.from,
-      to: filters.to,
-      basis: 'order',
-    });
-    if (filters.brandId) query.set('brandId', filters.brandId);
-    if (search) query.set('q', search);
-    if (cursor) {
-      query.set('before', cursor.before);
-      query.set('beforeId', cursor.beforeId);
-    }
-    api('/manage/business/orders?' + query.toString(), orderListSchema, {
-      signal: controller.signal,
-    })
-      .then((data) => {
-        setItems(data.items);
-        setNext(data.next);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(ErrorMessage(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [filters, search, cursor, revision]);
   useEffect(() => {
     if (editing) editDialog.current?.showModal();
     else editDialog.current?.close();
@@ -153,7 +108,7 @@ export function Business({ brands }: { brands: Brand[] }) {
       setPending(false);
     }
   }
-  async function removeDay(day: z.infer<typeof dailySchema>['days'][number]) {
+  async function removeDay(day: z.infer<typeof dailySchema>['items'][number]) {
     if (
       !(await confirm({
         title: 'Remove imported day?',
@@ -303,11 +258,7 @@ export function Business({ brands }: { brands: Brand[] }) {
               return;
             }
             setError('');
-            setLoading(true);
             setFilters({ from, to, brandId: formText(form, 'brandId') });
-            setDailyLoading(true);
-            setCursor(null);
-            setPrevious([]);
           }}
         >
           <Field label="Summary brand">
@@ -335,7 +286,12 @@ export function Business({ brands }: { brands: Brand[] }) {
             Apply filters
           </button>
         </form>
-        <div className="table-scroll">
+        <ScrollList
+          {...daily.scrollProps}
+          count={days.length}
+          className="table-scroll"
+          label="Daily summary"
+        >
           <table className="business-daily-table" aria-busy={dailyLoading}>
             <thead>
               <tr>
@@ -355,7 +311,7 @@ export function Business({ brands }: { brands: Brand[] }) {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <VirtualBody columns={10}>
               {days.map((day) => (
                 <tr key={day.brandId + day.date}>
                   <td>{name(day.brandId)}</td>
@@ -411,26 +367,9 @@ export function Business({ brands }: { brands: Brand[] }) {
                   </td>
                 </tr>
               ) : null}
-            </tbody>
+            </VirtualBody>
           </table>
-        </div>
-        <Pagination
-          label="days"
-          page={daily.page}
-          hasPrevious={daily.hasPrevious}
-          hasNext={dailyNext !== null}
-          pending={dailyLoading}
-          onPrevious={() => {
-            setDailyLoading(true);
-            daily.back();
-          }}
-          onNext={() => {
-            if (dailyNext) {
-              setDailyLoading(true);
-              daily.setCursor(dailyNext);
-            }
-          }}
-        />
+        </ScrollList>
         <p className="caption">
           Allocation is rounded to paisa. Any remainder is assigned
           deterministically to orders so the allocated total always equals the
@@ -442,8 +381,8 @@ export function Business({ brands }: { brands: Brand[] }) {
           <div>
             <h2>Orders</h2>
             <p className="muted">
-              20 orders per page. Search an exact Order ID across all dates
-              within the selected brand.
+              Scroll to load more orders. Search an exact Order ID across all
+              dates within the selected brand.
             </p>
           </div>
         </div>
@@ -456,11 +395,11 @@ export function Business({ brands }: { brands: Brand[] }) {
               new FormData(event.currentTarget),
               'q',
             ).trim();
-            if (value === search && cursor === null) return;
-            setLoading(true);
+            if (value === search) {
+              orderList.refresh();
+              return;
+            }
             setSearch(value);
-            setCursor(null);
-            setPrevious([]);
           }}
         >
           <Field label="Find Order ID">
@@ -480,17 +419,20 @@ export function Business({ brands }: { brands: Brand[] }) {
             onClick={(event) => {
               event.currentTarget.form?.reset();
               setSearch('');
-              setCursor(null);
-              setPrevious([]);
             }}
           >
             Clear search
           </button>
         </form>
-        {loading ? (
+        {loading && !items.length ? (
           <SkeletonTable rows={4} columns={8} />
         ) : (
-          <div className="table-scroll">
+          <ScrollList
+            {...orderList.scrollProps}
+            count={items.length}
+            className="table-scroll"
+            label="Orders"
+          >
             <table className="business-orders-table">
               <thead>
                 <tr>
@@ -512,12 +454,19 @@ export function Business({ brands }: { brands: Brand[] }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <VirtualBody columns={12}>
                 {items.map((item) => (
                   <OrderRow
                     key={item.id + ':' + String(item.revision)}
                     item={item}
                     brands={brands}
+                    draft={drafts[item.id + ':' + String(item.revision)]}
+                    onDraft={(draft) => {
+                      setDrafts((current) => ({
+                        ...current,
+                        [item.id + ':' + String(item.revision)]: draft,
+                      }));
+                    }}
                     onSaved={refresh}
                     onEdit={() => {
                       setEditing(item);
@@ -529,9 +478,9 @@ export function Business({ brands }: { brands: Brand[] }) {
                     <td colSpan={12}>No orders match this view.</td>
                   </tr>
                 ) : null}
-              </tbody>
+              </VirtualBody>
             </table>
-          </div>
+          </ScrollList>
         )}
         <p className="caption">
           Edit Brand or Sales amount in the row, then save changes. Blank sales
@@ -539,32 +488,6 @@ export function Business({ brands }: { brands: Brand[] }) {
           Product cost uses delivered item quantity and the saved making cost;
           “Edit order” manages quantities and cost corrections.
         </p>
-        <div className="pagination-actions">
-          <button
-            className="secondary"
-            disabled={loading || !previous.length}
-            onClick={() => {
-              setLoading(true);
-              setCursor(previous.at(-1) ?? null);
-              setPrevious((values) => values.slice(0, -1));
-            }}
-          >
-            Previous orders
-          </button>
-          <span>Page {previous.length + 1} · 20 orders per page</span>
-          <button
-            className="secondary"
-            disabled={loading || !next}
-            onClick={() => {
-              if (!next) return;
-              setLoading(true);
-              setPrevious((values) => [...values, cursor]);
-              setCursor(next);
-            }}
-          >
-            Next orders
-          </button>
-        </div>
       </section>
       <dialog
         ref={editDialog}

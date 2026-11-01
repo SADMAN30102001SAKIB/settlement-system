@@ -3,6 +3,7 @@ import type { PaymentAccount } from '../../../shared/receipts';
 import { Field } from '../../components/ui';
 import { dateLabel, money } from '../../lib/format';
 import { dateBalances } from './date-balances';
+import { ScrollList, VirtualBody } from '../../components/scroll-list';
 
 export function PaymentDateLedger({
   account,
@@ -17,13 +18,10 @@ export function PaymentDateLedger({
     () => dateBalances(account.invoices),
     [account.invoices],
   );
-  const [filterDate, setFilterDate] = useState(''),
-    [page, setPage] = useState(0);
+  const [filterDate, setFilterDate] = useState('');
   const filtered = filterDate
     ? rows.filter((row) => row.date === filterDate)
     : rows;
-  const lastPage = Math.max(0, Math.ceil(filtered.length / 20) - 1);
-  const current = Math.min(page, lastPage);
   return (
     <section
       className="panel payment-date-ledger"
@@ -47,7 +45,6 @@ export function PaymentDateLedger({
             value={filterDate}
             onChange={(event) => {
               setFilterDate(event.target.value);
-              setPage(0);
             }}
           />
         </Field>
@@ -56,14 +53,18 @@ export function PaymentDateLedger({
             className="secondary compact"
             onClick={() => {
               setFilterDate('');
-              setPage(0);
             }}
           >
             Show all dates
           </button>
         ) : null}
       </div>
-      <div className="table-scroll">
+      <ScrollList
+        className="table-scroll"
+        label="Bill date entries"
+        count={filtered.length}
+        resetKey={`${account.brandId}:${filterDate}`}
+      >
         <table className="payment-date-table">
           <thead>
             <tr>
@@ -89,8 +90,8 @@ export function PaymentDateLedger({
               <th scope="col">Action</th>
             </tr>
           </thead>
-          <tbody>
-            {filtered.slice(current * 20, current * 20 + 20).map((row) => (
+          <VirtualBody columns={8}>
+            {filtered.map((row) => (
               <tr key={row.date} data-bill-date={row.date}>
                 <td data-label="Bill date" className="payment-date-identity">
                   <strong>{dateLabel(row.date)}</strong>
@@ -153,32 +154,9 @@ export function PaymentDateLedger({
                 </td>
               </tr>
             ) : null}
-          </tbody>
+          </VirtualBody>
         </table>
-      </div>
-      <div className="pagination-actions">
-        <button
-          className="secondary compact"
-          disabled={current === 0}
-          onClick={() => {
-            setPage(current - 1);
-          }}
-        >
-          Previous dates
-        </button>
-        <span>
-          Page {current + 1} of {lastPage + 1} · 20 dates per page
-        </span>
-        <button
-          className="secondary compact"
-          disabled={current >= lastPage}
-          onClick={() => {
-            setPage(current + 1);
-          }}
-        >
-          Next dates
-        </button>
-      </div>
+      </ScrollList>
     </section>
   );
 }
