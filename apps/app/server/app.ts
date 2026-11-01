@@ -17,6 +17,7 @@ import { receiptRoutes } from './receipts/routes';
 import { invoiceStatusRoutes } from './invoice-status/routes';
 import { brandAuthRoutes, brandAccessRoutes } from './portal/auth';
 import { portalRoutes } from './portal/routes';
+import { checklistRoutes } from './catalog/checklist';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -61,6 +62,7 @@ export const app = new Hono<AppEnvironment>()
   .route('/api/portal', portalRoutes)
   .use('/api/manage/*', requireAdmin)
   .route('/api/manage/brand-access', brandAccessRoutes)
+  .route('/api/manage/daily-checklist', checklistRoutes)
   .route('/api/manage', catalogRoutes)
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)

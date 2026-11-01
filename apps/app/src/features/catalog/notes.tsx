@@ -19,6 +19,7 @@ import { Progress } from './progress';
 import { ScrollList, VirtualItems } from '../../components/scroll-list';
 import { useInfiniteQuery } from '../../lib/infinite-query';
 import { CatalogDialog } from '../../components/catalog-dialog';
+import { DailyChecklist } from './daily-checklist';
 const noteListSchema = z.object({
   items: z.array(noteSchema),
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
@@ -114,6 +115,7 @@ export function Notes({ brands }: { brands: Brand[] }) {
         }
       />
       {error && !opened ? <Alert>{error}</Alert> : null}
+      <DailyChecklist brands={brands} />
       <section className="panel">
         <Field label="Filter work by brand">
           <select

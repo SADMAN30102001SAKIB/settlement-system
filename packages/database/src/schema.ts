@@ -499,6 +499,29 @@ export const payments = sqliteTable(
   ],
 );
 
+export const dailyTasks = sqliteTable(
+  'daily_tasks',
+  {
+    date: text().notNull(),
+    brandId: text('brand_id')
+      .notNull()
+      .references(() => brands.id, { onDelete: 'cascade' }),
+    ordersDone: integer('orders_done', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    adsDone: integer('ads_done', { mode: 'boolean' }).notNull().default(false),
+    revision: integer().notNull().default(1),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.date, table.brandId] }),
+    index('daily_tasks_brand_idx').on(table.brandId),
+    check('daily_tasks_revision_positive', sql`${table.revision} > 0`),
+    check('daily_tasks_orders_boolean', sql`${table.ordersDone} IN (0,1)`),
+    check('daily_tasks_ads_boolean', sql`${table.adsDone} IN (0,1)`),
+  ],
+);
+
 export const notes = sqliteTable(
   'notes',
   {

@@ -64,7 +64,7 @@ export function Brands({
     if (
       !(await confirm({
         title: 'Delete brand?',
-        message: `Permanently delete ${brand.name}? Only unused brands can be deleted. Linked records will never be removed.`,
+        message: `Permanently delete ${brand.name}? Brands with orders, budgets, invoices, payments or notes cannot be deleted. This also removes this brand’s login access and daily checklist history.`,
         action: 'Delete brand',
         destructive: true,
       }))

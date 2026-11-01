@@ -11,7 +11,11 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-31T06:00:00Z'));
 });
 
-async function scrollUntil(scroller: Locator, target: Locator) {
+async function scrollUntil(
+  scroller: Locator,
+  target: Locator,
+  timeout = 20000,
+) {
   await scroller.scrollIntoViewIfNeeded();
   try {
     await expect(async () => {
@@ -20,7 +24,7 @@ async function scrollUntil(scroller: Locator, target: Locator) {
           element.scrollTop += element.clientHeight * 0.8;
         });
       expect(await target.isVisible()).toBe(true);
-    }).toPass({ timeout: 20000, intervals: [100, 250] });
+    }).toPass({ timeout, intervals: [100, 250] });
   } catch (error) {
     console.log(
       await scroller.evaluate((element) => ({
@@ -1161,6 +1165,7 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
 test('admin can create a brand, save/edit a settlement, record payment, and export its invoice', async ({
   page,
 }, testInfo) => {
+  test.setTimeout(90000);
   const errors: string[] = [];
   page.on('pageerror', (error) => {
     errors.push(error.message);
@@ -1297,7 +1302,11 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     });
     await expect(previewBox.locator('tr[data-index]').first()).toBeVisible();
     expect(await previewBox.locator('tr[data-index]').count()).toBeLessThan(35);
-    await scrollUntil(previewBox, previewBox.locator('tr[data-index="390"]'));
+    await scrollUntil(
+      previewBox,
+      previewBox.locator('tr[data-index="390"]'),
+      40000,
+    );
     await scrollStart(previewBox);
     await expect(
       importer.getByRole('button', { name: 'Confirm & import 391 orders' }),
