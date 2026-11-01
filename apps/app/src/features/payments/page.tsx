@@ -222,16 +222,33 @@ export function Payments({
             revision={brands}
             className="brand-account-directory"
             render={(brand) => (
-              <button
-                key={brand.id}
-                className="secondary"
-                onClick={() => {
-                  navigate(`/payments/brand/${brand.id}`);
-                }}
-              >
-                <strong>{brand.name}</strong>
-                <small>Open account →</small>
-              </button>
+              <div key={brand.id} className="brand-account-entry">
+                <button
+                  className="secondary brand-account-link"
+                  onClick={() => {
+                    navigate(`/payments/brand/${brand.id}`);
+                  }}
+                >
+                  <span className="avatar" aria-hidden="true">
+                    {brand.name.slice(0, 1)}
+                  </span>
+                  <strong className="brand-account-name">{brand.name}</strong>
+                  <span className="brand-account-action">
+                    <span>Open account</span>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      aria-hidden="true"
+                    >
+                      <path d="m9 5 7 7-7 7" />
+                    </svg>
+                  </span>
+                </button>
+              </div>
             )}
           />
           {!brands.length ? (

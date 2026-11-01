@@ -2480,6 +2480,70 @@ test('daily summaries scroll in batches and payment allocations retain offscreen
   );
 });
 
+test('payment brand directory has separated compact rows and responsive account navigation', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  const suffix = String(Date.now());
+  const names = Array.from(
+    { length: 23 },
+    (_, index) =>
+      `Directory ${testInfo.project.name} ${String(index).padStart(2, '0')} ${suffix}${index === 22 ? ' long brand name wrapping check' : ''}`,
+  );
+  for (const name of names) {
+    expect(
+      (
+        await page.request.post('/api/manage/brands', {
+          headers: { Origin: 'http://127.0.0.1:5174' },
+          data: { name, makingCost: 100000 },
+        })
+      ).ok(),
+    ).toBe(true);
+  }
+  const widths = testInfo.project.name === 'desktop' ? [1440, 768] : [390, 360];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['Light', 'Dark']) {
+      await page.goto('/payments');
+      await page.getByLabel('Color theme').selectOption({ label: theme });
+      const directory = page.locator('.brand-account-directory');
+      const first = directory
+        .locator('.brand-account-link')
+        .filter({ hasText: names[0] ?? '' });
+      await scrollUntil(directory, first);
+      const next = first
+        .locator('xpath=../following-sibling::div[1]')
+        .locator('.brand-account-link');
+      const bounds = await first.boundingBox(),
+        nextBounds = await next.boundingBox();
+      expect(
+        bounds && nextBounds && nextBounds.y - bounds.y - bounds.height,
+      ).toBeGreaterThanOrEqual(10);
+      await expect(first.locator('.avatar')).toBeVisible();
+      await expect(first.locator('svg')).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > innerWidth,
+        ),
+      ).toBe(false);
+      await directory.screenshot({
+        path: testInfo.outputPath(
+          `brand-directory-${theme}-${String(width)}.png`,
+        ),
+      });
+      const last = directory
+        .locator('.brand-account-link')
+        .filter({ hasText: names[22] ?? '' });
+      await scrollUntil(directory, last);
+      await last.click();
+      await expect(page).toHaveURL(/\/payments\/brand\//);
+      await expect(page.getByLabel('Payment brand account')).not.toHaveValue(
+        '',
+      );
+    }
+  }
+});
+
 test('brands and notes use full-width lists, modal forms and safe brand deletion', async ({
   page,
 }, testInfo) => {
