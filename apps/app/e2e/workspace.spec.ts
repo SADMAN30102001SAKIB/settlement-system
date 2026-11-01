@@ -13,13 +13,36 @@ test.beforeEach(async ({ page }) => {
 
 async function scrollUntil(scroller: Locator, target: Locator) {
   await scroller.scrollIntoViewIfNeeded();
-  await expect(async () => {
-    if (!(await target.isVisible()))
-      await scroller.evaluate((element) => {
-        element.scrollTop += element.clientHeight * 0.8;
-      });
-    expect(await target.isVisible()).toBe(true);
-  }).toPass({ timeout: 20000, intervals: [100, 250] });
+  try {
+    await expect(async () => {
+      if (!(await target.isVisible()))
+        await scroller.evaluate((element) => {
+          element.scrollTop += element.clientHeight * 0.8;
+        });
+      expect(await target.isVisible()).toBe(true);
+    }).toPass({ timeout: 20000, intervals: [100, 250] });
+  } catch (error) {
+    console.log(
+      await scroller.evaluate((element) => ({
+        top: element.scrollTop,
+        height: element.clientHeight,
+        total: element.scrollHeight,
+        rows: [...element.querySelectorAll<HTMLElement>('[data-index]')].map(
+          (row) => ({
+            index: row.dataset['index'],
+            height: row.getBoundingClientRect().height,
+          }),
+        ),
+        gaps: [
+          ...element.querySelectorAll<HTMLElement>('.virtual-spacer td'),
+        ].map((row) => ({
+          height: row.getBoundingClientRect().height,
+          expected: row.style.height,
+        })),
+      })),
+    );
+    throw error;
+  }
 }
 async function scrollStart(scroller: Locator) {
   await scroller.evaluate((element) => {
@@ -805,7 +828,16 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   const item = z
     .object({ item: z.object({ id: z.string(), invoiceNumber: z.string() }) })
     .parse(await created.json()).item;
-  await page.goto('/settlements');
+  const openLedger = async () => {
+    await page.goto('/settlements');
+    await page
+      .getByLabel('Search invoice', { exact: true })
+      .fill(item.invoiceNumber);
+    await page
+      .getByRole('button', { name: 'Apply filters', exact: true })
+      .click();
+  };
+  await openLedger();
   const ledger = page.getByRole('region', {
     name: 'Settlement invoice ledger',
     exact: true,
@@ -881,7 +913,7 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/settlements/${item.id}/edit$`));
-  await page.goto('/settlements');
+  await openLedger();
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await page
     .getByRole('alertdialog')
@@ -895,7 +927,7 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
     .click();
   await expect(page).toHaveURL(/\/payments\/brand\//);
   const receiptId = await reverseLinkedReceipt(page, 'settlements', item.id);
-  await page.goto('/settlements');
+  await openLedger();
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('alertdialog')).toContainText(
     'Reversed receipt snapshots remain',
@@ -1581,6 +1613,13 @@ test('advertising invoice, payment proof and invoice image controls work end to 
       has: page.getByRole('cell', { name: brand, exact: true }),
     })
     .getByRole('button', { name: 'Open account', exact: true });
+  await scrollUntil(
+    page.getByRole('region', {
+      name: 'Advertising brand accounts',
+      exact: true,
+    }),
+    openAccount,
+  );
   await openAccount.click();
   const accountPanel = page.getByRole('region', {
     name: `${brand} account`,
@@ -1593,6 +1632,12 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   await expect(
     page.getByRole('heading', { name: 'Invoice ledger' }),
   ).toBeVisible();
+  await page
+    .getByLabel('Invoice brand', { exact: true })
+    .selectOption({ label: brand });
+  await page
+    .getByRole('button', { name: 'Apply invoice filters', exact: true })
+    .click();
   await expect(
     page
       .getByRole('row')
@@ -2808,6 +2853,11 @@ test('brands and notes use full-width lists, modal forms and safe brand deletion
   await expect(dialog.getByLabel('Brand name')).toHaveValue(name);
   await dialog.getByLabel(/Making cost/).fill('125');
   await dialog.getByRole('button', { name: 'Save brand' }).click();
+  await expect(dialog).toHaveCount(0);
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    row,
+  );
   await expect(row).toContainText('125.00');
   const list = page.getByRole('region', { name: 'Brands', exact: true });
   const listBox = await list.locator('..').boundingBox(),
@@ -2830,6 +2880,10 @@ test('brands and notes use full-width lists, modal forms and safe brand deletion
   await expect(note).toContainText('Updated modal note');
   await page.screenshot({ path: testInfo.outputPath('full-width-notes.png') });
   await page.goto('/brands');
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    row,
+  );
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await page
     .getByRole('alertdialog')
@@ -2847,6 +2901,10 @@ test('brands and notes use full-width lists, modal forms and safe brand deletion
     .click();
   await expect(note).toHaveCount(0);
   await page.goto('/brands');
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    row,
+  );
   await row.getByRole('button', { name: 'Delete', exact: true }).click();
   await page
     .getByRole('alertdialog')

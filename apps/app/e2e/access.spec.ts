@@ -440,6 +440,11 @@ test('administrator changes username/password without losing data and can sign i
   const oldCookie = (await page.context().cookies()).find(
     (cookie) => cookie.name === 'hexa_session',
   );
+  const staleTab = await page.context().newPage();
+  await staleTab.goto('/account');
+  await expect(
+    staleTab.getByLabel('Current password', { exact: true }),
+  ).toBeVisible();
   let changed = false,
     restored = false;
   try {
@@ -468,11 +473,47 @@ test('administrator changes username/password without losing data and can sign i
     await page
       .getByLabel('Current password', { exact: true })
       .fill(adminPassword);
+    await page.route('**/api/auth/account', async (route) => {
+      if (route.request().method() === 'PUT')
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Temporary account save failure' }),
+        });
+      else await route.continue();
+    });
+    await page.getByRole('button', { name: 'Update sign-in details' }).click();
+    await expect(page.getByRole('alert')).toContainText(
+      'Temporary account save failure',
+    );
+    await expect(page.getByLabel('Username', { exact: true })).toHaveValue(
+      username,
+    );
+    expect((await page.request.get('/api/manage/bootstrap')).status()).toBe(
+      200,
+    );
+    await page.unroute('**/api/auth/account');
     await page.getByRole('button', { name: 'Update sign-in details' }).click();
     await expect(page.getByRole('status')).toContainText(
       'Sign-in details updated',
     );
     changed = true;
+    await staleTab
+      .getByLabel('Username', { exact: true })
+      .fill('stale-tab-change');
+    await staleTab
+      .getByLabel('Current password', { exact: true })
+      .fill(password);
+    await staleTab
+      .getByRole('button', { name: 'Update sign-in details' })
+      .click();
+    await expect(staleTab.getByRole('alert')).toContainText(
+      'Your account changed',
+    );
+    const currentAccount = z
+      .object({ item: z.object({ username: z.string() }) })
+      .parse(await (await page.request.get('/api/auth/account')).json());
+    expect(currentAccount.item.username).toBe(username);
     await expect(
       page.getByLabel('Current password', { exact: true }),
     ).toHaveValue('');
@@ -511,6 +552,7 @@ test('administrator changes username/password without losing data and can sign i
     );
     restored = true;
   } finally {
+    await staleTab.close();
     if (changed && !restored) {
       await page.request.post('/api/auth/login', {
         headers,
@@ -533,5 +575,346 @@ test('administrator changes username/password without losing data and can sign i
         ).ok(),
       ).toBe(true);
     }
+  }
+});
+
+async function createTestBrand(page: Page, name: string) {
+  const response = await page.request.post('/api/manage/brands', {
+    headers,
+    data: { name, makingCost: 100000 },
+  });
+  expect(response.status()).toBe(201);
+  return z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await response.json()).item.id;
+}
+async function configureTestBrand(
+  page: Page,
+  brandId: string,
+  username: string,
+  password: string,
+  version = 0,
+) {
+  const response = await page.request.put(
+    '/api/manage/brand-access/' + brandId,
+    {
+      headers,
+      data: {
+        username,
+        password,
+        version,
+        enabled: true,
+        currentPassword: adminPassword,
+      },
+    },
+  );
+  expect(response.status()).toBe(200);
+}
+async function ownerSignIn(page: Page, username: string, password: string) {
+  await page.goto('/brand/login');
+  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in to brand portal' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Sign out', exact: true }),
+  ).toBeVisible();
+}
+
+test('brand access rejects duplicates and safely recovers from failed saves and lost responses', async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(120000);
+  await signIn(page);
+  const suffix = `${testInfo.project.name}-${String(Date.now())}`;
+  const first = await createTestBrand(page, 'AAA Edge original ' + suffix);
+  const name = 'AAA Edge recovery ' + suffix;
+  const second = await createTestBrand(page, name);
+  const password = 'edge browser brand password passphrase';
+  const username = 'edge-original-' + suffix,
+    replacement = 'edge-recovery-' + suffix;
+  await configureTestBrand(page, first, username, password);
+  await page.goto('/brands');
+  const row = page.locator('.brand-row').filter({ hasText: name });
+  await row.getByRole('button', { name: 'Login access', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Brand username').fill(username);
+  await dialog.getByLabel('New brand password', { exact: true }).fill(password);
+  await dialog
+    .getByLabel('Confirm brand password', { exact: true })
+    .fill(password);
+  await dialog
+    .getByLabel('Your administrator password', { exact: true })
+    .fill(adminPassword);
+  const save = dialog.getByRole('button', { name: 'Save brand access' });
+  const stored = async () =>
+    z
+      .object({
+        item: z.object({
+          username: z.string(),
+          enabled: z.boolean(),
+          version: z.number(),
+        }),
+      })
+      .parse(
+        await (
+          await page.request.get('/api/manage/brand-access/' + second)
+        ).json(),
+      ).item;
+  await save.click();
+  await expect(dialog.getByRole('alert')).toContainText('already assigned');
+  expect((await stored()).version).toBe(0);
+  await dialog.getByLabel('Brand username').fill(replacement);
+  const path = '**/api/manage/brand-access/' + second;
+  await page.route(path, async (route) => {
+    if (route.request().method() === 'PUT')
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Temporary save failure' }),
+      });
+    else await route.continue();
+  });
+  await save.click();
+  await expect(dialog.getByRole('alert')).toContainText(
+    'Temporary save failure',
+  );
+  await expect(dialog.getByLabel('Brand username')).toHaveValue(replacement);
+  await expect(
+    dialog.getByLabel('New brand password', { exact: true }),
+  ).toHaveValue(password);
+  expect((await stored()).version).toBe(0);
+  await page.unroute(path);
+  await page.route(path, async (route) => {
+    if (route.request().method() === 'PUT') await route.abort('failed');
+    else await route.continue();
+  });
+  await save.click();
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  await expect(save).toBeEnabled();
+  expect((await stored()).version).toBe(0);
+  await page.unroute(path);
+  await page.route(path, async (route) => {
+    if (route.request().method() === 'PUT') {
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      await route.abort('failed');
+    } else await route.continue();
+  });
+  await save.click();
+  await expect(dialog.getByRole('alert')).toBeVisible();
+  await expect(save).toBeEnabled();
+  expect(await stored()).toEqual({
+    username: replacement,
+    enabled: true,
+    version: 1,
+  });
+  await page.unroute(path);
+  await save.click();
+  await expect(dialog.getByRole('alert')).toContainText('Brand access changed');
+  await dialog.getByRole('button', { name: 'Reload access' }).click();
+  await expect(dialog.getByLabel('Brand username')).toHaveValue(replacement);
+  await expect(
+    dialog.getByLabel('New brand password', { exact: true }),
+  ).toHaveValue('');
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.reload();
+  await expect(row).toContainText('Login enabled');
+  const context = await browser.newContext({
+    baseURL: 'http://127.0.0.1:5174',
+  });
+  try {
+    const owner = await context.newPage();
+    await ownerSignIn(owner, replacement, password);
+    await expect(
+      owner.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('brand portal handles empty and large ledgers, reset across tabs, and expired cookies', async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(240000);
+  await signIn(page);
+  const suffix = `${testInfo.project.name}-${String(Date.now())}`;
+  const name = 'AAA Large portal ' + suffix;
+  const brandId = await createTestBrand(page, name),
+    other = await createTestBrand(page, 'Other private ledger ' + suffix);
+  const username = 'large-owner-' + suffix,
+    password = 'large owner browser password passphrase',
+    replacement = 'reset large owner browser password';
+  await configureTestBrand(page, brandId, username, password);
+  const foreign = await page.request.post('/api/manage/advertising', {
+    headers,
+    data: {
+      brandId: other,
+      date: '2026-10-31',
+      period: 'Foreign private invoice',
+      campaigns: [{ name: 'Foreign campaign', amount: 100000 }],
+    },
+  });
+  expect(foreign.status()).toBe(201);
+  const context = await browser.newContext({
+    baseURL: 'http://127.0.0.1:5174',
+    viewport: page.viewportSize() ?? { width: 1440, height: 900 },
+  });
+  try {
+    const owner = await context.newPage();
+    await ownerSignIn(owner, username, password);
+    const categories = [
+      ['Settlement invoices', 'settlements'],
+      ['Advertising invoices', 'advertising'],
+      ['Payment receipts', 'receipts'],
+    ] as const;
+    for (const [label] of categories) {
+      await owner.getByRole('tab', { name: label, exact: true }).click();
+      await expect(owner.getByRole('tabpanel')).toContainText(
+        `No ${label.toLowerCase()} have been shared`,
+      );
+    }
+    await expect(
+      owner
+        .getByRole('region', { name: 'Payment balances' })
+        .locator('.metric strong'),
+    ).toHaveText(['৳0.00', '৳0.00', '৳0.00', '৳0.00']);
+    for (let index = 0; index < 45; index++) {
+      const [settlement, ads] = await Promise.all([
+        page.request.post('/api/manage/settlements', {
+          headers,
+          data: {
+            brandId,
+            date: '2026-10-31',
+            period: `Large ledger ${String(index)}`,
+            deliveredQty: 1,
+            deliveredAmount: 1000000,
+            cancelledQty: 0,
+            cancelledAmount: 0,
+            partialQty: 0,
+            partialAmount: 0,
+            pendingQty: 0,
+            shipping: 0,
+            codCharge: 0,
+            ads: 0,
+            productCost: 100000,
+            costPerPiece: 100000,
+            agencyBasisPoints: 1500,
+          },
+        }),
+        page.request.post('/api/manage/advertising', {
+          headers,
+          data: {
+            brandId,
+            date: '2026-10-31',
+            period: `Large ledger ${String(index)}`,
+            campaigns: [{ name: 'Campaign', amount: 100000 }],
+          },
+        }),
+      ]);
+      expect(settlement.status()).toBe(201);
+      expect(ads.status()).toBe(201);
+      const adId = z.object({ id: z.string() }).parse(await ads.json()).id;
+      const receipt = await page.request.post(
+        '/api/manage/receipts/from-payment',
+        {
+          headers,
+          data: {
+            requestId: crypto.randomUUID(),
+            target: { kind: 'ads', targetId: adId },
+            amount: 10000,
+            date: '2026-10-31',
+            note: 'Large portal receipt',
+            proofFileId: null,
+          },
+        },
+      );
+      expect(receipt.status()).toBe(201);
+    }
+    for (const [label, kind] of categories) {
+      await owner.getByRole('tab', { name: label, exact: true }).click();
+      await owner.getByRole('button', { name: 'Refresh', exact: true }).click();
+      const list = owner.getByRole('region', { name: label, exact: true });
+      await expect(list).toHaveAttribute('data-loaded-count', '20');
+      await list.scrollIntoViewIfNeeded();
+      await expect(async () => {
+        await list.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await expect(list).toHaveAttribute('data-loaded-count', '45', {
+          timeout: 500,
+        });
+        await expect(list.locator('tr[data-index="44"]')).toBeVisible({
+          timeout: 500,
+        });
+      }).toPass({ timeout: 20000, intervals: [100, 250] });
+      expect(await list.locator('tr[data-index]').count()).toBeLessThan(35);
+      await expect(list).not.toContainText('Foreign private invoice');
+      const ids = new Set<string>();
+      let cursor = '';
+      for (let batch = 0; batch < 3; batch++) {
+        const response = await owner.request.get(
+          '/api/portal/invoices?kind=' + kind + cursor,
+        );
+        const result = z
+          .object({
+            items: z.array(z.object({ id: z.string() })),
+            next: z
+              .object({ before: z.string(), beforeId: z.string() })
+              .nullable(),
+          })
+          .parse(await response.json());
+        result.items.forEach((item) => ids.add(item.id));
+        cursor = result.next
+          ? '&' + new URLSearchParams(result.next).toString()
+          : '';
+      }
+      expect(ids.size).toBe(45);
+      expect(cursor).toBe('');
+    }
+    const secondTab = await context.newPage();
+    await secondTab.goto('/brand');
+    await expect(
+      secondTab.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+    await configureTestBrand(page, brandId, username, replacement, 1);
+    for (const tab of [owner, secondTab]) {
+      await tab.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await expect(
+        tab.getByRole('button', { name: 'Sign in to brand portal' }),
+      ).toBeVisible();
+      await expect(tab.getByRole('tabpanel')).toHaveCount(0);
+    }
+    await owner.getByLabel('Username', { exact: true }).fill(username);
+    await owner.getByLabel('Password', { exact: true }).fill(password);
+    await owner
+      .getByRole('button', { name: 'Sign in to brand portal' })
+      .click();
+    await expect(owner.getByRole('alert')).toContainText(
+      'Incorrect username or password',
+    );
+    await ownerSignIn(owner, username, replacement);
+    const cookie = (await context.cookies()).find(
+      (item) => item.name === 'hexa_brand_session',
+    );
+    expect(cookie).toBeDefined();
+    if (!cookie) throw new Error('Brand cookie missing');
+    await context.addCookies([
+      { ...cookie, expires: Math.floor(Date.now() / 1000) - 1 },
+    ]);
+    await owner.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(
+      owner.getByRole('button', { name: 'Sign in to brand portal' }),
+    ).toBeVisible();
+    expect(
+      (
+        await owner.request.get('/api/portal/invoices?kind=settlements')
+      ).status(),
+    ).toBe(401);
+    await expect(owner.getByRole('tabpanel')).toHaveCount(0);
+  } finally {
+    await context.close();
   }
 });

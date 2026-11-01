@@ -4,6 +4,7 @@ import { app } from '../app';
 import { testEnvironment } from '../test-environment';
 import { receiptSchema, paymentSummarySchema } from '../../shared/receipts';
 import { portalListSchema } from '../../shared/access';
+import { digest } from '../auth/crypto';
 
 let fixture: Awaited<ReturnType<typeof testEnvironment>>;
 let adminCookie = '',
@@ -531,6 +532,52 @@ it(
         await call('/api/portal/payment-summary', 'GET', undefined, cookie)
       ).json(),
     ).toEqual({ commission: zero, ads: zero });
+  },
+);
+
+it(
+  'rejects expired administrator and brand sessions at the server boundary',
+  { timeout: 20000 },
+  async () => {
+    const owner = cookieFrom(await login('01700000001'));
+    const administrator = cookieFrom(
+      await call(
+        '/api/auth/login',
+        'POST',
+        { username: 'admin', password: adminPassword },
+        '',
+      ),
+    );
+    for (const [table, cookie] of [
+      ['brand_sessions', owner],
+      ['sessions', administrator],
+    ] as const) {
+      expect(cookie).not.toBe('');
+      await fixture.env.DB.prepare(
+        `UPDATE ${table} SET expires_at=? WHERE token_hash=?`,
+      )
+        .bind(Date.now() - 1, await digest(cookie.split('=')[1] ?? ''))
+        .run();
+    }
+    expect(
+      (await call('/api/portal/payment-summary', 'GET', undefined, owner))
+        .status,
+    ).toBe(401);
+    expect(
+      (await call('/api/manage/bootstrap', 'GET', undefined, administrator))
+        .status,
+    ).toBe(401);
+    expect(
+      await (
+        await call('/api/brand-auth/status', 'GET', undefined, owner)
+      ).json(),
+    ).toEqual({ brand: null });
+    expect(
+      await (
+        await call('/api/auth/status', 'GET', undefined, administrator)
+      ).json(),
+    ).toEqual({ initialized: true, username: null });
+    expect((await call('/api/manage/bootstrap')).status).toBe(200);
   },
 );
 
