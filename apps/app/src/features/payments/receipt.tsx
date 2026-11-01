@@ -25,11 +25,15 @@ export function ReceiptView({
   settings,
   onChanged,
   onBack,
+  readOnly = false,
+  fileBase = '/api/manage/files',
 }: {
   item: PaymentReceipt;
   settings: Settings;
-  onChanged: (item: PaymentReceipt) => void;
+  onChanged?: (item: PaymentReceipt) => void;
   onBack: () => void;
+  readOnly?: boolean;
+  fileBase?: string;
 }) {
   const documentRef = useRef<HTMLElement>(null),
     confirm = useConfirmation();
@@ -65,7 +69,7 @@ export function ReceiptView({
         `/manage/receipts/${item.id}`,
         z.object({ item: receiptSchema }),
       );
-      onChanged(result.item);
+      onChanged?.(result.item);
     } catch (e) {
       setError(ErrorMessage(e));
     } finally {
@@ -84,26 +88,28 @@ export function ReceiptView({
         description={`Payment received from ${data.brandName}.`}
         action={
           <button className="secondary" onClick={onBack}>
-            Back to brand account
+            {readOnly ? 'Back to invoices' : 'Back to brand account'}
           </button>
         }
       />
       <div className="actions no-print">
-        <Field label="Receipt stamp status">
-          <StatusSelect
-            kind="receipt"
-            id={item.id}
-            label="Receipt stamp status"
-            value={receiptStampStatus(item)}
-            disabled={pending || item.reversedAt !== null}
-            onSaved={(status) => {
-              onChanged({
-                ...item,
-                stampStatus: stampStatusSchema.parse(status),
-              });
-            }}
-          />
-        </Field>
+        {!readOnly ? (
+          <Field label="Receipt stamp status">
+            <StatusSelect
+              kind="receipt"
+              id={item.id}
+              label="Receipt stamp status"
+              value={receiptStampStatus(item)}
+              disabled={pending || item.reversedAt !== null}
+              onSaved={(status) => {
+                onChanged?.({
+                  ...item,
+                  stampStatus: stampStatusSchema.parse(status),
+                });
+              }}
+            />
+          </Field>
+        ) : null}
         <button
           className="primary"
           disabled={pending}
@@ -143,7 +149,7 @@ export function ReceiptView({
         {settings.watermarkFileId ? (
           <img
             className="invoice-watermark"
-            src={`/api/manage/files/${settings.watermarkFileId}`}
+            src={`${fileBase}/${settings.watermarkFileId}`}
             alt=""
           />
         ) : null}
@@ -164,7 +170,11 @@ export function ReceiptView({
             <strong>{item.number}</strong>
             <p>{data.brandName}</p>
           </div>
-          <InvoiceStamp status={receiptStampStatus(item)} settings={settings} />
+          <InvoiceStamp
+            status={receiptStampStatus(item)}
+            settings={settings}
+            fileBase={fileBase}
+          />
           <div>
             <small>PAYMENT DATE</small>
             <strong>{dateLabel(item.date)}</strong>
@@ -268,7 +278,7 @@ export function ReceiptView({
             {settings.signatureFileId ? (
               <img
                 className="invoice-signature"
-                src={`/api/manage/files/${settings.signatureFileId}`}
+                src={`${fileBase}/${settings.signatureFileId}`}
                 alt="Authorized signature"
               />
             ) : null}
@@ -277,7 +287,7 @@ export function ReceiptView({
           </div>
         </footer>
       </article>
-      {item.proofFileId ? (
+      {!readOnly && item.proofFileId ? (
         <section className="panel no-print">
           <h2>Payment proof</h2>
           <a
@@ -289,7 +299,7 @@ export function ReceiptView({
           </a>
         </section>
       ) : null}
-      {item.reversedAt === null ? (
+      {readOnly ? null : item.reversedAt === null ? (
         <section className="panel no-print receipt-reversal">
           <h2>Correct a recorded payment</h2>
           <p className="muted">

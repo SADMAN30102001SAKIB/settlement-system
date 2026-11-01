@@ -97,7 +97,7 @@ export function Login({
                 name="username"
                 autoComplete="username"
                 required
-                maxLength={80}
+                maxLength={254}
               />
             </Field>
             <Field
@@ -146,6 +146,12 @@ export function Login({
               <span aria-hidden="true">→</span>
             </button>
           </form>
+          <p className="auth-footnote">
+            Brand owner?{' '}
+            <a className="secondary compact" href="/brand/login">
+              Brand sign-in
+            </a>
+          </p>
           <p className="auth-footnote">
             Your session is private. Business data is never stored in this
             browser’s local storage.

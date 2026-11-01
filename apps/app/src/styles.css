@@ -876,6 +876,128 @@ strong {
 .catalog-dialog {
   width: min(600px, calc(100% - 24px));
 }
+.password-control {
+  display: block;
+  position: relative;
+}
+.password-control input {
+  padding-right: 76px;
+}
+.password-control > button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.account-settings {
+  max-width: 640px;
+}
+.portal-login-address {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.brand-portal {
+  min-height: 100dvh;
+}
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px clamp(16px, 4vw, 48px);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.portal-header .wordmark {
+  color: var(--ink);
+}
+.portal-header .wordmark small {
+  color: var(--muted);
+}
+.portal-header > .actions {
+  justify-content: flex-end;
+}
+.brand-portal-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 36px 24px;
+}
+.portal-intro h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  overflow-wrap: anywhere;
+}
+.portal-intro .muted {
+  margin-bottom: 28px;
+}
+.portal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.portal-tabs button {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  font-size: 13px;
+  padding: 10px;
+}
+.portal-login {
+  width: min(460px, calc(100% - 32px));
+  margin: 48px auto;
+}
+.portal-login h1 {
+  font-size: 30px;
+}
+.portal-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.portal-document-content {
+  padding: 24px;
+}
+@media (max-width: 600px) {
+  .portal-header .wordmark small {
+    display: none;
+  }
+  .brand-portal-main {
+    padding: 24px 16px;
+  }
+  .portal-tabs button {
+    font-size: 12px;
+  }
+  .portal-document-content {
+    padding: 16px;
+  }
+  .portal-invoice-table thead {
+    display: none;
+  }
+  .portal-invoice-table tbody,
+  .portal-invoice-table tr,
+  .portal-invoice-table td,
+  .portal-invoice-table .virtual-spacer,
+  .portal-invoice-table .virtual-spacer td {
+    display: block;
+  }
+  .portal-invoice-table td {
+    padding: 8px 16px;
+    border: 0;
+  }
+  .portal-invoice-table tr:not(.virtual-spacer) {
+    padding-block: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+}
+@media print {
+  .portal-tabs,
+  .portal-intro,
+  .portal-invoices {
+    display: none !important;
+  }
+}
 .business-dialog-heading {
   position: sticky;
   top: 0;

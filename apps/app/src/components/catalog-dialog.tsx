@@ -6,11 +6,13 @@ export function CatalogDialog({
   pending,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   pending: boolean;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
@@ -24,7 +26,7 @@ export function CatalogDialog({
   return (
     <dialog
       ref={dialog}
-      className="business-dialog catalog-dialog"
+      className={`business-dialog ${wide ? 'portal-document-dialog' : 'catalog-dialog'}`}
       aria-labelledby={heading}
       onCancel={(event) => {
         event.preventDefault();

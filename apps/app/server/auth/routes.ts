@@ -8,10 +8,13 @@ import { and, eq, gt, lt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
+import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 
 import type { AppEnvironment } from '../environment';
+import { newPassword, loginUsername } from '../../shared/access';
+import { confirmAdminPassword } from './security';
 import {
   digest,
   hashPassword,
@@ -25,10 +28,20 @@ const SESSION_SECONDS = 60 * 60 * 12;
 const WINDOW = 15 * 60 * 1000;
 const credentials = z
   .object({
-    username: z.string().trim().min(1).max(80),
+    username: z.string().trim().min(1).max(254),
     password: z.string().min(1).max(128),
   })
   .strict();
+
+function sessionCookie(context: Context<AppEnvironment>, token: string) {
+  setCookie(context, COOKIE, token, {
+    httpOnly: true,
+    secure: new URL(context.req.url).protocol === 'https:',
+    sameSite: 'Strict',
+    path: '/',
+    maxAge: SESSION_SECONDS,
+  });
+}
 
 export const requireAdmin = createMiddleware<AppEnvironment>(
   async (context, next) => {
@@ -43,6 +56,7 @@ export const requireAdmin = createMiddleware<AppEnvironment>(
       .where(
         and(
           eq(sessions.tokenHash, await digest(token)),
+          eq(sessions.authVersion, admins.authVersion),
           gt(sessions.expiresAt, Date.now()),
         ),
       )
@@ -75,6 +89,7 @@ export const authRoutes = new Hono<AppEnvironment>()
         .where(
           and(
             eq(sessions.tokenHash, await digest(token)),
+            eq(sessions.authVersion, admins.authVersion),
             gt(sessions.expiresAt, Date.now()),
           ),
         )
@@ -164,7 +179,11 @@ export const authRoutes = new Hono<AppEnvironment>()
       });
     }
     const [admin] = await database
-      .select({ username: admins.username, hash: admins.passwordHash })
+      .select({
+        username: admins.username,
+        hash: admins.passwordHash,
+        version: admins.authVersion,
+      })
       .from(admins)
       .where(eq(admins.id, 1))
       .limit(1);
@@ -202,18 +221,61 @@ export const authRoutes = new Hono<AppEnvironment>()
       database.insert(sessions).values({
         tokenHash: await digest(token),
         adminId: 1,
+        authVersion: admin.version,
         expiresAt: now + SESSION_SECONDS * 1000,
         createdAt: now,
       }),
     ]);
-    setCookie(context, COOKIE, token, {
-      httpOnly: true,
-      secure: new URL(context.req.url).protocol === 'https:',
-      sameSite: 'Strict',
-      path: '/',
-      maxAge: SESSION_SECONDS,
-    });
+    sessionCookie(context, token);
     return context.json({ username: admin.username });
+  })
+  .get('/account', requireAdmin, async (c) => {
+    const item = await c.env.DB.prepare(
+      'SELECT username,auth_version AS version FROM admins WHERE id=1',
+    ).first();
+    return c.json({ item });
+  })
+  .put('/account', requireAdmin, async (c) => {
+    const input = z
+      .object({
+        username: loginUsername,
+        currentPassword: z.string().min(1).max(128),
+        password: newPassword.optional(),
+        version: z.number().int().min(0),
+      })
+      .strict()
+      .parse(await c.req.json<unknown>());
+    const admin = await confirmAdminPassword(c, input.currentPassword);
+    if (admin.version !== input.version)
+      throw new HTTPException(409, {
+        message: 'Your account changed. Reload this page before trying again.',
+      });
+    const hash = input.password
+      ? await hashPassword(input.password, c.env.PASSWORD_PEPPER)
+      : admin.hash;
+    const item = await c.env.DB.prepare(
+      'UPDATE admins SET username=?,password_hash=?,auth_version=auth_version+1 WHERE id=1 AND auth_version=? AND password_hash=? RETURNING username,auth_version AS version',
+    )
+      .bind(input.username, hash, admin.version, admin.hash)
+      .first<{ username: string; version: number }>();
+    if (!item)
+      throw new HTTPException(409, {
+        message: 'Your account changed. Sign in again before trying again.',
+      });
+    const token = randomToken(),
+      now = Date.now();
+    await c
+      .get('database')()
+      .insert(sessions)
+      .values({
+        tokenHash: await digest(token),
+        adminId: 1,
+        authVersion: item.version,
+        createdAt: now,
+        expiresAt: now + SESSION_SECONDS * 1000,
+      });
+    sessionCookie(c, token);
+    return c.json({ item });
   })
   .get('/me', requireAdmin, (context) =>
     context.json({ username: context.get('username') }),

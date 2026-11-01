@@ -14,6 +14,7 @@ export const admins = sqliteTable(
   {
     id: integer().primaryKey(),
     username: text().notNull().unique(),
+    authVersion: integer('auth_version').notNull().default(0),
     passwordHash: text('password_hash').notNull(),
     createdAt: integer('created_at').notNull(),
   },
@@ -27,6 +28,7 @@ export const sessions = sqliteTable(
     adminId: integer('admin_id')
       .notNull()
       .references(() => admins.id, { onDelete: 'cascade' }),
+    authVersion: integer('auth_version').notNull().default(0),
     expiresAt: integer('expires_at').notNull(),
     createdAt: integer('created_at').notNull(),
   },
@@ -56,6 +58,34 @@ export const brands = sqliteTable(
       'brands_cost_nonnegative',
       sql`${table.makingCost} IS NULL OR ${table.makingCost} >= 0`,
     ),
+  ],
+);
+
+export const brandUsers = sqliteTable('brand_users', {
+  brandId: text('brand_id')
+    .primaryKey()
+    .references(() => brands.id, { onDelete: 'cascade' }),
+  username: text().notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  enabled: integer({ mode: 'boolean' }).notNull().default(true),
+  version: integer().notNull().default(1),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const brandSessions = sqliteTable(
+  'brand_sessions',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    brandId: text('brand_id')
+      .notNull()
+      .references(() => brandUsers.brandId, { onDelete: 'cascade' }),
+    version: integer().notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('brand_sessions_expiry_idx').on(table.expiresAt),
+    index('brand_sessions_brand_idx').on(table.brandId),
   ],
 );
 

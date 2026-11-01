@@ -16,6 +16,7 @@ import { useConfirmation } from '../../components/confirmation-context';
 import type { Brand } from '../../lib/api';
 import { amountInput, formText, money } from '../../lib/format';
 import { BrandList } from '../../components/brand-list';
+import { BrandAccess } from './brand-access';
 
 export function Brands({
   brands,
@@ -26,6 +27,7 @@ export function Brands({
 }) {
   const [editing, setEditing] = useState<Brand | null>(null);
   const [opened, setOpened] = useState(false);
+  const [accessBrand, setAccessBrand] = useState<Brand | null>(null);
   const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -121,6 +123,15 @@ export function Brands({
               </div>
               <div className="actions">
                 <button
+                  className="secondary compact"
+                  disabled={pending}
+                  onClick={() => {
+                    setAccessBrand(brand);
+                  }}
+                >
+                  Login access
+                </button>
+                <button
                   disabled={pending}
                   className="secondary compact"
                   onClick={() => {
@@ -211,6 +222,14 @@ export function Brands({
             </div>
           </form>
         </CatalogDialog>
+      ) : null}
+      {accessBrand ? (
+        <BrandAccess
+          brand={accessBrand}
+          onClose={() => {
+            setAccessBrand(null);
+          }}
+        />
       ) : null}
     </>
   );

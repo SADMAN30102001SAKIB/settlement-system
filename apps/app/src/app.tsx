@@ -19,6 +19,8 @@ import { Payments } from './features/payments/page';
 import { Advertising } from './features/advertising/page';
 import { Business } from './features/business/page';
 import { Files } from './features/catalog/files';
+import { AccountSettings } from './features/auth/account';
+import { BrandPortal } from './features/portal/page';
 import {
   api,
   brandSchema,
@@ -133,6 +135,14 @@ function ReportView({
 }
 
 export function App() {
+  return /^\/brand(?:\/|$)/.test(window.location.pathname) ? (
+    <BrandPortal />
+  ) : (
+    <AdminApp />
+  );
+}
+
+function AdminApp() {
   const [path, setPath] = useState(() =>
     window.location.hash.startsWith('#/')
       ? window.location.hash.slice(1)
@@ -232,7 +242,7 @@ export function App() {
         url.origin !== window.location.origin ||
         url.hash ||
         url.search ||
-        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments)(\/|$)/.test(
+        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments|account)(\/|$)/.test(
           url.pathname,
         )
       )
@@ -367,6 +377,7 @@ export function App() {
             ['/payments', 'Payments', '06'],
             ['/business', 'Business tracking', '07'],
             ['/files', 'Private files', '08'],
+            ['/account', 'Account settings', '09'],
           ].map(([href, label, marker]) => (
             <a
               key={href}
@@ -455,6 +466,12 @@ export function App() {
               brands={brands}
               settings={settings}
               navigate={navigate}
+            />
+          ) : path === '/account' ? (
+            <AccountSettings
+              onSaved={(username) => {
+                setSession({ initialized: true, username });
+              }}
             />
           ) : path === '/files' ? (
             <Files refresh={refresh} />

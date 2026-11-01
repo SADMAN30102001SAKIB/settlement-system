@@ -15,6 +15,8 @@ import { businessRoutes } from './business/routes';
 import { fileRoutes } from './files/routes';
 import { receiptRoutes } from './receipts/routes';
 import { invoiceStatusRoutes } from './invoice-status/routes';
+import { brandAuthRoutes, brandAccessRoutes } from './portal/auth';
+import { portalRoutes } from './portal/routes';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -55,7 +57,10 @@ export const app = new Hono<AppEnvironment>()
   })
   .get('/api/health', (context) => context.json({ status: 'ok' } as const))
   .route('/api/auth', authRoutes)
+  .route('/api/brand-auth', brandAuthRoutes)
+  .route('/api/portal', portalRoutes)
   .use('/api/manage/*', requireAdmin)
+  .route('/api/manage/brand-access', brandAccessRoutes)
   .route('/api/manage', catalogRoutes)
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)

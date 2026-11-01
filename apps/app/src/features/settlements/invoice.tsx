@@ -15,13 +15,17 @@ export function Invoice({
   onBack,
   onDelete,
   autoDownload = false,
+  readOnly = false,
+  fileBase = '/api/manage/files',
 }: {
   report: Report | AdInvoice;
   settings: Settings;
-  onEdit: () => void;
+  onEdit?: () => void;
   onBack: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   autoDownload?: boolean;
+  readOnly?: boolean;
+  fileBase?: string;
 }) {
   const downloadButton = useRef<HTMLButtonElement>(null);
   const downloadStarted = useRef(false);
@@ -96,39 +100,43 @@ export function Invoice({
               <button className="secondary" onClick={onBack}>
                 Back
               </button>
-              <button className="secondary" onClick={onEdit}>
-                Edit report
-              </button>
+              {!readOnly && onEdit ? (
+                <button className="secondary" onClick={onEdit}>
+                  Edit report
+                </button>
+              ) : null}
               <button className="secondary" onClick={print}>
                 Print
               </button>
-              <div className="invoice-more" ref={more}>
-                <button
-                  className="secondary"
-                  aria-expanded={moreOpen}
-                  onClick={() => {
-                    setMoreOpen(!moreOpen);
-                  }}
-                >
-                  More actions
-                </button>
-                {moreOpen ? (
-                  <div className="invoice-action-popover">
-                    <p className="caption">Invoice management</p>
-                    <button
-                      className="secondary danger-text"
-                      onClick={() => {
-                        setMoreOpen(false);
-                        onDelete();
-                      }}
-                    >
-                      {'campaigns' in report
-                        ? 'Delete invoice'
-                        : 'Delete settlement'}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              {!readOnly && onDelete ? (
+                <div className="invoice-more" ref={more}>
+                  <button
+                    className="secondary"
+                    aria-expanded={moreOpen}
+                    onClick={() => {
+                      setMoreOpen(!moreOpen);
+                    }}
+                  >
+                    More actions
+                  </button>
+                  {moreOpen ? (
+                    <div className="invoice-action-popover">
+                      <p className="caption">Invoice management</p>
+                      <button
+                        className="secondary danger-text"
+                        onClick={() => {
+                          setMoreOpen(false);
+                          onDelete();
+                        }}
+                      >
+                        {'campaigns' in report
+                          ? 'Delete invoice'
+                          : 'Delete settlement'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <button
                 className="primary"
                 ref={downloadButton}
@@ -159,7 +167,7 @@ export function Invoice({
         {settings.watermarkFileId ? (
           <img
             className="invoice-watermark"
-            src={`/api/manage/files/${settings.watermarkFileId}`}
+            src={`${fileBase}/${settings.watermarkFileId}`}
             alt=""
           />
         ) : null}
@@ -187,6 +195,7 @@ export function Invoice({
             <p>{report.brandName}</p>
           </div>
           <InvoiceStamp
+            fileBase={fileBase}
             status={
               report.statusOverride ??
               paymentStatus(
@@ -375,7 +384,7 @@ export function Invoice({
             {settings.signatureFileId ? (
               <img
                 className="invoice-signature"
-                src={`/api/manage/files/${settings.signatureFileId}`}
+                src={`${fileBase}/${settings.signatureFileId}`}
                 alt="Authorized signature"
               />
             ) : null}

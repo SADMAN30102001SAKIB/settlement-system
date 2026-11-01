@@ -5,5 +5,6 @@ export interface AppEnvironment {
   Variables: {
     database: () => ReturnType<typeof createDatabase>;
     username: string;
+    brandId: string;
   };
 }

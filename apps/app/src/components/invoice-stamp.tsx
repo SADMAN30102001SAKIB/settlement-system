@@ -4,9 +4,11 @@ import type { Settings } from '../lib/api';
 export function InvoiceStamp({
   status,
   settings,
+  fileBase = '/api/manage/files',
 }: {
   status: InvoiceStatus;
   settings: Settings;
+  fileBase?: string;
 }) {
   const file =
     status === 'Paid'
@@ -19,7 +21,7 @@ export function InvoiceStamp({
   return file ? (
     <img
       className="invoice-stamp"
-      src={`/api/manage/files/${file}`}
+      src={`${fileBase}/${file}`}
       alt={`${status} stamp`}
     />
   ) : null;

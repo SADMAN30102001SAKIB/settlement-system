@@ -126,6 +126,7 @@ export const noteSchema = z.object({
 export type Note = z.infer<typeof noteSchema>;
 
 export const SESSION_EXPIRED_EVENT = 'settlement:session-expired';
+export const BRAND_SESSION_EXPIRED_EVENT = 'settlement:brand-session-expired';
 
 export async function api<S extends z.ZodType>(
   path: string,
@@ -145,9 +146,14 @@ export async function api<S extends z.ZodType>(
   });
   const payload: unknown = await response.json();
   if (!response.ok) {
-    if (response.status === 401 && path.startsWith('/manage/')) {
+    if (
+      response.status === 401 &&
+      (path.startsWith('/manage/') || path === '/auth/account')
+    ) {
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
+    if (response.status === 401 && path.startsWith('/portal/'))
+      window.dispatchEvent(new Event(BRAND_SESSION_EXPIRED_EVENT));
     const error = z.object({ error: z.string() }).safeParse(payload);
     throw new Error(
       error.success ? error.data.error : 'The request could not be completed.',
