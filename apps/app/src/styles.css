@@ -967,6 +967,31 @@ strong {
   padding: 24px;
 }
 @media (max-width: 600px) {
+  .portal-payment-summary .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .portal-payment-summary .metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+  .portal-payment-summary .metric + .metric {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .portal-payment-summary .metric > span {
+    flex: 1 1 100px;
+    margin: 0;
+    font-size: 12px;
+  }
+  .portal-payment-summary .metric strong {
+    font-size: clamp(18px, 5vw, 21px);
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
   .portal-header .wordmark small {
     display: none;
   }

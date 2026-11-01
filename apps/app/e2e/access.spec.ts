@@ -137,7 +137,7 @@ test('admin provisions brand access and owners can only view and export their th
       rule: 'v3',
       deliveredQty: 4,
       deliveredUnits: 4,
-      deliveredAmount: 600000,
+      deliveredAmount: 60000000,
       cancelledQty: 0,
       cancelledAmount: 0,
       partialQty: 0,
@@ -161,7 +161,7 @@ test('admin provisions brand access and owners can only view and export their th
       brandId,
       date: '2026-10-31',
       period: 'Owner ads October',
-      campaigns: [{ name: 'Owner campaign', amount: 100000 }],
+      campaigns: [{ name: 'Owner campaign', amount: 25000000 }],
     },
   });
   const adsId = z.object({ id: z.string() }).parse(await adsResponse.json()).id;
@@ -190,7 +190,7 @@ test('admin provisions brand access and owners can only view and export their th
       data: {
         requestId: crypto.randomUUID(),
         target: { kind: 'ads', targetId: adsId },
-        amount: 20000,
+        amount: 10000000,
         date: '2026-10-31',
         note: 'Owner receipt',
         proofFileId: null,
@@ -284,6 +284,37 @@ test('admin provisions brand access and owners can only view and export their th
               .getByRole('region', { name: 'Payment balances' })
               .locator('.metric strong'),
           ).toHaveText(await expectedBalances());
+          const initialViewport = owner.viewportSize();
+          for (const width of [320, 360, 390, 414, 600, 768, 1280]) {
+            await owner.setViewportSize({ width, height: 900 });
+            const balances = owner.getByRole('region', {
+              name: 'Payment balances',
+            });
+            await balances.scrollIntoViewIfNeeded();
+            expect(
+              await balances.locator('.metric strong').evaluateAll((elements) =>
+                elements.every((element) => {
+                  const range = document.createRange();
+                  range.selectNodeContents(element);
+                  return (
+                    range.getClientRects().length === 1 &&
+                    element.scrollWidth <= element.clientWidth + 1
+                  );
+                }),
+              ),
+            ).toBe(true);
+            expect(
+              await owner.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth,
+              ),
+            ).toBe(true);
+            await balances.screenshot({
+              path: testInfo.outputPath(
+                `payment-balances-${theme}-${String(width)}.png`,
+              ),
+            });
+          }
+          if (initialViewport) await owner.setViewportSize(initialViewport);
         } else
           await expect(
             owner.getByRole('region', { name: 'Payment balances' }),
