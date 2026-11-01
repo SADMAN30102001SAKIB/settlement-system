@@ -475,6 +475,7 @@ input[type='checkbox']:disabled {
   flex: 1 1 240px;
 }
 .advertising-account-panel {
+  margin-bottom: 24px;
   scroll-margin-top: 24px;
 }
 .advertising-account-panel .section-heading > div {
@@ -2202,6 +2203,9 @@ article.invoice-advertising {
 .payments-workspace > .panel,
 .payments-workspace > h2 {
   margin-bottom: 24px;
+}
+.prior-payment-history > .scroll-list {
+  margin-top: 24px;
 }
 .payment-date-ledger {
   container-type: inline-size;

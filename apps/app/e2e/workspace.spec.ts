@@ -2465,6 +2465,71 @@ test('daily summaries scroll in batches and payment allocations retain offscreen
   await expect(page.locator('.brand-list')).toContainText(name);
 });
 
+test('payment history and advertising account sections keep clear responsive spacing', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  const response = await page.request.post('/api/manage/brands', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: {
+      name: `Spacing ${testInfo.project.name} ${String(Date.now())}`,
+      makingCost: 100000,
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const brand = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await response.json()).item;
+  const widths = testInfo.project.name === 'desktop' ? [1440, 768] : [390];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['Light', 'Dark']) {
+      await page.goto(`/payments/brand/${brand.id}`);
+      await page.getByLabel('Color theme').selectOption({ label: theme });
+      const history = page.locator('.prior-payment-history');
+      const load = history.getByRole('button', { name: 'View prior payments' });
+      await load.click();
+      const list = history.getByRole('region', {
+        name: 'Prior payments',
+        exact: true,
+      });
+      await expect(list).toContainText('No prior payments.');
+      await expect
+        .poll(async () => {
+          const button = await load.boundingBox();
+          const table = await list.boundingBox();
+          return button && table ? table.y - button.y - button.height : 0;
+        })
+        .toBeGreaterThanOrEqual(23);
+      await history.screenshot({
+        path: testInfo.outputPath(
+          `prior-payment-gap-${theme}-${String(width)}.png`,
+        ),
+      });
+      await page.goto('/advertising');
+      await page
+        .getByLabel('Payment brand', { exact: true })
+        .selectOption(brand.id);
+      const account = page.locator('.advertising-account-panel');
+      const metrics = account.locator('~ .metrics').first();
+      await expect(metrics).toContainText('Account due');
+      await expect
+        .poll(async () => {
+          const panel = await account.boundingBox();
+          const totals = await metrics.boundingBox();
+          return panel && totals ? totals.y - panel.y - panel.height : 0;
+        })
+        .toBeGreaterThanOrEqual(23);
+      await account.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `advertising-account-gap-${theme}-${String(width)}.png`,
+        ),
+      });
+    }
+  }
+});
+
 test('continuous orders preserve drafts, retry failed batches and keep mounted rows bounded', async ({
   page,
 }, testInfo) => {

@@ -54,7 +54,7 @@ function PriorPayments({ brandId }: { brandId: string }) {
     opened,
   );
   return (
-    <section className="panel">
+    <section className="panel prior-payment-history">
       <h2>Prior payment history</h2>
       <p className="muted">
         Existing payments are already included in this account. No retroactive
