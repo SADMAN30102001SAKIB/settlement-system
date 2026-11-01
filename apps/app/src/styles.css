@@ -892,6 +892,13 @@ strong {
   padding: 4px 8px;
   font-size: 11px;
 }
+.password-control > button:is(:hover, :active, :focus-visible) {
+  transform: translateY(-50%);
+}
+.brand-access-indicator {
+  font-size: 11px;
+  margin-top: 4px;
+}
 .account-settings {
   max-width: 640px;
 }

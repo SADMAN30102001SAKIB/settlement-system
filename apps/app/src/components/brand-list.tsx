@@ -13,15 +13,17 @@ export function BrandList({
   revision,
   render,
   className = 'brand-list',
+  refreshKey = 0,
 }: {
   revision: readonly Brand[];
   render: (brand: Brand) => ReactNode;
   className?: string;
+  refreshKey?: number;
 }) {
   const list = useInfiniteQuery(
     '/manage/brands',
     schema,
-    JSON.stringify(revision),
+    JSON.stringify(revision) + String(refreshKey),
   );
   return (
     <>

@@ -28,6 +28,7 @@ export function Brands({
   const [editing, setEditing] = useState<Brand | null>(null);
   const [opened, setOpened] = useState(false);
   const [accessBrand, setAccessBrand] = useState<Brand | null>(null);
+  const [accessRevision, setAccessRevision] = useState(0);
   const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -110,6 +111,7 @@ export function Brands({
         </div>
         <BrandList
           revision={brands}
+          refreshKey={accessRevision}
           render={(brand) => (
             <article key={brand.id} className="brand-row">
               <span className="avatar">{brand.name.slice(0, 1)}</span>
@@ -119,6 +121,13 @@ export function Brands({
                   {brand.makingCost === null
                     ? 'Making cost not set'
                     : `${money(brand.makingCost)} / piece`}
+                </small>
+                <small className="muted brand-access-indicator">
+                  {brand.loginAccess === 'enabled'
+                    ? 'Login enabled'
+                    : brand.loginAccess === 'disabled'
+                      ? 'Login disabled'
+                      : 'Login not configured'}
                 </small>
               </div>
               <div className="actions">
@@ -226,6 +235,9 @@ export function Brands({
       {accessBrand ? (
         <BrandAccess
           brand={accessBrand}
+          onSaved={() => {
+            setAccessRevision((value) => value + 1);
+          }}
           onClose={() => {
             setAccessBrand(null);
           }}

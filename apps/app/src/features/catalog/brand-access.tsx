@@ -12,9 +12,11 @@ import { Alert, ErrorMessage, Field, Spinner } from '../../components/ui';
 export function BrandAccess({
   brand,
   onClose,
+  onSaved,
 }: {
   brand: Brand;
   onClose: () => void;
+  onSaved: () => void;
 }) {
   const [item, setItem] = useState<z.infer<typeof brandAccessSchema> | null>(
       null,
@@ -67,6 +69,7 @@ export function BrandAccess({
       );
       setItem(result.item);
       setSaved(true);
+      onSaved();
     } catch (reason) {
       setError(ErrorMessage(reason));
     } finally {

@@ -1,6 +1,7 @@
 import {
   adInvoices,
   brands,
+  brandUsers,
   notes,
   settings,
   settlements,
@@ -66,8 +67,10 @@ export const catalogRoutes = new Hono<AppEnvironment>()
         id: brands.id,
         name: brands.name,
         makingCost: brands.makingCost,
+        loginAccess: sql<string>`CASE WHEN ${brandUsers.brandId} IS NULL THEN 'unconfigured' WHEN ${brandUsers.enabled} = 1 THEN 'enabled' ELSE 'disabled' END`,
       })
       .from(brands)
+      .leftJoin(brandUsers, eq(brandUsers.brandId, brands.id))
       .where(
         and(
           query.after ? gt(brands.normalizedName, query.after) : undefined,

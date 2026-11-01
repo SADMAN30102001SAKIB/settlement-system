@@ -27,6 +27,42 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+async function checkPasswordButtons(page: Page) {
+  for (const control of await page.locator('.password-control').all()) {
+    const button = control.getByRole('button');
+    await button.scrollIntoViewIfNeeded();
+    await page.waitForFunction(
+      () =>
+        !document
+          .getAnimations()
+          .some((animation) => animation instanceof CSSTransition),
+    );
+    const before = await button.boundingBox();
+    await button.hover();
+    await page.waitForFunction(
+      () =>
+        !document
+          .getAnimations()
+          .some((animation) => animation instanceof CSSTransition),
+    );
+    const hovered = await button.boundingBox();
+    expect(Math.abs((hovered?.y ?? -100) - (before?.y ?? 0))).toBeLessThan(0.5);
+    await button.click();
+    await expect(control.locator('input')).toHaveAttribute('type', 'text');
+    await button.hover();
+    await page.waitForFunction(
+      () =>
+        !document
+          .getAnimations()
+          .some((animation) => animation instanceof CSSTransition),
+    );
+    const shown = await button.boundingBox();
+    expect(Math.abs((shown?.y ?? -100) - (before?.y ?? 0))).toBeLessThan(0.5);
+    await button.click();
+    await expect(control.locator('input')).toHaveAttribute('type', 'password');
+  }
+}
+
 test('admin provisions brand access and owners can only view and export their three document types', async ({
   page,
   browser,
@@ -54,9 +90,11 @@ test('admin provisions brand access and owners can only view and export their th
   await page.goto('/brands');
   const row = page.locator('.brand-row').filter({ hasText: name });
   await expect(row).toBeVisible();
+  await expect(row).toContainText('Login not configured');
   await row.getByRole('button', { name: 'Login access', exact: true }).click();
   const access = page.getByRole('dialog');
   await access.getByLabel('Brand username').fill(username);
+  await checkPasswordButtons(page);
   await access.getByLabel('New brand password', { exact: true }).fill(password);
   await access
     .getByLabel('Confirm brand password', { exact: true })
@@ -66,11 +104,14 @@ test('admin provisions brand access and owners can only view and export their th
     .fill(adminPassword);
   await access.getByRole('button', { name: 'Save brand access' }).click();
   await expect(access.getByRole('status')).toContainText('Brand access saved');
+  await expect(row).toContainText('Login enabled');
   await expect(
     access.getByLabel('New brand password', { exact: true }),
   ).toHaveValue('');
   await access.screenshot({ path: testInfo.outputPath('brand-access.png') });
   await access.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.reload();
+  await expect(row).toContainText('Login enabled');
   expect(
     (
       await page.request.put('/api/manage/brand-access/' + otherId, {
@@ -280,6 +321,7 @@ test('admin provisions brand access and owners can only view and export their th
     await expect(access.getByRole('status')).toContainText(
       'Brand access disabled',
     );
+    await expect(row).toContainText('Login disabled');
     await owner.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(
       owner.getByRole('button', { name: 'Sign in to brand portal' }),
@@ -326,6 +368,10 @@ test('administrator changes username/password without losing data and can sign i
   test.setTimeout(90000);
   await signIn(page);
   await page.goto('/account');
+  await expect(
+    page.getByLabel('Current password', { exact: true }),
+  ).toBeVisible();
+  await checkPasswordButtons(page);
   const username = `admin-${testInfo.project.name}-${String(Date.now())}`,
     password = 'changed browser admin password';
   const oldCookie = (await page.context().cookies()).find(

@@ -6,6 +6,7 @@ export const brandSchema = z.object({
   id: z.string(),
   name: z.string(),
   makingCost: integer.nullable(),
+  loginAccess: z.enum(['unconfigured', 'enabled', 'disabled']).optional(),
 });
 export type Brand = z.infer<typeof brandSchema>;
 export const settingsSchema = z.object({
