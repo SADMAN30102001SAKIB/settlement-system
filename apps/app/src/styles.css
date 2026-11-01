@@ -390,6 +390,15 @@ textarea {
 input[readonly] {
   background: #f2f5f1;
 }
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 input[type='checkbox'] {
   appearance: none;
   display: inline-grid;

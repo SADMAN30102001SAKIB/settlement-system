@@ -2480,6 +2480,107 @@ test('daily summaries scroll in batches and payment allocations retain offscreen
   );
 });
 
+test('numeric inputs hide spinner controls while preserving native constraints and keyboard entry', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  const headers = { Origin: 'http://127.0.0.1:5174' };
+  const brand = z.object({ item: z.object({ id: z.string() }) }).parse(
+    await (
+      await page.request.post('/api/manage/brands', {
+        headers,
+        data: {
+          name: `Numeric ${testInfo.project.name} ${String(Date.now())}`,
+          makingCost: 100000,
+        },
+      })
+    ).json(),
+  ).item;
+  const orderId = `numeric-${testInfo.project.name}-${String(Date.now())}`;
+  expect(
+    (
+      await page.request.post('/api/manage/business/import', {
+        headers,
+        data: {
+          brandId: brand.id,
+          rows: [
+            {
+              id: orderId,
+              orderDate: '2026-10-31',
+              deliveryDate: '2026-10-31',
+              status: 'Delivered',
+              quantity: 4,
+              partialQuantity: null,
+              salesOverride: null,
+              codAmount: 1000000,
+              shipping: 60000,
+              codCharge: 10000,
+            },
+          ],
+        },
+      })
+    ).ok(),
+  ).toBe(true);
+  for (const theme of ['Light', 'Dark']) {
+    await page.goto('/settlements/new');
+    await page.getByLabel('Color theme').selectOption({ label: theme });
+    const inputs = page.locator('input[type="number"]');
+    await expect(inputs).toHaveCount(7);
+    for (const input of await inputs.all())
+      await expect(input).toHaveCSS('appearance', 'textfield');
+    const count = page.getByLabel('Delivered parcels', { exact: true });
+    await count.fill('-1');
+    expect(
+      await count.evaluate(
+        (element: HTMLInputElement) => element.validity.rangeUnderflow,
+      ),
+    ).toBe(true);
+    await count.fill('1.5');
+    expect(
+      await count.evaluate(
+        (element: HTMLInputElement) => element.validity.stepMismatch,
+      ),
+    ).toBe(true);
+    await count.fill('2');
+    await count.press('ArrowUp');
+    await expect(count).toHaveValue('3');
+    await count.hover();
+    await page
+      .locator('.settlement-counts')
+      .screenshot({ path: testInfo.outputPath(`numeric-counts-${theme}.png`) });
+    await page.goto('/settings');
+    await expect(inputs).toHaveCount(1);
+    const percentage = page.getByLabel('Default agency percentage (%)');
+    await expect(percentage).toHaveCSS('appearance', 'textfield');
+    await percentage.fill('101');
+    expect(
+      await percentage.evaluate(
+        (element: HTMLInputElement) => element.validity.rangeOverflow,
+      ),
+    ).toBe(true);
+    await percentage.fill('15.01');
+    expect(
+      await percentage.evaluate((element: HTMLInputElement) =>
+        element.checkValidity(),
+      ),
+    ).toBe(true);
+    await page.goto('/business');
+    const row = page.getByRole('row').filter({ hasText: orderId });
+    await scrollUntil(
+      page.getByRole('region', { name: 'Orders', exact: true }),
+      row,
+    );
+    await row.getByRole('button', { name: 'Edit order', exact: true }).click();
+    await expect(inputs).toHaveCount(2);
+    for (const input of await inputs.all())
+      await expect(input).toHaveCSS('appearance', 'textfield');
+    await page
+      .getByRole('dialog')
+      .screenshot({ path: testInfo.outputPath(`numeric-order-${theme}.png`) });
+    await page.keyboard.press('Escape');
+  }
+});
+
 test('payment brand directory has separated compact rows and responsive account navigation', async ({
   page,
 }, testInfo) => {
