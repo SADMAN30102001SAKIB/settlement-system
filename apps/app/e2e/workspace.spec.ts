@@ -1138,10 +1138,14 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await page.getByRole('link', { name: /Brands & costs/ }).click();
   const brand = `Browser ${testInfo.project.name} ${String(Date.now())}`;
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
   await page.getByLabel('Brand name', { exact: true }).fill(brand);
   await page.getByLabel(/Making cost/).fill('100');
-  await page.getByRole('button', { name: /Save brand|Add brand/ }).click();
-  await expect(page.getByText(brand, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save brand', exact: true }).click();
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    page.getByText(brand, { exact: true }),
+  );
   await page.goto('/settlements/new');
   await page
     .getByLabel('Brand', { exact: true })
@@ -1451,10 +1455,13 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   await signIn(page);
   const brand = `Ads ${testInfo.project.name} ${String(Date.now())}`;
   await page.goto('/brands');
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
   await page.getByLabel('Brand name', { exact: true }).fill(brand);
   await page.getByRole('button', { name: 'Save brand' }).click();
-  await page.getByLabel('Search brands', { exact: true }).fill(brand);
-  await expect(page.getByText(brand, { exact: true })).toBeVisible();
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    page.getByText(brand, { exact: true }),
+  );
   await page.goto('/advertising/new');
   await page
     .getByLabel('Brand', { exact: true })
@@ -2011,6 +2018,7 @@ test('shared screen colors and scrollbars remain legible in both themes', async 
   test.setTimeout(120000);
   await signIn(page);
   await page.goto('/brands');
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
   await page
     .getByLabel('Brand name', { exact: true })
     .fill(
@@ -2108,11 +2116,14 @@ test('source loading gives feedback, sidebar collapses, and import decisions sta
   await expect(page.locator('.breadcrumb')).toHaveCount(0);
   await page.goto('/brands');
   const brand = `Feedback ${testInfo.project.name} ${String(Date.now())}`;
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
   await page.getByLabel('Brand name', { exact: true }).fill(brand);
   await page.getByLabel(/Making cost/).fill('100');
   await page.getByRole('button', { name: 'Save brand' }).click();
-  await page.getByLabel('Search brands', { exact: true }).fill(brand);
-  await expect(page.getByText(brand, { exact: true })).toBeVisible();
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    page.getByText(brand, { exact: true }),
+  );
   await page.goto('/settlements/new');
   await page.getByLabel('Delivered amount (৳)', { exact: true }).fill('777');
   await page
@@ -2460,9 +2471,92 @@ test('daily summaries scroll in batches and payment allocations retain offscreen
     path: testInfo.outputPath('continuous-payment-history.png'),
   });
   await page.goto('/brands');
-  await page.getByLabel('Search brands', { exact: true }).fill(name);
-  await expect(page.locator('.brand-list .brand-row')).toHaveCount(1);
-  await expect(page.locator('.brand-list')).toContainText(name);
+  await expect(page.getByLabel('Search brands', { exact: true })).toHaveCount(
+    0,
+  );
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    page.getByText(name, { exact: true }),
+  );
+});
+
+test('brands and notes use full-width lists, modal forms and safe brand deletion', async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await page.goto('/brands');
+  const name = `AAA Modal ${testInfo.project.name} ${String(Date.now())}`;
+  await expect(page.getByLabel('Search brands')).toHaveCount(0);
+  await expect(page.getByLabel('Brand name')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Brand name').fill(name);
+  await dialog.getByLabel(/Making cost/).fill('123');
+  await dialog.getByRole('button', { name: 'Save brand' }).click();
+  await expect(dialog).toHaveCount(0);
+  const row = page.locator('.brand-row').filter({ hasText: name });
+  await scrollUntil(
+    page.getByRole('region', { name: 'Brands', exact: true }),
+    row,
+  );
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(dialog.getByLabel('Brand name')).toHaveValue(name);
+  await dialog.getByLabel(/Making cost/).fill('125');
+  await dialog.getByRole('button', { name: 'Save brand' }).click();
+  await expect(row).toContainText('125.00');
+  const list = page.getByRole('region', { name: 'Brands', exact: true });
+  const listBox = await list.locator('..').boundingBox(),
+    main = await page.locator('main').boundingBox();
+  expect(listBox && main && listBox.width / main.width).toBeGreaterThan(0.8);
+  await page.screenshot({ path: testInfo.outputPath('full-width-brands.png') });
+  await page.goto('/notes');
+  await page.getByRole('button', { name: 'Add note', exact: true }).click();
+  await dialog
+    .getByLabel('Brand', { exact: true })
+    .selectOption({ label: name });
+  await dialog.getByLabel('Date / period').fill('31 October 2026');
+  await dialog.getByLabel('Note', { exact: true }).fill('Modal note content');
+  await dialog.getByRole('button', { name: 'Save note' }).click();
+  const note = page.locator('.note-item').filter({ hasText: name });
+  await expect(note).toContainText('Modal note content');
+  await note.getByRole('button', { name: 'Edit', exact: true }).click();
+  await dialog.getByLabel('Note', { exact: true }).fill('Updated modal note');
+  await dialog.getByRole('button', { name: 'Save note' }).click();
+  await expect(note).toContainText('Updated modal note');
+  await page.screenshot({ path: testInfo.outputPath('full-width-notes.png') });
+  await page.goto('/brands');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete brand', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Nothing has been deleted',
+  );
+  await expect(row).toBeVisible();
+  await page.goto('/notes');
+  await note.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete note', exact: true })
+    .click();
+  await expect(note).toHaveCount(0);
+  await page.goto('/brands');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete brand', exact: true })
+    .click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
 });
 
 test('payment history and advertising account sections keep clear responsive spacing', async ({

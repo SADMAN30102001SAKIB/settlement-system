@@ -18,6 +18,7 @@ import { formText } from '../../lib/format';
 import { Progress } from './progress';
 import { ScrollList, VirtualItems } from '../../components/scroll-list';
 import { useInfiniteQuery } from '../../lib/infinite-query';
+import { CatalogDialog } from '../../components/catalog-dialog';
 const noteListSchema = z.object({
   items: z.array(noteSchema),
   next: z.object({ before: z.number(), beforeId: z.string() }).nullable(),
@@ -26,6 +27,7 @@ const noteListSchema = z.object({
 export function Notes({ brands }: { brands: Brand[] }) {
   const confirm = useConfirmation();
   const [editing, setEditing] = useState<Note | null>(null);
+  const [opened, setOpened] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [reload, setReload] = useState(0);
@@ -57,6 +59,7 @@ export function Notes({ brands }: { brands: Brand[] }) {
         },
       );
       setEditing(null);
+      setOpened(false);
       form.reset();
       setReload((current) => current + 1);
     } catch (reason) {
@@ -96,7 +99,21 @@ export function Notes({ brands }: { brands: Brand[] }) {
         eyebrow="OPERATIONS / NOTES"
         title="Keep the work moving"
         description="Record what’s finished, what’s sent, and what needs your attention."
+        action={
+          <button
+            className="primary"
+            disabled={pending || !brands.length}
+            onClick={() => {
+              setEditing(null);
+              setError('');
+              setOpened(true);
+            }}
+          >
+            Add note
+          </button>
+        }
       />
+      {error && !opened ? <Alert>{error}</Alert> : null}
       <section className="panel">
         <Field label="Filter work by brand">
           <select
@@ -115,85 +132,91 @@ export function Notes({ brands }: { brands: Brand[] }) {
         </Field>
       </section>
       <Progress key={brandFilter} brandId={brandFilter} />
-      <div className="split-layout">
-        <section className="panel">
-          <h2>Work notes</h2>
-          <ScrollList
-            {...list.scrollProps}
-            count={items.length}
-            label="Work notes"
-          >
-            {list.loading && items.length === 0 ? (
-              <div
-                style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-              >
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="panel" style={{ padding: 16 }}>
-                    <Skeleton
-                      width="35%"
-                      height={16}
-                      radius={4}
-                      style={{ marginBottom: 10 }}
-                    />
-                    <Skeleton
-                      width="85%"
-                      height={14}
-                      radius={3}
-                      style={{ marginBottom: 6 }}
-                    />
-                    <Skeleton width="55%" height={14} radius={3} />
-                  </div>
-                ))}
-              </div>
-            ) : items.length ? (
-              <VirtualItems>
-                {items.map((note) => (
-                  <article key={note.id} className="note-item">
-                    <div className="section-heading">
-                      <div>
-                        <strong>{note.brandName}</strong>
-                        <small className="muted">
-                          {note.period} · {note.type}
-                        </small>
-                      </div>
-                      <div className="actions">
-                        <button
-                          className="secondary compact"
-                          disabled={pending}
-                          onClick={() => {
-                            setEditing(note);
-                            setError('');
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="text-button danger-text"
-                          disabled={pending}
-                          onClick={() => {
-                            remove(note).catch((reason: unknown) => {
-                              setError(ErrorMessage(reason));
-                            });
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
+      <section className="panel">
+        <h2>Work notes</h2>
+        <ScrollList
+          {...list.scrollProps}
+          count={items.length}
+          label="Work notes"
+        >
+          {list.loading && items.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="panel" style={{ padding: 16 }}>
+                  <Skeleton
+                    width="35%"
+                    height={16}
+                    radius={4}
+                    style={{ marginBottom: 10 }}
+                  />
+                  <Skeleton
+                    width="85%"
+                    height={14}
+                    radius={3}
+                    style={{ marginBottom: 6 }}
+                  />
+                  <Skeleton width="55%" height={14} radius={3} />
+                </div>
+              ))}
+            </div>
+          ) : items.length ? (
+            <VirtualItems>
+              {items.map((note) => (
+                <article key={note.id} className="note-item">
+                  <div className="section-heading">
+                    <div>
+                      <strong>{note.brandName}</strong>
+                      <small className="muted">
+                        {note.period} · {note.type}
+                      </small>
                     </div>
-                    <p>{note.content}</p>
-                  </article>
-                ))}
-              </VirtualItems>
-            ) : (
-              <Empty title="Nothing lost between days">
-                Keep a note of completed invoices and settlement work.
-              </Empty>
-            )}
-          </ScrollList>
-        </section>
-        <section className="panel">
-          <h2>{editing ? 'Edit note' : 'Add a note'}</h2>
+                    <div className="actions">
+                      <button
+                        className="secondary compact"
+                        disabled={pending}
+                        onClick={() => {
+                          setEditing(note);
+                          setError('');
+                          setOpened(true);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="text-button danger-text"
+                        disabled={pending}
+                        onClick={() => {
+                          remove(note).catch((reason: unknown) => {
+                            setError(ErrorMessage(reason));
+                          });
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <p>{note.content}</p>
+                </article>
+              ))}
+            </VirtualItems>
+          ) : (
+            <Empty title="Nothing lost between days">
+              Keep a note of completed invoices and settlement work.
+            </Empty>
+          )}
+        </ScrollList>
+      </section>
+      {opened ? (
+        <CatalogDialog
+          title={editing ? 'Edit note' : 'Add note'}
+          pending={pending}
+          onClose={() => {
+            setOpened(false);
+            setEditing(null);
+          }}
+        >
           <form
+            className="panel"
             key={editing?.id ?? 'new'}
             onSubmit={(event) => {
               save(event).catch((reason: unknown) => {
@@ -260,21 +283,21 @@ export function Notes({ brands }: { brands: Brand[] }) {
                   'Save note'
                 )}
               </button>
-              {editing ? (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    setEditing(null);
-                  }}
-                >
-                  Cancel
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="secondary"
+                disabled={pending}
+                onClick={() => {
+                  setOpened(false);
+                  setEditing(null);
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </form>
-        </section>
-      </div>
+        </CatalogDialog>
+      ) : null}
     </>
   );
 }

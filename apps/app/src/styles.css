@@ -848,6 +848,9 @@ strong {
 .business-dialog::backdrop {
   background: rgb(13 35 28 / 55%);
 }
+.catalog-dialog {
+  width: min(600px, calc(100% - 24px));
+}
 .business-dialog-heading {
   position: sticky;
   top: 0;
@@ -1316,7 +1319,8 @@ td .text-button {
   margin-top: 24px;
 }
 .brand-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 19px 0;
@@ -1327,13 +1331,24 @@ td .text-button {
 }
 .brand-row strong {
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .brand-row small {
   display: block;
   margin-top: 4px;
 }
-.brand-row button {
-  margin-left: auto;
+.brand-row > .actions {
+  justify-self: end;
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .brand-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .brand-row > .actions {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 .editor-layout {
   display: grid;

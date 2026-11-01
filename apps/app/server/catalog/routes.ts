@@ -141,6 +141,34 @@ export const catalogRoutes = new Hono<AppEnvironment>()
       throw new HTTPException(404, { message: 'Brand not found.' });
     return context.json({ item });
   })
+  .delete('/brands/:id', async (context) => {
+    const key = id.parse(context.req.param('id'));
+    const deleted = await context.env.DB.prepare(
+      `DELETE FROM brands WHERE id = ?
+      AND NOT EXISTS (SELECT 1 FROM orders WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM daily_ads WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM settlements WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM ad_invoices WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM payment_receipts WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM payments WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM notes WHERE brand_id = ?) RETURNING id`,
+    )
+      .bind(key, key, key, key, key, key, key, key)
+      .first<{ id: string }>();
+    if (!deleted) {
+      const existing = await context.env.DB.prepare(
+        'SELECT id FROM brands WHERE id = ?',
+      )
+        .bind(key)
+        .first<{ id: string }>();
+      throw new HTTPException(existing ? 409 : 404, {
+        message: existing
+          ? 'This brand has linked orders, advertising budgets, invoices, payments or notes. Resolve those records before deleting the brand. Nothing has been deleted.'
+          : 'Brand not found.',
+      });
+    }
+    return context.json({ ok: true });
+  })
   .get('/settings', async (context) => {
     const [item] = await context
       .get('database')()

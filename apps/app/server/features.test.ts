@@ -216,6 +216,47 @@ async function brand(name: string) {
   return itemId.parse(await response.json()).item.id;
 }
 
+it('deletes only unused brands and preserves every kind of linked record', async () => {
+  const unused = await brand('Unused deletion');
+  expect(
+    (await request(`/api/manage/brands/${unused}`, 'DELETE', {})).status,
+  ).toBe(200);
+  expect(
+    await fixture.env.DB.prepare('SELECT id FROM brands WHERE id=?')
+      .bind(unused)
+      .first(),
+  ).toBeNull();
+  expect(
+    (await request(`/api/manage/brands/${unused}`, 'DELETE', {})).status,
+  ).toBe(404);
+  const inserts = [
+    "INSERT INTO orders (id,brand_id,order_date,status,quantity,cod_amount,shipping,cod_charge,ads,revision,created_at,updated_at) VALUES (?,?,'2026-10-31','Pending',1,0,0,0,0,1,1,1)",
+    "INSERT INTO daily_ads (order_date,brand_id,amount,updated_at) VALUES ('2026-10-31',?,0,1)",
+    "INSERT INTO settlements (id,brand_id,invoice_number,brand_name,date,period,delivered_qty,delivered_amount,cancelled_qty,cancelled_amount,partial_qty,partial_amount,shipping,cod_charge,ads,product_cost,agency_basis_points,gross,net,commission,created_at,updated_at) VALUES (?,?,'DELETE-TEST','Test','2026-10-31','Test',0,0,0,0,0,0,0,0,0,0,1500,0,0,0,1,1)",
+    "INSERT INTO ad_invoices (id,brand_id,invoice_number,brand_name,date,period,normalized_period,total,created_at,updated_at) VALUES (?,?,'DELETE-ADS','Test','2026-10-31','Test','test',100,1,1)",
+    "INSERT INTO payment_receipts (id,brand_id,number,date,request_hash,data,total,created_at) VALUES (?,?,'DELETE-PAY','2026-10-31','hash','{}',100,1)",
+    "INSERT INTO payments (id,brand_id,date,amount,created_at) VALUES (?,?,'2026-10-31',100,1)",
+    "INSERT INTO notes (id,brand_id,period,type,content,created_at,updated_at) VALUES (?,?,'Test','Other','Preserve',1,1)",
+  ];
+  for (const [index, query] of inserts.entries()) {
+    const key = await brand(`Protected deletion ${String(index)}`);
+    const params = index === 1 ? [key] : [crypto.randomUUID(), key];
+    await fixture.env.DB.prepare(query)
+      .bind(...params)
+      .run();
+    const result = await request(`/api/manage/brands/${key}`, 'DELETE', {});
+    expect(result.status).toBe(409);
+    expect(
+      z.object({ error: z.string() }).parse(await result.json()).error,
+    ).toContain('Nothing has been deleted');
+    expect(
+      await fixture.env.DB.prepare('SELECT id FROM brands WHERE id=?')
+        .bind(key)
+        .first(),
+    ).not.toBeNull();
+  }
+});
+
 it('stores Pathao collectable and collected separately, refreshes collection outcomes, and rejects cross-courier overwrites atomically', async () => {
   const brandId = await brand('Pathao integration');
   const headers = [
