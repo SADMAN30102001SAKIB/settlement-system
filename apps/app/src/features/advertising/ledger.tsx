@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useSavedFilters } from '../../lib/saved-filters';
+import { DateShortcuts } from '../../components/date-shortcuts';
 import { ScrollList, VirtualBody } from '../../components/scroll-list';
 import { useInfiniteQuery } from '../../lib/infinite-query';
 import { StatusSelect } from '../../components/status-select';
@@ -55,7 +57,7 @@ export function AdvertisingLedger({
   onChanged: () => Promise<void>;
 }) {
   const confirm = useConfirmation();
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useSavedFilters('advertising', {
     brandId: '',
     q: '',
     from: '',
@@ -122,7 +124,13 @@ export function AdvertisingLedger({
           </p>
         </div>
       </div>
+      <DateShortcuts
+        onSelect={(from, to) => {
+          setFilters({ ...filters, from, to });
+        }}
+      />
       <form
+        key={JSON.stringify(filters)}
         className="form-grid ledger-filters"
         onSubmit={(event) => {
           event.preventDefault();
@@ -137,7 +145,7 @@ export function AdvertisingLedger({
         }}
       >
         <Field label="Invoice brand">
-          <select name="brandId">
+          <select name="brandId" defaultValue={filters.brandId}>
             <option value="">All brands</option>
             {brands.map((brand) => (
               <option key={brand.id} value={brand.id}>
@@ -149,16 +157,17 @@ export function AdvertisingLedger({
         <Field label="Search invoices">
           <input
             name="q"
+            defaultValue={filters.q}
             type="search"
             maxLength={120}
             placeholder="Invoice or period"
           />
         </Field>
         <Field label="Invoice date from">
-          <input name="from" type="date" />
+          <input name="from" type="date" defaultValue={filters.from} />
         </Field>
         <Field label="Invoice date to">
-          <input name="to" type="date" />
+          <input name="to" type="date" defaultValue={filters.to} />
         </Field>
         <button className="secondary form-submit" disabled={loading}>
           Apply invoice filters

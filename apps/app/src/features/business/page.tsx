@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSavedFilters } from '../../lib/saved-filters';
+import { DateShortcuts } from '../../components/date-shortcuts';
 import { z } from 'zod';
 import { parseMoney } from '@settlement/domain/money';
 import { api, okSchema } from '../../lib/api';
@@ -43,12 +45,19 @@ const dailySchema = z
 
 export function Business({ brands }: { brands: Brand[] }) {
   const confirm = useConfirmation();
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useSavedFilters('business', {
     from: today().slice(0, 7) + '-01',
     to: today(),
     brandId: '',
   });
-  const [search, setSearch] = useState('');
+  const [orderSearch, setOrderSearch] = useSavedFilters(
+    'business-order-search',
+    { q: '' },
+  );
+  const search = orderSearch.q;
+  const setSearch = (q: string) => {
+    setOrderSearch({ q });
+  };
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -246,7 +255,13 @@ export function Business({ brands }: { brands: Brand[] }) {
             </p>
           </div>
         </div>
+        <DateShortcuts
+          onSelect={(from, to) => {
+            setFilters({ ...filters, from, to });
+          }}
+        />
         <form
+          key={JSON.stringify(filters)}
           className="form-grid business-summary-filters"
           onSubmit={(event) => {
             event.preventDefault();
@@ -262,7 +277,7 @@ export function Business({ brands }: { brands: Brand[] }) {
           }}
         >
           <Field label="Summary brand">
-            <select name="brandId">
+            <select name="brandId" defaultValue={filters.brandId}>
               <option value="">All brands</option>
               {brands.map((brand) => (
                 <option key={brand.id} value={brand.id}>
@@ -408,6 +423,7 @@ export function Business({ brands }: { brands: Brand[] }) {
               type="search"
               maxLength={100}
               placeholder="Exact Order ID"
+              defaultValue={search}
             />
           </Field>
           <button className="secondary" disabled={loading}>

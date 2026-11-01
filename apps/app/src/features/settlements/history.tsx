@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useSavedFilters } from '../../lib/saved-filters';
+import { DateShortcuts } from '../../components/date-shortcuts';
 import { StatusSelect } from '../../components/status-select';
 import type { z } from 'zod';
 import { paymentStatus } from '@settlement/domain/payments';
@@ -50,11 +52,16 @@ export function History({
   const [actionPending, setActionPending] = useState(false);
   const [revision, setRevision] = useState(0);
   const now = today();
-  const [from, setFrom] = useState(`${now.slice(0, 7)}-01`);
-  const [to, setTo] = useState(now);
-  const [brand, setBrand] = useState('');
-  const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState({ from, to, brand, query });
+  const [filters, setFilters] = useSavedFilters('settlements', {
+    from: `${now.slice(0, 7)}-01`,
+    to: now,
+    brand: '',
+    query: '',
+  });
+  const [from, setFrom] = useState(filters.from);
+  const [to, setTo] = useState(filters.to);
+  const [brand, setBrand] = useState(filters.brand);
+  const [query, setQuery] = useState(filters.query);
   const params = new URLSearchParams({
     from: filters.from,
     to: filters.to,
@@ -199,6 +206,13 @@ export function History({
           </div>
           <span className="pill">BDT · ৳</span>
         </div>
+        <DateShortcuts
+          onSelect={(from, to) => {
+            setFrom(from);
+            setTo(to);
+            setFilters({ from, to, brand, query });
+          }}
+        />
         <form
           className="filters form-grid ledger-filters"
           onSubmit={(event) => {
