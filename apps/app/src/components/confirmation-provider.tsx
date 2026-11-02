@@ -62,9 +62,7 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
                 finish(false);
               }}
             >
-              <p className="eyebrow">
-                {request.destructive ? 'PLEASE CONFIRM' : 'RESTORE DEFAULTS'}
-              </p>
+              <p className="eyebrow">PLEASE CONFIRM</p>
               <h2 id={titleId}>{request.title}</h2>
               <p id={descriptionId} className="muted">
                 {request.message}

@@ -12,6 +12,20 @@ const root = document.getElementById('root');
 applyTheme(readTheme());
 if (!root) throw new Error('Missing application root');
 
+document.addEventListener(
+  'wheel',
+  (event) => {
+    const focused = document.activeElement;
+    if (
+      focused instanceof HTMLInputElement &&
+      focused.type === 'number' &&
+      event.target === focused
+    )
+      focused.blur();
+  },
+  { capture: true, passive: true },
+);
+
 createRoot(root).render(
   <StrictMode>
     <ConfirmationProvider>

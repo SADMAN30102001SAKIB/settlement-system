@@ -42,6 +42,19 @@ export const loginAttempts = sqliteTable('login_attempts', {
   lockedUntil: integer('locked_until').notNull().default(0),
 });
 
+export const orderCostCorrections = sqliteTable('order_cost_corrections', {
+  id: text().primaryKey(),
+  brandId: text('brand_id').notNull(),
+  name: text().notNull(),
+  makingCost: integer('making_cost').notNull(),
+  from: text('from_date').notNull(),
+  to: text('to_date').notNull(),
+  version: text().notNull(),
+  snapshot: text({ mode: 'json' }).notNull(),
+  actor: text().notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
 export const brands = sqliteTable(
   'brands',
   {

@@ -17,6 +17,7 @@ import type { Brand } from '../../lib/api';
 import { amountInput, formText, money } from '../../lib/format';
 import { BrandList } from '../../components/brand-list';
 import { BrandAccess } from './brand-access';
+import { costCorrectionPreview } from '../../../shared/cost-correction';
 
 export function Brands({
   brands,
@@ -35,6 +36,7 @@ export function Brands({
   const confirm = useConfirmation();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [scope, setScope] = useState('new');
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -43,17 +45,51 @@ export function Brands({
     const values = new FormData(form);
     try {
       const cost = formText(values, 'cost');
-      await api(
-        `/manage/brands${editing ? `/${editing.id}` : ''}`,
-        z.object({ item: brandSchema }),
-        {
-          method: editing ? 'PUT' : 'POST',
+      const input = {
+        name: formText(values, 'name'),
+        makingCost: cost.trim() ? parseMoney(cost) : null,
+      };
+      if (editing && scope === 'existing') {
+        if (input.makingCost === null)
+          throw new Error(
+            'Enter a making cost before correcting existing orders.',
+          );
+        const correction = {
+          ...input,
+          from: formText(values, 'from'),
+          to: formText(values, 'to'),
+        };
+        const preview = await api(
+          `/manage/brand-costs/${editing.id}/preview`,
+          costCorrectionPreview,
+          { method: 'POST', body: correction },
+        );
+        if (
+          !(await confirm({
+            title: 'Apply cost correction?',
+            message: `${String(preview.count)} orders will use ${money(input.makingCost)} per piece. Delivered product cost: ${money(preview.before)} → ${money(preview.after)} (${String(preview.deliveredUnits)} affected delivered items). Pending orders are included for future delivery. Saved invoices and payments will not change.`,
+            action: 'Apply correction',
+          }))
+        )
+          return;
+        await api(`/manage/brand-costs/${editing.id}`, okSchema, {
+          method: 'POST',
           body: {
-            name: formText(values, 'name'),
-            makingCost: cost.trim() ? parseMoney(cost) : null,
+            ...correction,
+            version: preview.version,
+            requestId: crypto.randomUUID(),
           },
-        },
-      );
+        });
+      } else {
+        await api(
+          `/manage/brands${editing ? `/${editing.id}` : ''}`,
+          z.object({ item: brandSchema }),
+          {
+            method: editing ? 'PUT' : 'POST',
+            body: input,
+          },
+        );
+      }
       await refresh();
       setOpened(false);
       setEditing(null);
@@ -92,13 +128,14 @@ export function Brands({
       <PageHeading
         eyebrow="WORKSPACE / BRANDS"
         title="Built around your brands"
-        description="Manage making costs without changing the costs already saved on previous orders."
+        description="Manage making costs for new orders, or review and correct existing order costs."
         action={
           <button
             className="primary"
             disabled={pending}
             onClick={() => {
               setEditing(null);
+              setScope('new');
               setError('');
               setOpened(true);
             }}
@@ -167,6 +204,7 @@ export function Brands({
                   className="secondary compact"
                   onClick={() => {
                     setEditing(brand);
+                    setScope('new');
                     setError('');
                     setOpened(true);
                   }}
@@ -228,6 +266,38 @@ export function Brands({
                 defaultValue={amountInput(editing?.makingCost ?? null)}
               />
             </Field>
+            {editing ? (
+              <>
+                <Field label="Apply making cost to">
+                  <select
+                    value={scope}
+                    onChange={(event) => {
+                      setScope(event.target.value);
+                    }}
+                  >
+                    <option value="new">New orders only</option>
+                    <option value="existing">New and existing orders</option>
+                  </select>
+                </Field>
+                {scope === 'existing' ? (
+                  <>
+                    <p className="caption">
+                      Choose existing orders by order date. You will review the
+                      affected costs before saving. Saved invoices and payments
+                      stay unchanged.
+                    </p>
+                    <div className="form-grid cost-correction-dates">
+                      <Field label="Orders from">
+                        <input type="date" name="from" required />
+                      </Field>
+                      <Field label="Orders through">
+                        <input type="date" name="to" required />
+                      </Field>
+                    </div>
+                  </>
+                ) : null}
+              </>
+            ) : null}
             {error ? <Alert>{error}</Alert> : null}
             <div className="actions">
               <button className="primary" disabled={pending}>
@@ -235,6 +305,8 @@ export function Brands({
                   <>
                     <Spinner size={12} /> Saving…
                   </>
+                ) : scope === 'existing' ? (
+                  'Preview correction'
                 ) : (
                   'Save brand'
                 )}

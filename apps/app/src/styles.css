@@ -763,6 +763,9 @@ strong {
   justify-self: start;
   margin-bottom: 20px;
 }
+.cost-correction-dates {
+  margin-top: 16px;
+}
 .check-field {
   display: flex;
   align-items: center;
