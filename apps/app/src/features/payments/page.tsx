@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useAccountRefresh } from '../../lib/account-refresh';
 import { z } from 'zod';
 import {
   paymentAccountSchema,
   receiptListSchema,
   receiptSchema,
+  commissionOutstandingLabel,
 } from '../../../shared/receipts';
 import type { PaymentAccount, PaymentReceipt } from '../../../shared/receipts';
 import type { Brand, Settings } from '../../lib/api';
@@ -134,6 +136,7 @@ export function Payments({
   const [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [version, setVersion] = useState(0);
+  useAccountRefresh(setVersion);
   const receiptList = useInfiniteQuery(
     `/manage/receipts?${new URLSearchParams({ brandId }).toString()}`,
     receiptListSchema,
@@ -151,10 +154,14 @@ export function Payments({
           { signal: controller.signal },
         ).then((result) => {
           setReceipt(result.item);
+          setError('');
         })
       : api(`/manage/receipts/account/${brandId}`, paymentAccountSchema, {
           signal: controller.signal,
-        }).then(setAccount);
+        }).then((result) => {
+          setAccount(result);
+          setError('');
+        });
     job
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setError(ErrorMessage(e));
@@ -276,11 +283,11 @@ export function Payments({
           <h2>{account.brandName} account</h2>
           <div className="metrics">
             <Metric
-              label="Commission outstanding"
+              label={commissionOutstandingLabel(account.commissionBasisPoints)}
               value={money(account.commission.due)}
             />
             <Metric
-              label="Advertising outstanding"
+              label="Advertising outstanding with VAT"
               value={money(account.ads.due)}
             />
             <Metric

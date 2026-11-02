@@ -17,6 +17,7 @@ const rowsSchema = z.array(
     directPaid: z.number().int(),
     revision: z.number().int(),
     createdAt: z.number().int(),
+    agencyBasisPoints: z.number().int().nullable(),
   }),
 );
 export async function loadPaymentAccount(
@@ -26,19 +27,19 @@ export async function loadPaymentAccount(
   const [brand, commissionResult, adResult, advances] = await db.batch([
     db
       .prepare(
-        'SELECT id, name, payment_version AS version FROM brands WHERE id = ?',
+        'SELECT id, name, payment_version AS version,(SELECT agency_basis_points FROM settings WHERE id=1) AS defaultRate FROM brands WHERE id = ?',
       )
       .bind(brandId),
     db
       .prepare(
-        `SELECT s.id,s.invoice_number AS invoiceNumber,s.date,s.period,s.commission AS total,s.revision,s.created_at AS createdAt,
+        `SELECT s.id,s.invoice_number AS invoiceNumber,s.date,s.period,s.commission AS total,s.revision,s.created_at AS createdAt,s.agency_basis_points AS agencyBasisPoints,
       COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.settlement_id=s.id),0) AS directPaid
       FROM settlements s WHERE s.brand_id=? ORDER BY s.date,s.id LIMIT 5001`,
       )
       .bind(brandId),
     db
       .prepare(
-        `SELECT a.id,a.invoice_number AS invoiceNumber,a.date,a.period,a.total,a.revision,a.created_at AS createdAt,
+        `SELECT a.id,a.invoice_number AS invoiceNumber,a.date,a.period,a.total,a.revision,a.created_at AS createdAt,NULL AS agencyBasisPoints,
       COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.ad_invoice_id=a.id),0) AS directPaid
       FROM ad_invoices a WHERE a.brand_id=? ORDER BY a.date,a.id LIMIT 5001`,
       )
@@ -61,7 +62,12 @@ export async function loadPaymentAccount(
         'This account exceeds 5,000 invoices per category. Archive the ledger before continuing.',
     });
   const brandInfo = z
-    .object({ id: z.string(), name: z.string(), version: z.number().int() })
+    .object({
+      id: z.string(),
+      name: z.string(),
+      version: z.number().int(),
+      defaultRate: z.number().int(),
+    })
     .parse(info);
   const pool = z
     .object({ amount: z.number().int() })
@@ -104,6 +110,18 @@ export async function loadPaymentAccount(
     };
   };
   const adTotals = totals('ads');
+  const dueIds = new Set(
+    invoices
+      .filter((item) => item.kind === 'commission' && item.due > 0)
+      .map((item) => item.id),
+  );
+  const rates = [
+    ...new Set(
+      commissions
+        .filter((item) => dueIds.has(item.id))
+        .map((item) => item.agencyBasisPoints),
+    ),
+  ];
   if (!ads.length) {
     adTotals.paid = pool;
     adTotals.credit = pool;
@@ -112,6 +130,8 @@ export async function loadPaymentAccount(
     brandId,
     brandName: brandInfo.name,
     version: brandInfo.version,
+    commissionBasisPoints:
+      rates.length > 1 ? null : (rates[0] ?? brandInfo.defaultRate),
     invoices,
     commission: totals('commission'),
     ads: adTotals,

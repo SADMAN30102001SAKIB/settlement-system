@@ -689,7 +689,7 @@ it('uses v3 by default, preserves saved rules, and reports automatic completion'
     rule: 'v3',
     gross: 988000,
     net: 688000,
-    commission: 113200,
+    commission: 103200,
   });
   expect(
     (

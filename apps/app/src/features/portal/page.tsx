@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAccountRefresh } from '../../lib/account-refresh';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import {
@@ -6,7 +7,11 @@ import {
   documentKind,
   portalListSchema,
 } from '../../../shared/access';
-import { receiptSchema, paymentSummarySchema } from '../../../shared/receipts';
+import {
+  receiptSchema,
+  paymentSummarySchema,
+  commissionOutstandingLabel,
+} from '../../../shared/receipts';
 import {
   api,
   okSchema,
@@ -110,7 +115,7 @@ function PortalDocument({
   );
 }
 
-function PaymentSummary() {
+function PaymentSummary({ revision }: { revision: number }) {
   const [item, setItem] = useState<z.infer<typeof paymentSummarySchema> | null>(
     null,
   );
@@ -121,14 +126,17 @@ function PaymentSummary() {
     api('/portal/payment-summary', paymentSummarySchema, {
       signal: controller.signal,
     })
-      .then(setItem)
+      .then((result) => {
+        setItem(result);
+        setError('');
+      })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(ErrorMessage(reason));
       });
     return () => {
       controller.abort();
     };
-  }, [retry]);
+  }, [retry, revision]);
   return (
     <section className="portal-payment-summary" aria-label="Payment balances">
       {error ? (
@@ -149,10 +157,13 @@ function PaymentSummary() {
       ) : (
         <div className="metrics">
           <Metric
-            label="Commission outstanding"
+            label={commissionOutstandingLabel(item.commissionBasisPoints)}
             value={money(item.commission.due)}
           />
-          <Metric label="Advertising outstanding" value={money(item.ads.due)} />
+          <Metric
+            label="Advertising outstanding with VAT"
+            value={money(item.ads.due)}
+          />
           <Metric
             label="Commission payments received"
             value={money(item.commission.paid)}
@@ -184,7 +195,9 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
   const list = useInfiniteQuery(
     `/portal/invoices?kind=${kind}`,
     portalListSchema,
+    summaryRevision,
   );
+  useAccountRefresh(setSummaryRevision);
   useEffect(() => {
     const controller = new AbortController();
     api('/portal/settings', z.object({ item: settingsSchema }), {
@@ -285,14 +298,15 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
             className="secondary compact"
             disabled={list.loading}
             onClick={() => {
-              list.refresh();
-              if (kind === 'receipts') setSummaryRevision((value) => value + 1);
+              setSummaryRevision((value) => value + 1);
             }}
           >
             Refresh
           </button>
         </div>
-        {kind === 'receipts' ? <PaymentSummary key={summaryRevision} /> : null}
+        {kind === 'receipts' ? (
+          <PaymentSummary revision={summaryRevision} />
+        ) : null}
         <ScrollList
           {...list.scrollProps}
           count={list.items.length}

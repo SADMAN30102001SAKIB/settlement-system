@@ -286,6 +286,9 @@ export const settlements = sqliteTable(
     vatAddedToAgency: integer('vat_added_to_agency', { mode: 'boolean' })
       .notNull()
       .default(false),
+    advertisingVatOnly: integer('advertising_vat_only', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     ads: integer().notNull(),
     productCost: integer('product_cost').notNull(),
     costPerPiece: integer('cost_per_piece'),

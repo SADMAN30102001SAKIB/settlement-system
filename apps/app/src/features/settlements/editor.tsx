@@ -107,6 +107,8 @@ export function ReportEditor({
   const brand = brands.find((item) => item.id === values.brandId);
   const rule = report?.rule ?? 'v3';
   const isV3 = rule === 'v3';
+  const advertisingVatOnly = report?.advertisingVatOnly ?? true;
+  const addVat = !advertisingVatOnly && (report?.vatAddedToAgency ?? true);
   const deductShipping = report?.deductShipping ?? true;
   function input() {
     const count = (value: string) => {
@@ -161,6 +163,7 @@ export function ReportEditor({
       partialCodCharge: parseMoney(values.partialCodCharge),
       vatBasisPoints: parsePercentage(values.vatPercentage),
       vatAddedToAgency: report?.vatAddedToAgency ?? true,
+      advertisingVatOnly,
       ads: parseMoney(values.ads),
       productCost,
       costPerPiece: autoCost ? makingCost : (report?.costPerPiece ?? null),
@@ -439,7 +442,7 @@ export function ReportEditor({
                   }}
                 />
               </Field>
-              {isV3 ? (
+              {isV3 && !advertisingVatOnly ? (
                 <Field label="Advertising VAT (%)">
                   <input
                     type="number"
@@ -512,7 +515,7 @@ export function ReportEditor({
                 <dt>Product cost</dt>
                 <dd>{calculation ? money(-productCost) : '—'}</dd>
               </div>
-              {isV3 && !(report?.vatAddedToAgency ?? true) ? (
+              {isV3 && !advertisingVatOnly && !addVat ? (
                 <div>
                   <dt>Advertising VAT · {values.vatPercentage}%</dt>
                   <dd>{calculation ? money(-calculation.vat) : '—'}</dd>
@@ -527,11 +530,11 @@ export function ReportEditor({
           <div className="commission">
             <span>
               Agency share · {values.percentage}%
-              {(report?.vatAddedToAgency ?? true) ? ' + advertising VAT' : ''}
+              {addVat ? ' + advertising VAT' : ''}
             </span>
             <strong>{calculation ? money(calculation.commission) : '—'}</strong>
           </div>
-          {isV3 && (report?.vatAddedToAgency ?? true) && calculation ? (
+          {isV3 && addVat && calculation ? (
             <p className="caption">
               Agency percentage on net:{' '}
               {money(calculation.commission - calculation.vat)} + advertising

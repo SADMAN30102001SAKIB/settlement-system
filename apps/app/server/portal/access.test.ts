@@ -531,7 +531,7 @@ it(
       await (
         await call('/api/portal/payment-summary', 'GET', undefined, cookie)
       ).json(),
-    ).toEqual({ commission: zero, ads: zero });
+    ).toEqual({ commission: zero, ads: zero, commissionBasisPoints: 1500 });
   },
 );
 

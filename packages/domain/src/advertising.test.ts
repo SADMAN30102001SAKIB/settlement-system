@@ -25,6 +25,28 @@ it('adds advertising VAT after the agency percentage, without deducting VAT from
   expect(
     calculateSettlement({ ...input, vatAddedToAgency: false }),
   ).toMatchObject({ net: parseMoney('9800'), commission: parseMoney('1470') });
+  expect(
+    calculateSettlement({ ...input, advertisingVatOnly: true }),
+  ).toMatchObject({
+    net: parseMoney('10000'),
+    commission: parseMoney('1500'),
+    vat: parseMoney('200'),
+  });
+  for (const rate of [0, 1250, 1500, 2000]) {
+    const result = calculateSettlement({
+      ...input,
+      advertisingVatOnly: true,
+      agencyBasisPoints: rate,
+    });
+    expect(result.commission).toBe(parseMoney(String(rate)));
+  }
+  expect(
+    calculateSettlement({
+      ...input,
+      advertisingVatOnly: true,
+      deliveredAmount: parseMoney('1000'),
+    }).commission,
+  ).toBe(parseMoney('-150'));
 });
 it('keeps legacy advertising invoices at zero VAT and new ones at their saved rate', () => {
   expect(

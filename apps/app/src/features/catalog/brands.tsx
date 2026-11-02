@@ -28,6 +28,9 @@ export function Brands({
   const [editing, setEditing] = useState<Brand | null>(null);
   const [opened, setOpened] = useState(false);
   const [accessBrand, setAccessBrand] = useState<Brand | null>(null);
+  const [activation, setActivation] = useState<
+    'activate' | 'deactivate' | undefined
+  >();
   const [accessRevision, setAccessRevision] = useState(0);
   const confirm = useConfirmation();
   const [error, setError] = useState('');
@@ -124,9 +127,9 @@ export function Brands({
                 </small>
                 <small className="muted brand-access-indicator">
                   {brand.loginAccess === 'enabled'
-                    ? 'Login enabled'
+                    ? 'Login enabled · Active'
                     : brand.loginAccess === 'disabled'
-                      ? 'Login disabled'
+                      ? 'Login disabled · Inactive'
                       : 'Login not configured'}
                 </small>
               </div>
@@ -135,11 +138,30 @@ export function Brands({
                   className="secondary compact"
                   disabled={pending}
                   onClick={() => {
+                    setActivation(undefined);
                     setAccessBrand(brand);
                   }}
                 >
                   Login access
                 </button>
+                {brand.loginAccess && brand.loginAccess !== 'unconfigured' ? (
+                  <button
+                    className="secondary compact"
+                    disabled={pending}
+                    onClick={() => {
+                      setActivation(
+                        brand.loginAccess === 'enabled'
+                          ? 'deactivate'
+                          : 'activate',
+                      );
+                      setAccessBrand(brand);
+                    }}
+                  >
+                    {brand.loginAccess === 'enabled'
+                      ? 'Deactivate'
+                      : 'Activate'}
+                  </button>
+                ) : null}
                 <button
                   disabled={pending}
                   className="secondary compact"
@@ -235,6 +257,7 @@ export function Brands({
       {accessBrand ? (
         <BrandAccess
           brand={accessBrand}
+          action={activation}
           onSaved={() => {
             setAccessRevision((value) => value + 1);
           }}

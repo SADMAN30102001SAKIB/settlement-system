@@ -328,7 +328,9 @@ export function Invoice({
                   )}
                   {row('Gross settlement', report.gross, true)}
                   {row('Less: advertising cost', -report.ads)}
-                  {report.rule === 'v3' && !report.vatAddedToAgency
+                  {report.rule === 'v3' &&
+                  !report.advertisingVatOnly &&
+                  !report.vatAddedToAgency
                     ? row(
                         `Less: advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
                         -calculateSettlement(report).vat,
@@ -352,11 +354,13 @@ export function Invoice({
             <div className="invoice-final">
               <span>
                 Agency share · {report.agencyBasisPoints / 100}%
-                {report.vatAddedToAgency ? ' + advertising VAT' : ''}
+                {report.vatAddedToAgency && !report.advertisingVatOnly
+                  ? ' + advertising VAT'
+                  : ''}
               </span>
               <strong>{money(report.commission)}</strong>
             </div>
-            {report.vatAddedToAgency ? (
+            {report.vatAddedToAgency && !report.advertisingVatOnly ? (
               <table>
                 <tbody>
                   {row(

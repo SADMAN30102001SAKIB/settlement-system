@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAccountRefresh } from '../../lib/account-refresh';
 import { useConfirmation } from '../../components/confirmation-context';
 import { confirmInvoiceDeletion } from '../settlements/delete-invoice';
 import { ScrollList, VirtualBody } from '../../components/scroll-list';
@@ -380,12 +381,14 @@ export function Advertising({
   const [error, setError] = useState('');
   const [reloading, setReloading] = useState(false);
   const [ledgerVersion, setLedgerVersion] = useState(0);
+  const [externalVersion, setExternalVersion] = useState(0);
+  useAccountRefresh(setExternalVersion);
   const parts = path.split('/');
   const listing = !parts[2];
   const overviewList = useInfiniteQuery(
     '/manage/advertising/overview',
     accountOverviewSchema,
-    ledgerVersion,
+    ledgerVersion + externalVersion,
     listing,
   );
   const overview = overviewList.items;
@@ -417,7 +420,7 @@ export function Advertising({
     return () => {
       controller.abort();
     };
-  }, [brandId, listing]);
+  }, [brandId, listing, externalVersion]);
   useEffect(() => {
     if (!data || !revealAccount.current) return;
     revealAccount.current = false;
@@ -566,7 +569,7 @@ export function Advertising({
         brands={brands}
         settings={settings}
         navigate={navigate}
-        version={ledgerVersion}
+        version={ledgerVersion + externalVersion}
         onChanged={reloadAccount}
       />
       <section

@@ -25,14 +25,19 @@ export const paymentAccountSchema = z.object({
   brandId: z.string(),
   brandName: z.string(),
   version: amount,
+  commissionBasisPoints: z.number().int().min(0).max(10000).nullable(),
   invoices: z.array(accountInvoiceSchema),
   commission: totalsSchema,
   ads: totalsSchema,
 });
 export const paymentSummarySchema = paymentAccountSchema.pick({
+  commissionBasisPoints: true,
   commission: true,
   ads: true,
 });
+export function commissionOutstandingLabel(basisPoints: number | null) {
+  return `${basisPoints === null ? '' : `${String(basisPoints / 100)}% `}Commission outstanding`;
+}
 export const receiptDataSchema = z.object({
   brandName: z.string(),
   companyName: z.string(),

@@ -1,0 +1,1 @@
+ALTER TABLE `settlements` ADD `advertising_vat_only` integer DEFAULT false NOT NULL;

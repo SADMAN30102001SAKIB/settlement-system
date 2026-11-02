@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notifyAccountChange } from './account-refresh';
 import { invoiceStatusSchema } from '../../shared/invoice-status';
 
 const integer = z.number().int();
@@ -36,6 +37,7 @@ export const reportSchema = z.object({
   partialCodCharge: integer,
   vatBasisPoints: integer,
   vatAddedToAgency: z.boolean(),
+  advertisingVatOnly: z.boolean(),
   deliveredQty: integer,
   deliveredUnits: integer.nullable(),
   deductShipping: z.boolean(),
@@ -160,7 +162,16 @@ export async function api<S extends z.ZodType>(
       error.success ? error.data.error : 'The request could not be completed.',
     );
   }
-  return schema.parse(payload);
+  const result = schema.parse(payload);
+  if (
+    options?.method &&
+    !['GET', 'HEAD'].includes(options.method) &&
+    /^\/manage\/(settlements|advertising|payments|receipts|brand-access)(\/|$)/.test(
+      path,
+    )
+  )
+    notifyAccountChange();
+  return result;
 }
 
 export const okSchema = z.object({ ok: z.boolean() });

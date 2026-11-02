@@ -1224,14 +1224,14 @@ test('admin can create a brand, save/edit a settlement, record payment, and expo
     .getByRole('button', { name: 'Cancel', exact: true })
     .click();
   await expect(page.locator('.invoice-document')).toBeVisible();
-  await expect(page.locator('.invoice-final')).toContainText('৳104.20');
+  await expect(page.locator('.invoice-final')).toContainText('৳94.20');
   await expect(page.locator('.invoice-document')).toContainText(
     '4 delivered items',
   );
   await expect(page.locator('.invoice-document')).toContainText(
     'Less: delivery charges',
   );
-  await expect(page.locator('.invoice-document')).toContainText(
+  await expect(page.locator('.invoice-document')).not.toContainText(
     'Add: advertising VAT',
   );
   await expect(page.locator('.invoice-document')).not.toContainText(
@@ -2718,7 +2718,7 @@ test('numeric inputs hide spinner controls while preserving native constraints a
     await page.goto('/settlements/new');
     await page.getByLabel('Color theme').selectOption({ label: theme });
     const inputs = page.locator('input[type="number"]');
-    await expect(inputs).toHaveCount(7);
+    await expect(inputs).toHaveCount(6);
     for (const input of await inputs.all())
       await expect(input).toHaveCSS('appearance', 'textfield');
     const count = page.getByLabel('Delivered parcels', { exact: true });

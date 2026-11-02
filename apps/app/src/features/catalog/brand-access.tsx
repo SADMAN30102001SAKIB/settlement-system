@@ -13,10 +13,12 @@ export function BrandAccess({
   brand,
   onClose,
   onSaved,
+  action,
 }: {
   brand: Brand;
   onClose: () => void;
   onSaved: () => void;
+  action?: 'activate' | 'deactivate' | undefined;
 }) {
   const [item, setItem] = useState<z.infer<typeof brandAccessSchema> | null>(
       null,
@@ -59,8 +61,10 @@ export function BrandAccess({
         {
           method: 'PUT',
           body: {
-            username: formText(form, 'username'),
-            enabled: form.get('enabled') === 'on',
+            username: action ? item.username : formText(form, 'username'),
+            enabled: action
+              ? action === 'activate'
+              : form.get('enabled') === 'on',
             currentPassword: formText(form, 'currentPassword'),
             version: item.version,
             ...(password ? { password } : {}),
@@ -70,6 +74,7 @@ export function BrandAccess({
       setItem(result.item);
       setSaved(true);
       onSaved();
+      if (action) onClose();
     } catch (reason) {
       setError(ErrorMessage(reason));
     } finally {
@@ -78,7 +83,11 @@ export function BrandAccess({
   }
   return (
     <CatalogDialog
-      title={`${brand.name} · Login access`}
+      title={
+        action
+          ? `${action === 'activate' ? 'Activate' : 'Deactivate'} ${brand.name}`
+          : `${brand.name} · Login access`
+      }
       pending={pending}
       onClose={onClose}
     >
@@ -102,52 +111,62 @@ export function BrandAccess({
               });
             }}
           >
-            <Field
-              label="Brand username"
-              hint="Use a unique username for this brand."
-            >
-              <input
-                type="text"
-                name="username"
-                autoComplete="off"
-                required
-                maxLength={100}
-                defaultValue={item.username}
-                disabled={pending}
-              />
-            </Field>
-            <PasswordField
-              label="New brand password"
-              name="password"
-              required={item.version === 0}
-              autoComplete="new-password"
-              minLength={15}
-              maxLength={128}
-              disabled={pending}
-              hint={
-                item.version
-                  ? 'Leave blank to keep the current password. Existing passwords are never displayed.'
-                  : 'Use at least 15 characters. Share these credentials privately with the owner.'
-              }
-            />
-            <PasswordField
-              label="Confirm brand password"
-              name="confirmPassword"
-              required={item.version === 0}
-              autoComplete="new-password"
-              minLength={15}
-              maxLength={128}
-              disabled={pending}
-            />
-            <label className="check-field">
-              <input
-                type="checkbox"
-                name="enabled"
-                defaultChecked={item.enabled}
-                disabled={pending}
-              />{' '}
-              Allow brand sign-in
-            </label>
+            {action ? (
+              <p>
+                {action === 'activate'
+                  ? 'The owner will be able to sign in with their existing credentials.'
+                  : 'The owner will be signed out and unable to sign in. All invoices, payments and business records will be kept.'}
+              </p>
+            ) : (
+              <>
+                <Field
+                  label="Brand username"
+                  hint="Use a unique username for this brand."
+                >
+                  <input
+                    type="text"
+                    name="username"
+                    autoComplete="off"
+                    required
+                    maxLength={100}
+                    defaultValue={item.username}
+                    disabled={pending}
+                  />
+                </Field>
+                <PasswordField
+                  label="New brand password"
+                  name="password"
+                  required={item.version === 0}
+                  autoComplete="new-password"
+                  minLength={15}
+                  maxLength={128}
+                  disabled={pending}
+                  hint={
+                    item.version
+                      ? 'Leave blank to keep the current password. Existing passwords are never displayed.'
+                      : 'Use at least 15 characters. Share these credentials privately with the owner.'
+                  }
+                />
+                <PasswordField
+                  label="Confirm brand password"
+                  name="confirmPassword"
+                  required={item.version === 0}
+                  autoComplete="new-password"
+                  minLength={15}
+                  maxLength={128}
+                  disabled={pending}
+                />
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    name="enabled"
+                    defaultChecked={item.enabled}
+                    disabled={pending}
+                  />{' '}
+                  Allow brand sign-in
+                </label>
+              </>
+            )}
             <PasswordField
               label="Your administrator password"
               name="currentPassword"
@@ -191,6 +210,12 @@ export function BrandAccess({
                     <Spinner size={12} />
                     Saving…
                   </>
+                ) : action ? (
+                  action === 'activate' ? (
+                    'Activate brand'
+                  ) : (
+                    'Deactivate brand'
+                  )
                 ) : (
                   'Save brand access'
                 )}

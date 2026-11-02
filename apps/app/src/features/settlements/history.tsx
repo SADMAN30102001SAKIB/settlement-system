@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAccountRefresh } from '../../lib/account-refresh';
 import { useSavedFilters } from '../../lib/saved-filters';
 import { DateShortcuts } from '../../components/date-shortcuts';
 import { StatusSelect } from '../../components/status-select';
@@ -51,6 +52,7 @@ export function History({
   const [mode, setMode] = useState<'view' | 'pdf' | 'payment'>('view');
   const [actionPending, setActionPending] = useState(false);
   const [revision, setRevision] = useState(0);
+  useAccountRefresh(setRevision);
   const now = today();
   const [filters, setFilters] = useSavedFilters('settlements', {
     from: `${now.slice(0, 7)}-01`,
