@@ -2433,6 +2433,11 @@ article.invoice-advertising {
   align-items: end;
   margin-bottom: 16px;
 }
+.ledger-filters :is(input, select, .form-submit),
+.business-summary-filters :is(input, select, .form-submit) {
+  height: 44px;
+  min-height: 44px;
+}
 .business-daily-table,
 .business-orders-table {
   width: 100%;

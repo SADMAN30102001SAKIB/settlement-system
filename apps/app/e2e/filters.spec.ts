@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('list filters survive navigation and reload with independent quick date ranges', async ({
   page,
-}) => {
+}, info) => {
   await page.clock.setFixedTime(new Date('2026-10-31T06:00:00Z'));
   await page.goto('/');
   await page.getByLabel('Username', { exact: true }).fill('browser-admin');
@@ -73,8 +73,24 @@ test('list filters survive navigation and reload with independent quick date ran
     await expect(scope.getByLabel(item.to, { exact: true })).toHaveValue(
       item.end,
     );
-    for (const width of [320, 768, 1280]) {
+    for (const width of [320, 768, 1280, 1600]) {
       await page.setViewportSize({ width, height: 900 });
+      const form = scope.locator('.ledger-filters, .business-summary-filters');
+      const button = form.getByRole('button', { name: /Apply.*filters/ });
+      await button.scrollIntoViewIfNeeded();
+      const controls = await form
+        .locator('input, select, button')
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return { height: rect.height, bottom: rect.bottom };
+          }),
+        );
+      for (const control of controls) expect(control.height).toBe(44);
+      if (width === 1600) {
+        const bottoms = controls.map((control) => control.bottom);
+        expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThan(1);
+      }
       await expect
         .poll(() =>
           page.evaluate(
@@ -82,6 +98,10 @@ test('list filters survive navigation and reload with independent quick date ran
           ),
         )
         .toBe(true);
+      if (width !== 768)
+        await form.screenshot({
+          path: info.outputPath(`${item.route.slice(1)}-${String(width)}.png`),
+        });
     }
   }
   await page.goto('/settlements');

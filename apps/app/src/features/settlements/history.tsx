@@ -270,7 +270,7 @@ export function History({
               }}
             />
           </Field>
-          <button className="secondary compact form-submit" disabled={pending}>
+          <button className="secondary form-submit" disabled={pending}>
             {pending ? (
               <>
                 <Spinner size={12} /> Loading…
