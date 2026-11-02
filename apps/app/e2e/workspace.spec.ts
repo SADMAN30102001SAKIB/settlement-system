@@ -357,13 +357,10 @@ test('brand payments split commission and ads into immutable receipts and suppor
           { exact: true },
         )
         .fill(number);
-      await page
-        .getByRole('button', {
-          name:
-            kind === 'advertising' ? 'Apply invoice filters' : 'Apply filters',
-          exact: true,
-        })
-        .click();
+      if (kind === 'advertising')
+        await page
+          .getByRole('button', { name: 'Apply invoice filters', exact: true })
+          .click();
     };
     await filterInvoice();
     const status = page.getByLabel(`Status for ${number}`, { exact: true });
@@ -837,9 +834,6 @@ test('settlement ledger provides responsive direct invoice actions and refreshes
     await page
       .getByLabel('Search invoice', { exact: true })
       .fill(item.invoiceNumber);
-    await page
-      .getByRole('button', { name: 'Apply filters', exact: true })
-      .click();
   };
   await openLedger();
   const ledger = page.getByRole('region', {

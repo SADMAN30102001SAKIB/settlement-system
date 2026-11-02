@@ -103,12 +103,6 @@ test('commission excludes advertising VAT, deleted bills refresh across tabs, an
   await other
     .getByLabel('Search invoice', { exact: true })
     .fill(detail.item.invoiceNumber);
-  // The second tab uses its real clock; select the test invoice's explicit date range.
-  await other.getByLabel('From', { exact: true }).fill('2026-11-01');
-  await other.getByLabel('To', { exact: true }).fill('2026-11-30');
-  await other
-    .getByRole('button', { name: 'Apply filters', exact: true })
-    .click();
   const row = other
     .locator('tr')
     .filter({ hasText: detail.item.invoiceNumber });

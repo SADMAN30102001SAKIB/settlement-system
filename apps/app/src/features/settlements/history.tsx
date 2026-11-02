@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccountRefresh } from '../../lib/account-refresh';
 import { useSavedFilters } from '../../lib/saved-filters';
-import { DateShortcuts } from '../../components/date-shortcuts';
 import { StatusSelect } from '../../components/status-select';
 import type { z } from 'zod';
 import { paymentStatus } from '@settlement/domain/payments';
@@ -25,7 +24,7 @@ import {
   okSchema,
 } from '../../lib/api';
 import type { Brand, ReportRow, Settings } from '../../lib/api';
-import { dateLabel, money, today } from '../../lib/format';
+import { dateLabel, money } from '../../lib/format';
 import { useConfirmation } from '../../components/confirmation-context';
 import { InvoiceActionDialog, InvoiceRowActions } from './ledger-actions';
 import { confirmInvoiceDeletion } from './delete-invoice';
@@ -53,20 +52,21 @@ export function History({
   const [actionPending, setActionPending] = useState(false);
   const [revision, setRevision] = useState(0);
   useAccountRefresh(setRevision);
-  const now = today();
   const [filters, setFilters] = useSavedFilters('settlements', {
-    from: `${now.slice(0, 7)}-01`,
-    to: now,
     brand: '',
     query: '',
   });
-  const [from, setFrom] = useState(filters.from);
-  const [to, setTo] = useState(filters.to);
-  const [brand, setBrand] = useState(filters.brand);
   const [query, setQuery] = useState(filters.query);
+  useEffect(() => {
+    if (query.trim() === filters.query) return;
+    const timer = setTimeout(() => {
+      setFilters((current) => ({ ...current, query: query.trim() }));
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [query, filters.query, setFilters]);
   const params = new URLSearchParams({
-    from: filters.from,
-    to: filters.to,
     brandId: filters.brand,
     q: filters.query,
   });
@@ -208,48 +208,15 @@ export function History({
           </div>
           <span className="pill">BDT · ৳</span>
         </div>
-        <DateShortcuts
-          onSelect={(from, to) => {
-            setFrom(from);
-            setTo(to);
-            setFilters({ from, to, brand, query });
-          }}
-        />
-        <form
-          className="filters form-grid ledger-filters"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (from && to && from > to) {
-              setError('The end date cannot be before the start date.');
-              return;
-            }
-            setError('');
-            setFilters({ from, to, brand, query });
-          }}
-        >
-          <Field label="From">
-            <input
-              type="date"
-              value={from}
-              onChange={(event) => {
-                setFrom(event.target.value);
-              }}
-            />
-          </Field>
-          <Field label="To">
-            <input
-              type="date"
-              value={to}
-              onChange={(event) => {
-                setTo(event.target.value);
-              }}
-            />
-          </Field>
+        <div className="filters form-grid ledger-filters settlement-filters">
           <Field label="Brand">
             <select
-              value={brand}
+              value={filters.brand}
               onChange={(event) => {
-                setBrand(event.target.value);
+                setFilters((current) => ({
+                  ...current,
+                  brand: event.target.value,
+                }));
               }}
             >
               <option value="">All brands</option>
@@ -263,6 +230,7 @@ export function History({
           <Field label="Search invoice">
             <input
               type="search"
+              maxLength={40}
               placeholder="Invoice number"
               value={query}
               onChange={(event) => {
@@ -270,16 +238,7 @@ export function History({
               }}
             />
           </Field>
-          <button className="secondary form-submit" disabled={pending}>
-            {pending ? (
-              <>
-                <Spinner size={12} /> Loading…
-              </>
-            ) : (
-              'Apply filters'
-            )}
-          </button>
-        </form>
+        </div>
         {error ? <Alert>{error}</Alert> : null}
         {pending && items.length > 0 ? (
           <Skeleton
@@ -303,9 +262,16 @@ export function History({
             ]}
           />
         ) : items.length === 0 ? (
-          <Empty title="A clean slate">
-            Your saved reports will appear here. Add a brand, then create your
-            first settlement.
+          <Empty
+            title={
+              filters.brand || filters.query
+                ? 'No matching invoices'
+                : 'A clean slate'
+            }
+          >
+            {filters.brand || filters.query
+              ? 'Try another brand or invoice number.'
+              : 'Your saved reports will appear here. Add a brand, then create your first settlement.'}
           </Empty>
         ) : (
           <ScrollList

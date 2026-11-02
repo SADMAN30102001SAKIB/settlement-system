@@ -2291,6 +2291,9 @@ article.invoice-advertising {
   margin: 0;
   align-self: end;
 }
+.ledger-filters.settlement-filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .invoice-ledger-table {
   min-width: 1000px;
 }
@@ -2351,6 +2354,14 @@ article.invoice-advertising {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     gap: 16px;
   }
+  .settlement-ledger .invoice-ledger-table tbody {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .settlement-ledger .invoice-ledger-table tbody tr:not(.virtual-spacer) {
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
   .invoice-ledger-table tbody tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2387,8 +2398,15 @@ article.invoice-advertising {
   }
 }
 @container (max-width: 520px) {
-  .ledger-filters {
+  .ledger-filters,
+  .ledger-filters.settlement-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .settlement-ledger .invoice-ledger-table tbody tr:not(.virtual-spacer) {
+    padding-inline: 0;
+  }
+  .settlement-ledger .invoice-row-actions {
+    gap: 2px;
   }
 }
 .business-tracking .page-heading {
