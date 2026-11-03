@@ -24,7 +24,7 @@ export async function loadPaymentAccount(
   db: D1Database,
   brandId: string,
 ): Promise<PaymentAccount> {
-  const [brand, commissionResult, adResult, advances] = await db.batch([
+  const [brand, commissionResult, adResult, advances, wallet] = await db.batch([
     db
       .prepare(
         'SELECT id, name, payment_version AS version,(SELECT agency_basis_points FROM settings WHERE id=1) AS defaultRate FROM brands WHERE id = ?',
@@ -49,6 +49,13 @@ export async function loadPaymentAccount(
         'SELECT COALESCE(SUM(amount),0) AS amount FROM payments WHERE brand_id=?',
       )
       .bind(brandId),
+    db
+      .prepare(
+        `SELECT
+      (SELECT COALESCE(SUM(amount),0) FROM brand_advances WHERE brand_id=? AND reversed_at IS NULL) AS received,
+      (SELECT COALESCE(SUM(advance_amount),0) FROM payment_receipts WHERE brand_id=? AND reversed_at IS NULL) AS used`,
+      )
+      .bind(brandId, brandId),
   ]);
   if (!brand || !commissionResult || !adResult || !advances)
     throw new Error('Incomplete payment account snapshot.');
@@ -110,6 +117,10 @@ export async function loadPaymentAccount(
     };
   };
   const adTotals = totals('ads');
+  const commissionTotals = totals('commission');
+  const credit = z
+    .object({ received: z.number().int(), used: z.number().int() })
+    .parse(wallet?.results[0]);
   const dueIds = new Set(
     invoices
       .filter((item) => item.kind === 'commission' && item.due > 0)
@@ -133,7 +144,20 @@ export async function loadPaymentAccount(
     commissionBasisPoints:
       rates.length > 1 ? null : (rates[0] ?? brandInfo.defaultRate),
     invoices,
-    commission: totals('commission'),
+    commission: commissionTotals,
     ads: adTotals,
+    advance: { ...credit, balance: credit.received - credit.used },
+    totalPaid: sumMoney([
+      commissionTotals.paid,
+      adTotals.paid,
+      -commissionTotals.credit,
+      -adTotals.credit,
+    ]),
+    totalReceived: sumMoney([
+      commissionTotals.paid,
+      adTotals.paid,
+      credit.received,
+      -credit.used,
+    ]),
   };
 }

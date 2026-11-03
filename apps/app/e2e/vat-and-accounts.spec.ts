@@ -153,7 +153,7 @@ test('commission excludes advertising VAT, deleted bills refresh across tabs, an
         await scroller.evaluate((element) => {
           element.scrollTop += element.clientHeight * 0.8;
         });
-      await expect(brandRow).toBeVisible();
+      await expect(brandRow).toBeVisible({ timeout: 500 });
     }).toPass({ timeout: 20000, intervals: [100, 250] });
   }
   await revealBrand();

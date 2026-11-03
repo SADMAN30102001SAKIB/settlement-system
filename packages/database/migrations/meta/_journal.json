@@ -141,6 +141,20 @@
       "when": 1793621382497,
       "tag": "0019_order_cost_correction_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793689316147,
+      "tag": "0020_clear_scalphunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793689317161,
+      "tag": "0021_advance_guards",
+      "breakpoints": true
     }
   ]
 }

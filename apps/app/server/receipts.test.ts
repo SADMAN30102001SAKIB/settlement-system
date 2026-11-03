@@ -735,6 +735,125 @@ it('preflights shared receipts, preserves unrelated invoices, and rejects fabric
   expect((await account(source.brandId)).commission.due).toBe(15000000);
 }, 15000);
 
+it('records brand advances once, applies credit without new cash, and restores it on reversal', async () => {
+  const s = await seed();
+  const deposit = {
+    requestId: crypto.randomUUID(),
+    brandId: s.brandId,
+    date: '2026-11-03',
+    amount: 2000000,
+    method: 'Cash',
+    reference: 'Advance',
+    note: 'Future invoices',
+  };
+  expect((await request('/api/manage/advances', 'POST', deposit)).status).toBe(
+    200,
+  );
+  expect((await request('/api/manage/advances', 'POST', deposit)).status).toBe(
+    200,
+  );
+  expect(
+    (
+      await request('/api/manage/advances', 'POST', {
+        ...deposit,
+        amount: 3000000,
+      })
+    ).status,
+  ).toBe(409);
+  let current = await account(s.brandId);
+  expect(current.advance).toEqual({
+    received: 2000000,
+    used: 0,
+    balance: 2000000,
+  });
+  expect(current.totalReceived).toBe(2000000);
+  expect(current.totalPaid).toBe(0);
+  const input = { ...(await inputFor(s, 1500000, 0)), funding: 'advance' };
+  const receipt = await create(input);
+  expect((await create(input)).id).toBe(receipt.id);
+  expect(receipt.data.advanceUsed).toBe(1500000);
+  current = await account(s.brandId);
+  expect(current.advance.balance).toBe(500000);
+  expect(current.totalReceived).toBe(2000000);
+  expect(current.totalPaid).toBe(1500000);
+  expect(
+    (
+      await request(
+        `/api/manage/advances/${deposit.requestId}/reverse`,
+        'POST',
+        { version: current.version, reason: 'Correct mistaken advance' },
+      )
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request('/api/manage/receipts', 'POST', {
+        ...(await inputFor(s, 0, 1000000)),
+        funding: 'advance',
+      })
+    ).status,
+  ).toBe(422);
+  expect(
+    (
+      await request(`/api/manage/receipts/${receipt.id}/reverse`, 'POST', {
+        version: current.version,
+        reason: 'Undo advance application',
+      })
+    ).status,
+  ).toBe(200);
+  current = await account(s.brandId);
+  expect(current.advance.balance).toBe(2000000);
+  expect(current.totalReceived).toBe(2000000);
+  expect(current.totalPaid).toBe(0);
+  expect(
+    (
+      await request(
+        `/api/manage/advances/${deposit.requestId}/reverse`,
+        'POST',
+        { version: current.version, reason: 'Correct mistaken advance' },
+      )
+    ).status,
+  ).toBe(200);
+  expect((await account(s.brandId)).advance).toEqual({
+    received: 0,
+    used: 0,
+    balance: 0,
+  });
+}, 15000);
+
+it('prevents competing advance applications from spending credit twice', async () => {
+  const s = await seed();
+  await request('/api/manage/advances', 'POST', {
+    requestId: crypto.randomUUID(),
+    brandId: s.brandId,
+    date: '2026-11-03',
+    amount: 2000000,
+    method: 'Cash',
+    reference: '',
+    note: '',
+  });
+  const input = { ...(await inputFor(s, 1500000, 0)), funding: 'advance' };
+  const responses = await Promise.all([
+    request('/api/manage/receipts', 'POST', input),
+    request('/api/manage/receipts', 'POST', {
+      ...input,
+      requestId: crypto.randomUUID(),
+    }),
+  ]);
+  expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
+  expect(responses.every((r) => [201, 409, 422].includes(r.status))).toBe(true);
+  expect((await account(s.brandId)).advance.balance).toBe(500000);
+  const other = await seed();
+  expect(
+    (
+      await request('/api/manage/receipts', 'POST', {
+        ...(await inputFor(other, 1000000, 0)),
+        funding: 'advance',
+      })
+    ).status,
+  ).toBe(422);
+}, 15000);
+
 it('preserves legacy payments and advertising advances without inventing historical receipts', async () => {
   const s = await seed();
   expect(

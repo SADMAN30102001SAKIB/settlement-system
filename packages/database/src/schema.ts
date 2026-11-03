@@ -55,6 +55,53 @@ export const orderCostCorrections = sqliteTable('order_cost_corrections', {
   createdAt: integer('created_at').notNull(),
 });
 
+export const brandAdvances = sqliteTable(
+  'brand_advances',
+  {
+    id: text().primaryKey(),
+    brandId: text('brand_id')
+      .notNull()
+      .references(() => brands.id, { onDelete: 'restrict' }),
+    date: text().notNull(),
+    amount: integer().notNull(),
+    method: text().notNull(),
+    reference: text().notNull(),
+    note: text().notNull(),
+    requestHash: text('request_hash').notNull(),
+    createdAt: integer('created_at').notNull(),
+    reversedAt: integer('reversed_at'),
+    reversalReason: text('reversal_reason'),
+  },
+  (t) => [
+    index('brand_advances_date_idx').on(t.brandId, t.date, t.id),
+    check('advance_positive', sql`${t.amount}>0 AND ${t.amount}%10=0`),
+    check(
+      'advance_reversal_valid',
+      sql`${t.reversedAt} IS NULL OR (${t.reversedAt}>=0 AND length(${t.reversalReason})>=5)`,
+    ),
+  ],
+);
+
+export const manualInvoices = sqliteTable(
+  'manual_invoices',
+  {
+    id: text().primaryKey(),
+    number: text().notNull().unique(),
+    date: text().notNull(),
+    title: text().notNull(),
+    recipient: text().notNull(),
+    data: text().notNull(),
+    total: integer().notNull(),
+    revision: integer().notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('manual_invoices_date_idx').on(t.date, t.id),
+    check('manual_total_valid', sql`${t.total}>=0`),
+  ],
+);
+
 export const brands = sqliteTable(
   'brands',
   {
@@ -259,7 +306,7 @@ export const expenses = sqliteTable(
 export const invoiceCounters = sqliteTable(
   'invoice_counters',
   {
-    kind: text({ enum: ['settlement', 'ads', 'payment'] }).notNull(),
+    kind: text({ enum: ['settlement', 'ads', 'payment', 'manual'] }).notNull(),
     date: text().notNull(),
     value: integer().notNull(),
   },
@@ -396,6 +443,7 @@ export const paymentReceipts = sqliteTable(
     requestHash: text('request_hash').notNull(),
     data: text().notNull(),
     total: integer().notNull(),
+    advanceAmount: integer('advance_amount').notNull().default(0),
     proofFileId: text('proof_file_id').references(() => files.id, {
       onDelete: 'set null',
     }),

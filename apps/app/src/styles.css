@@ -766,6 +766,57 @@ strong {
 .cost-correction-dates {
   margin-top: 16px;
 }
+.manual-line {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 2fr) minmax(80px, 1fr) minmax(100px, 1fr)
+    auto;
+  gap: 12px;
+  align-items: center;
+}
+.brand-row.document-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.document-row > div {
+  min-width: 0;
+}
+.advance-panel .section-heading {
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 16px;
+}
+.advance-panel .section-heading > div {
+  flex: 1 1 240px;
+}
+@media (max-width: 600px) {
+  .brand-row.document-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .brand-row.document-row > .actions {
+    grid-column: 1;
+    justify-self: start;
+  }
+  .metrics.payment-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .payment-metrics .metric strong {
+    white-space: nowrap;
+  }
+}
+@media (max-width: 680px) {
+  .manual-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+  .manual-line > :first-child {
+    grid-column: 1 / -1;
+  }
+  .manual-line > button {
+    justify-self: start;
+  }
+}
 .check-field {
   display: flex;
   align-items: center;
@@ -3238,6 +3289,13 @@ article.invoice-advertising {
   }
   body {
     background: white;
+  }
+  body:has(dialog[open] .invoice-document) .page-heading,
+  body:has(dialog[open] .invoice-document)
+    .page-content
+    > section:not(:has(.invoice-document)),
+  .panel:has(> dialog[open] .invoice-document) > :not(dialog) {
+    display: none !important;
   }
   .sidebar,
   .no-print,

@@ -19,6 +19,8 @@ import { brandAuthRoutes, brandAccessRoutes } from './portal/auth';
 import { portalRoutes } from './portal/routes';
 import { checklistRoutes } from './catalog/checklist';
 import { costCorrectionRoutes } from './catalog/cost-correction';
+import { advanceRoutes } from './receipts/advances';
+import { manualRoutes } from './manual-invoices';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -65,6 +67,8 @@ export const app = new Hono<AppEnvironment>()
   .route('/api/manage/brand-access', brandAccessRoutes)
   .route('/api/manage/daily-checklist', checklistRoutes)
   .route('/api/manage/brand-costs', costCorrectionRoutes)
+  .route('/api/manage/advances', advanceRoutes)
+  .route('/api/manage/manual-invoices', manualRoutes)
   .route('/api/manage', catalogRoutes)
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)
@@ -82,6 +86,8 @@ export const app = new Hono<AppEnvironment>()
         { error: error.issues[0]?.message ?? 'Invalid input.' },
         422,
       );
+    if (error instanceof RangeError)
+      return context.json({ error: error.message }, 422);
     if (error instanceof SyntaxError)
       return context.json({ error: 'Invalid JSON.' }, 400);
     const causes: string[] = [];
@@ -91,6 +97,14 @@ export const app = new Hono<AppEnvironment>()
       cause = cause.cause;
     }
     const databaseMessage = causes.join(' ');
+    if (databaseMessage.includes('ADVANCE_IN_USE'))
+      return context.json(
+        {
+          error:
+            'Insufficient unused advance. Reverse its invoice applications first, then reload balances.',
+        },
+        409,
+      );
     if (
       /PAYMENT_RECEIPT_ACTIVE|PAYMENT_RECEIPT_REFERENCED/.test(databaseMessage)
     )

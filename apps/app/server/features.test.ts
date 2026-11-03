@@ -3,9 +3,78 @@ import { z } from 'zod';
 import { app } from './app';
 import { testEnvironment } from './test-environment';
 import { importMapping, mapOrder } from '@settlement/domain/imports';
+import { manualSchema, manualFields } from '../shared/manual-invoices';
 
 let fixture: Awaited<ReturnType<typeof testEnvironment>>;
 let cookie = '';
+it('keeps manual invoices independent, calculates fractional quantities, and rejects stale edits', async () => {
+  const before = await fixture.env.DB.prepare(
+    'SELECT (SELECT COUNT(*) FROM settlements) AS invoices,(SELECT COUNT(*) FROM payments) AS payments,(SELECT COUNT(*) FROM expenses) AS expenses',
+  ).first();
+  const body = {
+    requestId: crypto.randomUUID(),
+    date: '2026-11-03',
+    title: 'Studio budget',
+    recipient: 'Office',
+    notes: 'Budget only',
+    stamp: null,
+    lines: [{ description: 'Cable', quantityMilli: 1500, price: 10050 }],
+  };
+  const response = await request('/api/manage/manual-invoices', 'POST', body);
+  expect(response.status).toBe(201);
+  const saved = z
+    .object({ item: manualSchema })
+    .parse(await response.json()).item;
+  expect(saved.total).toBe(15080);
+  expect(
+    (await request('/api/manage/manual-invoices', 'POST', body)).status,
+  ).toBe(200);
+  expect(
+    (
+      await request('/api/manage/manual-invoices', 'POST', {
+        ...body,
+        title: 'Changed request',
+      })
+    ).status,
+  ).toBe(409);
+  const input = manualFields.strip().parse(body);
+  expect(
+    (
+      await request(`/api/manage/manual-invoices/${saved.id}`, 'PUT', {
+        ...input,
+        title: 'Updated studio budget',
+        revision: 1,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/manage/manual-invoices/${saved.id}`, 'PUT', {
+        ...input,
+        revision: 1,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/manual-invoices/${saved.id}`, 'DELETE', {
+        revision: 1,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/manual-invoices/${saved.id}`, 'DELETE', {
+        revision: 2,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    await fixture.env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM settlements) AS invoices,(SELECT COUNT(*) FROM payments) AS payments,(SELECT COUNT(*) FROM expenses) AS expenses',
+    ).first(),
+  ).toEqual(before);
+}, 15000);
 const itemId = z.object({ item: z.object({ id: z.string() }) });
 beforeAll(async () => {
   fixture = await testEnvironment();

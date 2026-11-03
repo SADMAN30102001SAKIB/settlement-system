@@ -9,6 +9,7 @@ import {
 } from './components/ui';
 import { Login } from './features/auth/login';
 import { Brands } from './features/catalog/brands';
+import { ManualInvoices } from './features/manual/page';
 import { Settings } from './features/catalog/settings';
 import { Notes } from './features/catalog/notes';
 import { ReportEditor } from './features/settlements/editor';
@@ -242,7 +243,7 @@ function AdminApp() {
         url.origin !== window.location.origin ||
         url.hash ||
         url.search ||
-        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments|account)(\/|$)/.test(
+        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments|account|manual-invoices)(\/|$)/.test(
           url.pathname,
         )
       )
@@ -378,6 +379,7 @@ function AdminApp() {
             ['/business', 'Business tracking', '07'],
             ['/files', 'Private files', '08'],
             ['/account', 'Account settings', '09'],
+            ['/manual-invoices', 'Make invoice', '10'],
           ].map(([href, label, marker]) => (
             <a
               key={href}
@@ -485,6 +487,8 @@ function AdminApp() {
               settings={settings}
               navigate={navigate}
             />
+          ) : path === '/manual-invoices' ? (
+            <ManualInvoices settings={settings} />
           ) : path === '/brands' ? (
             <Brands brands={brands} refresh={refresh} />
           ) : path === '/notes' ? (

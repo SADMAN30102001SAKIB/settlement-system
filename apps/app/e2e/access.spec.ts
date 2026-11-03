@@ -29,6 +29,19 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+async function showBrand(page: Page, name: string) {
+  const row = page.locator('.brand-row').filter({ hasText: name });
+  const list = page.getByRole('region', { name: 'Brands', exact: true });
+  await expect(async () => {
+    if (!(await row.isVisible()))
+      await list.evaluate((element) => {
+        element.scrollTop += element.clientHeight / 2;
+      });
+    await expect(row).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 20000 });
+  return row;
+}
+
 async function checkPasswordButtons(page: Page) {
   for (const control of await page.locator('.password-control').all()) {
     const button = control.getByRole('button');
@@ -90,8 +103,7 @@ test('admin provisions brand access and owners can only view and export their th
   const brandId = await makeBrand(name),
     otherId = await makeBrand('Other owner ' + suffix);
   await page.goto('/brands');
-  const row = page.locator('.brand-row').filter({ hasText: name });
-  await expect(row).toBeVisible();
+  const row = await showBrand(page, name);
   await expect(row).toContainText('Login not configured');
   await row.getByRole('button', { name: 'Login access', exact: true }).click();
   const access = page.getByRole('dialog');
@@ -106,13 +118,15 @@ test('admin provisions brand access and owners can only view and export their th
     .fill(adminPassword);
   await access.getByRole('button', { name: 'Save brand access' }).click();
   await expect(access.getByRole('status')).toContainText('Brand access saved');
-  await expect(row).toContainText('Login enabled');
   await expect(
     access.getByLabel('New brand password', { exact: true }),
   ).toHaveValue('');
   await access.screenshot({ path: testInfo.outputPath('brand-access.png') });
   await access.getByRole('button', { name: 'Done', exact: true }).click();
+  await showBrand(page, name);
+  await expect(row).toContainText('Login enabled');
   await page.reload();
+  await showBrand(page, name);
   await expect(row).toContainText('Login enabled');
   expect(
     (
@@ -259,6 +273,10 @@ test('admin provisions brand access and owners can only view and export their th
         summary.ads.due,
         summary.commission.paid,
         summary.ads.paid,
+        summary.advance.received,
+        summary.advance.balance,
+        summary.totalPaid,
+        summary.totalReceived,
       ].map(money);
     };
     const documents = [
@@ -666,7 +684,7 @@ test('brand access rejects duplicates and safely recovers from failed saves and 
     replacement = 'edge-recovery-' + suffix;
   await configureTestBrand(page, first, username, password);
   await page.goto('/brands');
-  const row = page.locator('.brand-row').filter({ hasText: name });
+  const row = await showBrand(page, name);
   await row.getByRole('button', { name: 'Login access', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Brand username').fill(username);
@@ -750,6 +768,7 @@ test('brand access rejects duplicates and safely recovers from failed saves and 
   ).toHaveValue('');
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await page.reload();
+  await showBrand(page, name);
   await expect(row).toContainText('Login enabled');
   const context = await browser.newContext({
     baseURL: 'http://127.0.0.1:5174',
@@ -811,7 +830,7 @@ test('brand portal handles empty and large ledgers, reset across tabs, and expir
       owner
         .getByRole('region', { name: 'Payment balances' })
         .locator('.metric strong'),
-    ).toHaveText(['৳0.00', '৳0.00', '৳0.00', '৳0.00']);
+    ).toHaveText(Array.from({ length: 8 }, () => '৳0.00'));
     for (let index = 0; index < 45; index++) {
       const [settlement, ads] = await Promise.all([
         page.request.post('/api/manage/settlements', {

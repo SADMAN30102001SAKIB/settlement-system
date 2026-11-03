@@ -22,6 +22,7 @@ import {
 } from '../../components/ui';
 import { dateLabel, money } from '../../lib/format';
 import { ReceiptComposer } from './composer';
+import { Advances } from './advances';
 import { ReceiptView } from './receipt';
 import { StatusSelect } from '../../components/status-select';
 import { receiptStampStatus } from '../../../shared/receipts';
@@ -281,7 +282,7 @@ export function Payments({
       ) : (
         <>
           <h2>{account.brandName} account</h2>
-          <div className="metrics">
+          <div className="metrics payment-metrics">
             <Metric
               label={commissionOutstandingLabel(account.commissionBasisPoints)}
               value={money(account.commission.due)}
@@ -314,6 +315,35 @@ export function Payments({
               </p>
             </section>
           ) : null}
+          <div className="metrics payment-metrics">
+            <Metric
+              label="Advance payments received"
+              value={money(account.advance.received)}
+            />
+            <Metric
+              label="Available advance"
+              value={money(account.advance.balance)}
+            />
+            <Metric
+              label="Total paid toward invoices"
+              value={money(account.totalPaid)}
+            />
+            <Metric
+              label="Total money received"
+              value={money(account.totalReceived)}
+            />
+          </div>
+          <Advances
+            key={account.brandId}
+            brandId={account.brandId}
+            brandName={account.brandName}
+            settings={settings}
+            version={account.version}
+            revision={version}
+            onSaved={() => {
+              setVersion((v) => v + 1);
+            }}
+          />
           <div className="section-heading">
             <p className="caption">
               Non-payable loss invoices are not billed. Balances use saved

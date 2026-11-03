@@ -22,6 +22,7 @@ export const receiptInput = z
     note: z.string().trim().max(200),
     proofFileId: id.nullable().default(null),
     stampStatus: stampStatusSchema.optional(),
+    funding: z.enum(['cash', 'advance']).default('cash'),
     allocations: z
       .array(
         z
@@ -39,7 +40,9 @@ export const receiptInput = z
       .max(50),
   })
   .strict();
-type Input = z.infer<typeof receiptInput>;
+type Input = Omit<z.infer<typeof receiptInput>, 'funding'> & {
+  funding?: 'cash' | 'advance';
+};
 
 export async function receiptById(
   db: D1Database,
@@ -174,6 +177,14 @@ export async function createReceipt(
   const adsReceived = sumMoney(
     lines.filter((l) => l.kind === 'ads').map((l) => l.received),
   );
+  const advanceUsed =
+    input.funding === 'advance'
+      ? sumMoney([commissionReceived, adsReceived])
+      : 0;
+  if (advanceUsed > account.advance.balance)
+    throw new HTTPException(422, {
+      message: 'This payment exceeds the available advance balance.',
+    });
   const data = receiptDataSchema.parse({
     ...company,
     brandName: account.brandName,
@@ -188,6 +199,7 @@ export async function createReceipt(
     adsAfter: account.ads.due - adsReceived,
     commissionCredit: account.commission.credit,
     adsCredit: account.ads.credit,
+    advanceUsed,
     lines,
   });
   const counter = await db
@@ -205,8 +217,8 @@ export async function createReceipt(
     db
       .prepare(
         `INSERT INTO payment_receipts
-    (id,number,brand_id,date,request_hash,data,total,proof_file_id,created_at,stamp_status)
-    VALUES (?,?,?,?,?,?,CASE WHEN (SELECT payment_version FROM brands WHERE id=?)=? THEN ? ELSE -1 END,?,?,?)`,
+    (id,number,brand_id,date,request_hash,data,total,proof_file_id,created_at,stamp_status,advance_amount)
+    VALUES (?,?,?,?,?,?,CASE WHEN (SELECT payment_version FROM brands WHERE id=?)=? THEN ? ELSE -1 END,?,?,?,?)`,
       )
       .bind(
         input.requestId,
@@ -222,6 +234,7 @@ export async function createReceipt(
         now,
         input.stampStatus ??
           (data.commissionAfter + data.adsAfter > 0 ? 'Due' : 'Paid'),
+        advanceUsed,
       ),
   ];
   const entries = JSON.stringify(

@@ -29,11 +29,19 @@ export const paymentAccountSchema = z.object({
   invoices: z.array(accountInvoiceSchema),
   commission: totalsSchema,
   ads: totalsSchema,
+  advance: z
+    .object({ received: amount, used: amount, balance: amount })
+    .default({ received: 0, used: 0, balance: 0 }),
+  totalPaid: amount.default(0),
+  totalReceived: amount.default(0),
 });
 export const paymentSummarySchema = paymentAccountSchema.pick({
   commissionBasisPoints: true,
   commission: true,
   ads: true,
+  advance: true,
+  totalPaid: true,
+  totalReceived: true,
 });
 export function commissionOutstandingLabel(basisPoints: number | null) {
   return `${basisPoints === null ? '' : `${String(basisPoints / 100)}% `}Commission outstanding`;
@@ -55,6 +63,7 @@ export const receiptDataSchema = z.object({
   adsAfter: amount,
   commissionCredit: amount,
   adsCredit: amount,
+  advanceUsed: amount.default(0),
   lines: z.array(
     z.object({
       invoiceId: z.string(),

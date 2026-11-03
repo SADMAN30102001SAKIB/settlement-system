@@ -438,8 +438,8 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await expect(
     page.getByRole('heading', { name: `${brandName} account`, exact: true }),
   ).toBeVisible();
-  await expect(page.locator('.metrics')).toContainText('৳15,000.00');
-  await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  await expect(page.locator('.metrics').first()).toContainText('৳15,000.00');
+  await expect(page.locator('.metrics').first()).toContainText('৳22,000.00');
   const dateLedger = page.getByRole('region', {
     name: 'Date-wise payment ledger',
   });
@@ -619,8 +619,8 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await page
     .getByRole('button', { name: 'Back to brand account', exact: true })
     .click();
-  await expect(page.locator('.metrics')).toContainText('৳14,500.00');
-  await expect(page.locator('.metrics')).toContainText('৳22,000.00');
+  await expect(page.locator('.metrics').first()).toContainText('৳14,500.00');
+  await expect(page.locator('.metrics').first()).toContainText('৳22,000.00');
   await expect(billRow.locator('.numeric')).toHaveText([
     '৳15,000.00',
     '৳22,000.00',

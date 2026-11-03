@@ -16,16 +16,38 @@ import { settlementStatus, advertisingStatus } from '../invoice-status/routes';
 import { advertisingAccount } from '../advertising/accounts';
 import { receiptById } from '../receipts/service';
 import { loadPaymentAccount } from '../receipts/account';
+import { listAdvances } from '../receipts/advances';
 
 export const portalRoutes = new Hono<AppEnvironment>()
   .use('*', requireBrand)
+  .get('/advances', async (c) => {
+    const q = z
+      .object({ before: date.optional(), beforeId: id.optional() })
+      .strict()
+      .refine((q) => !!q.before === !!q.beforeId)
+      .parse(c.req.query());
+    return c.json(
+      await listAdvances(c.env.DB, c.get('brandId'), q.before, q.beforeId),
+    );
+  })
   .get('/payment-summary', async (c) => {
     z.object({}).strict().parse(c.req.query());
-    const { commission, ads, commissionBasisPoints } = await loadPaymentAccount(
-      c.env.DB,
-      c.get('brandId'),
-    );
-    return c.json({ commission, ads, commissionBasisPoints });
+    const {
+      commission,
+      ads,
+      commissionBasisPoints,
+      advance,
+      totalPaid,
+      totalReceived,
+    } = await loadPaymentAccount(c.env.DB, c.get('brandId'));
+    return c.json({
+      commission,
+      ads,
+      commissionBasisPoints,
+      advance,
+      totalPaid,
+      totalReceived,
+    });
   })
   .get('/settings', async (c) => {
     const [item] = await c

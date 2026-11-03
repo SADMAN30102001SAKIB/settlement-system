@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccountRefresh } from '../../lib/account-refresh';
+import { Advances } from '../payments/advances';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import {
@@ -171,6 +172,22 @@ function PaymentSummary({ revision }: { revision: number }) {
           <Metric
             label="Advertising payments received"
             value={money(item.ads.paid)}
+          />
+          <Metric
+            label="Advance payments received"
+            value={money(item.advance.received)}
+          />
+          <Metric
+            label="Available advance"
+            value={money(item.advance.balance)}
+          />
+          <Metric
+            label="Total paid toward invoices"
+            value={money(item.totalPaid)}
+          />
+          <Metric
+            label="Total money received"
+            value={money(item.totalReceived)}
           />
         </div>
       )}
@@ -351,6 +368,15 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
             </p>
           ) : null}
         </ScrollList>
+        {kind === 'receipts' && settings ? (
+          <Advances
+            brandId={brand.id}
+            brandName={brand.name}
+            settings={settings}
+            revision={summaryRevision}
+            readOnly
+          />
+        ) : null}
       </section>
       {selected && settings ? (
         <PortalDocument

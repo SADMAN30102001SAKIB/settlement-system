@@ -179,7 +179,7 @@ export function ReceiptView({
             <small>PAYMENT DATE</small>
             <strong>{dateLabel(item.date)}</strong>
             <p>
-              {data.method}
+              {data.advanceUsed ? 'Advance credit application' : data.method}
               {data.reference ? ` · ${data.reference}` : ''}
             </p>
           </div>
@@ -263,9 +263,19 @@ export function ReceiptView({
           ) : null}
         </section>
         <div className="invoice-final">
-          <span>Total received on this receipt</span>
+          <span>
+            {data.advanceUsed
+              ? 'Advance credit applied'
+              : 'Total received on this receipt'}
+          </span>
           <strong>{money(item.total)}</strong>
         </div>
+        {data.advanceUsed ? (
+          <p className="receipt-note">
+            Funded from previously received advance credit. New money received
+            on this receipt: {money(item.total - data.advanceUsed)}.
+          </p>
+        ) : null}
         {data.note ? <p className="receipt-note">{data.note}</p> : null}
         <footer className="invoice-footer">
           <p>

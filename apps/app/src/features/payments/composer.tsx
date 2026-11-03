@@ -35,6 +35,7 @@ export function ReceiptComposer({
     typeof stampStatusSchema.parse
   > | null>(null);
   const [billDate, setBillDate] = useState('');
+  const [funding, setFunding] = useState('cash');
   const dateSelect = useRef<HTMLSelectElement>(null);
   const confirm = useConfirmation();
   const outstanding = account.invoices.filter(
@@ -109,11 +110,30 @@ export function ReceiptComposer({
       />
       <section className="panel receipt-composer">
         <h2>Record a payment · {account.brandName}</h2>
+        <Field label="Payment source">
+          <select
+            value={funding}
+            disabled={pending || uploading}
+            onChange={(event) => {
+              setFunding(event.target.value);
+            }}
+          >
+            <option value="cash">New money received</option>
+            <option value="advance">
+              Use advance credit ({money(account.advance.balance)} available)
+            </option>
+          </select>
+        </Field>
+        {funding === 'advance' ? (
+          <p className="caption">
+            This applies existing credit to the selected invoices. No new money
+            is received.
+          </p>
+        ) : null}
         <p className="muted">
-          Enter what was received against each invoice. Commission and
-          advertising stay separate. A receipt records this payment—not a new
-          bill. The payment date below is when money was received; it does not
-          change the original bill date.
+          {funding === 'advance'
+            ? 'Enter the advance credit to apply against each invoice. Commission and advertising stay separate. The application date does not change the original bill date.'
+            : 'Enter what was received against each invoice. Commission and advertising stay separate. A receipt records this payment—not a new bill. The payment date below is when money was received; it does not change the original bill date.'}
         </p>
         <Field label="Bills to pay">
           <select
@@ -170,6 +190,7 @@ export function ReceiptComposer({
                   reference: formText(form, 'reference'),
                   note: formText(form, 'note'),
                   proofFileId: proof,
+                  funding,
                   stampStatus:
                     stamp ??
                     (commission + ads === 0
@@ -288,7 +309,12 @@ export function ReceiptComposer({
           <div className="receipt-payment-total" aria-live="polite">
             <span>Commission {money(commission)}</span>
             <span>Advertising {money(ads)}</span>
-            <strong>Total received {money(sumMoney([commission, ads]))}</strong>
+            <strong>
+              {funding === 'advance'
+                ? 'Total credit applied'
+                : 'Total received'}{' '}
+              {money(sumMoney([commission, ads]))}
+            </strong>
           </div>
           <ImageUpload
             kind="proof"

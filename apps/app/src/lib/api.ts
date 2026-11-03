@@ -166,7 +166,7 @@ export async function api<S extends z.ZodType>(
   if (
     options?.method &&
     !['GET', 'HEAD'].includes(options.method) &&
-    /^\/manage\/(settlements|advertising|payments|receipts|brand-access|brand-costs)(\/|$)/.test(
+    /^\/manage\/(settlements|advertising|payments|receipts|brand-access|brand-costs|advances)(\/|$)/.test(
       path,
     )
   )

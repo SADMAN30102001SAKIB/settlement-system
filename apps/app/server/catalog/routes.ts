@@ -154,9 +154,10 @@ export const catalogRoutes = new Hono<AppEnvironment>()
       AND NOT EXISTS (SELECT 1 FROM ad_invoices WHERE brand_id = ?)
       AND NOT EXISTS (SELECT 1 FROM payment_receipts WHERE brand_id = ?)
       AND NOT EXISTS (SELECT 1 FROM payments WHERE brand_id = ?)
-      AND NOT EXISTS (SELECT 1 FROM notes WHERE brand_id = ?) RETURNING id`,
+      AND NOT EXISTS (SELECT 1 FROM notes WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM brand_advances WHERE brand_id = ?) RETURNING id`,
     )
-      .bind(key, key, key, key, key, key, key, key)
+      .bind(key, key, key, key, key, key, key, key, key)
       .first<{ id: string }>();
     if (!deleted) {
       const existing = await context.env.DB.prepare(
