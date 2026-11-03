@@ -173,16 +173,14 @@ test('brand advances fund commission and ads without double counting and remain 
   ).toContainText('৳1,000.00');
   await expect(
     owner.getByRole('region', { name: 'Advance payment history' }),
-  ).toContainText('৳2,500.00');
+  ).toHaveCount(0);
   await expect(
     owner
       .locator('.metric')
       .filter({ has: owner.getByText('Total due', { exact: true }) }),
   ).toContainText('৳1,100.00');
   await expect(
-    owner
-      .getByRole('region', { name: 'Advance payment history' })
-      .getByRole('button', { name: 'Delete', exact: true }),
+    owner.getByRole('heading', { name: 'Advance payments', exact: true }),
   ).toHaveCount(0);
   await expect(
     owner.getByRole('button', { name: 'Record advance', exact: true }),

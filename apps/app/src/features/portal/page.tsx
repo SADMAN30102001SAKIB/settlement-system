@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useAccountRefresh } from '../../lib/account-refresh';
-import { Advances } from '../payments/advances';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import {
@@ -368,15 +367,6 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
             </p>
           ) : null}
         </ScrollList>
-        {kind === 'receipts' && settings ? (
-          <Advances
-            brandId={brand.id}
-            brandName={brand.name}
-            settings={settings}
-            revision={summaryRevision}
-            readOnly
-          />
-        ) : null}
       </section>
       {selected && settings ? (
         <PortalDocument
