@@ -17,9 +17,19 @@ import { advertisingAccount } from '../advertising/accounts';
 import { receiptById } from '../receipts/service';
 import { loadPaymentAccount } from '../receipts/account';
 import { listAdvances } from '../receipts/advances';
+import { listChallans, challanCursor } from '../challans';
 
 export const portalRoutes = new Hono<AppEnvironment>()
   .use('*', requireBrand)
+  .get('/challans', async (c) =>
+    c.json(
+      await listChallans(
+        c.env.DB,
+        c.get('brandId'),
+        challanCursor.parse(c.req.query()),
+      ),
+    ),
+  )
   .get('/advances', async (c) => {
     const q = z
       .object({ before: date.optional(), beforeId: id.optional() })

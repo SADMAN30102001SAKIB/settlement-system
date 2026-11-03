@@ -102,6 +102,31 @@ export const manualInvoices = sqliteTable(
   ],
 );
 
+export const deliveryChallans = sqliteTable(
+  'delivery_challans',
+  {
+    id: text().primaryKey(),
+    brandId: text('brand_id')
+      .notNull()
+      .references(() => brands.id, { onDelete: 'restrict' }),
+    date: text().notNull(),
+    quantityMilli: integer('quantity_milli').notNull(),
+    unitCost: integer('unit_cost').notNull(),
+    total: integer().notNull(),
+    revision: integer().notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    index('delivery_challans_brand_date_idx').on(t.brandId, t.date, t.id),
+    check(
+      'challan_quantity_positive',
+      sql`${t.quantityMilli}>0 AND ${t.quantityMilli}<=1000000000`,
+    ),
+    check('challan_cost_valid', sql`${t.unitCost}>=0 AND ${t.total}>=0`),
+  ],
+);
+
 export const brands = sqliteTable(
   'brands',
   {

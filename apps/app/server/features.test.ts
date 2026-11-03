@@ -4,6 +4,8 @@ import { app } from './app';
 import { testEnvironment } from './test-environment';
 import { importMapping, mapOrder } from '@settlement/domain/imports';
 import { manualSchema, manualFields } from '../shared/manual-invoices';
+import { challanSchema, challanListSchema } from '../shared/challans';
+import { letterDocument } from '../shared/letter';
 
 let fixture: Awaited<ReturnType<typeof testEnvironment>>;
 let cookie = '';
@@ -76,6 +78,341 @@ it('keeps manual invoices independent, calculates fractional quantities, and rej
   ).toEqual(before);
 }, 15000);
 const itemId = z.object({ item: z.object({ id: z.string() }) });
+it('isolates delivery challans, enforces revisions, and scopes brand history without financial changes', async () => {
+  const brandId = itemId.parse(
+    await (
+      await request('/api/manage/brands', 'POST', {
+        name: crypto.randomUUID(),
+        makingCost: 0,
+      })
+    ).json(),
+  ).item.id;
+  const otherId = itemId.parse(
+    await (
+      await request('/api/manage/brands', 'POST', {
+        name: crypto.randomUUID(),
+        makingCost: 0,
+      })
+    ).json(),
+  ).item.id;
+  const accountPath = `/api/manage/receipts/account/${brandId}`;
+  const before = await (await request(accountPath)).json();
+  const body = {
+    requestId: crypto.randomUUID(),
+    brandId,
+    date: '2026-11-03',
+    quantityMilli: 2500,
+    unitCost: 175000,
+  };
+  const saved = z
+    .object({ item: challanSchema })
+    .parse(
+      await (await request('/api/manage/challans', 'POST', body)).json(),
+    ).item;
+  expect(saved.total).toBe(437500);
+  expect((await request('/api/manage/challans', 'POST', body)).status).toBe(
+    201,
+  );
+  expect(
+    (await request('/api/manage/challans', 'POST', { ...body, unitCost: 1 }))
+      .status,
+  ).toBe(409);
+  expect(
+    (
+      await request('/api/manage/challans', 'POST', {
+        ...body,
+        quantityMilli: 0,
+      })
+    ).status,
+  ).toBe(422);
+  expect(
+    (
+      await request(`/api/manage/challans/${saved.id}`, 'PUT', {
+        date: body.date,
+        quantityMilli: 3000,
+        unitCost: 175000,
+        revision: 1,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/manage/challans/${saved.id}`, 'DELETE', {
+        revision: 1,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/challans/${saved.id}`, 'PUT', {
+        date: body.date,
+        quantityMilli: 1,
+        unitCost: 1,
+        revision: 1,
+      })
+    ).status,
+  ).toBe(409);
+  for (const selected of [brandId, otherId])
+    await fixture.env.DB.batch(
+      Array.from({ length: 41 }, () =>
+        fixture.env.DB.prepare(
+          'INSERT INTO delivery_challans(id,brand_id,date,quantity_milli,unit_cost,total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+        ).bind(
+          crypto.randomUUID(),
+          selected,
+          '2026-11-02',
+          1000,
+          10000,
+          10000,
+          Date.now(),
+          Date.now(),
+        ),
+      ),
+    );
+  const username = 'challan-' + crypto.randomUUID();
+  expect(
+    (
+      await request(`/api/manage/brand-access/${brandId}`, 'PUT', {
+        username,
+        password: 'brand challan password phrase',
+        enabled: true,
+        version: 0,
+        currentPassword: 'feature integration password',
+      })
+    ).status,
+  ).toBe(200);
+  const login = await request('/api/brand-auth/login', 'POST', {
+    username,
+    password: 'brand challan password phrase',
+  });
+  const brandCookie = login.headers.get('Set-Cookie')?.split(';')[0] ?? '';
+  const owner = (path: string) =>
+    app.request(path, { headers: { Cookie: brandCookie } }, fixture.env);
+  let cursor = '',
+    count = 0;
+  const ids = new Set<string>();
+  for (let batch = 0; batch < 3; batch++) {
+    const list = challanListSchema.parse(
+      await (await owner('/api/portal/challans' + cursor)).json(),
+    );
+    expect(list.items.length).toBeLessThanOrEqual(20);
+    for (const item of list.items) {
+      expect(item.brandId).toBe(brandId);
+      ids.add(item.id);
+    }
+    count += list.items.length;
+    cursor = list.next ? '?' + new URLSearchParams(list.next).toString() : '';
+  }
+  expect(count).toBe(42);
+  expect(ids.size).toBe(42);
+  expect(cursor).toBe('');
+  expect((await owner(`/api/portal/challans?brandId=${otherId}`)).status).toBe(
+    422,
+  );
+  expect(
+    (
+      await app.request(
+        `/api/manage/challans/${saved.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Cookie: brandCookie,
+            Origin: 'http://localhost',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ revision: 2 }),
+        },
+        fixture.env,
+      )
+    ).status,
+  ).toBe(401);
+  expect(
+    (await request(`/api/manage/brands/${brandId}`, 'DELETE')).status,
+  ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/challans/${saved.id}`, 'DELETE', {
+        revision: 2,
+      })
+    ).status,
+  ).toBe(200);
+  expect(await (await request(accountPath)).json()).toEqual(before);
+  const plan = await fixture.env.DB.prepare(
+    'EXPLAIN QUERY PLAN SELECT id,date FROM delivery_challans WHERE brand_id=? AND (date,id)<(?,?) ORDER BY date DESC,id DESC LIMIT 21',
+  )
+    .bind(brandId, body.date, saved.id)
+    .all();
+  expect(JSON.stringify(plan.results)).toContain(
+    'delivery_challans_brand_date_idx',
+  );
+  expect(JSON.stringify(plan.results)).toContain('(date,id)<(?,?)');
+}, 20000);
+
+it('stores formatted bilingual letters without stamps, charges, unsafe markup or changes to itemized invoices', async () => {
+  const body = {
+    requestId: crypto.randomUUID(),
+    date: '2026-11-03',
+    title: 'Agency letter',
+    recipient: 'Client',
+    notes: '',
+    kind: 'letter',
+    stamp: null,
+    lines: [],
+    body: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Dear Sir,  ', marks: [{ type: 'bold' }] },
+            { type: 'hardBreak' },
+            {
+              type: 'text',
+              text: 'প্রিয় গ্রাহক, শুভেচ্ছা।',
+              marks: [
+                {
+                  type: 'textStyle',
+                  attrs: { color: '#174ea6', backgroundColor: '#fff3a3' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const before = await fixture.env.DB.prepare(
+    'SELECT (SELECT COUNT(*) FROM payments) AS payments,(SELECT COUNT(*) FROM expenses) AS expenses,(SELECT COUNT(*) FROM settlements) AS invoices',
+  ).first();
+  const response = await request('/api/manage/manual-invoices', 'POST', body);
+  expect(response.status).toBe(201);
+  const saved = z
+    .object({ item: manualSchema })
+    .parse(await response.json()).item;
+  expect(saved.kind).toBe('letter');
+  expect(saved.total).toBe(0);
+  expect(saved.stamp).toBeNull();
+  expect(saved.body).toEqual(letterDocument.parse(body.body));
+  expect(
+    letterDocument.parse({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Highlighted only',
+              marks: [
+                {
+                  type: 'textStyle',
+                  attrs: { color: '', backgroundColor: 'rgb(255, 243, 163)' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }).content[0]?.content[0],
+  ).toMatchObject({
+    marks: [{ attrs: { color: null, backgroundColor: 'rgb(255, 243, 163)' } }],
+  });
+  expect(
+    (await request('/api/manage/manual-invoices', 'POST', body)).status,
+  ).toBe(200);
+  expect(
+    (
+      await request('/api/manage/manual-invoices', 'POST', {
+        ...body,
+        requestId: crypto.randomUUID(),
+        stamp: 'Paid',
+      })
+    ).status,
+  ).toBe(422);
+  for (const unsafe of [
+    { type: 'doc', content: [{ type: 'script', text: 'alert(1)' }] },
+    {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Link',
+              marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Color',
+              marks: [
+                {
+                  type: 'textStyle',
+                  attrs: { color: 'url(/favicon.svg)' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: ' '.repeat(10) }],
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'a'.repeat(20001) }],
+        },
+      ],
+    },
+  ])
+    expect(
+      (
+        await request('/api/manage/manual-invoices', 'POST', {
+          ...body,
+          requestId: crypto.randomUUID(),
+          body: unsafe,
+        })
+      ).status,
+    ).toBe(422);
+  const edited = await request(
+    `/api/manage/manual-invoices/${saved.id}`,
+    'PUT',
+    {
+      ...manualFields.strip().parse(body),
+      title: 'Updated letter',
+      revision: 1,
+    },
+  );
+  expect(edited.status).toBe(200);
+  expect(
+    z.object({ item: manualSchema }).parse(await edited.json()).item.body,
+  ).toEqual(saved.body);
+  expect(
+    await fixture.env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM payments) AS payments,(SELECT COUNT(*) FROM expenses) AS expenses,(SELECT COUNT(*) FROM settlements) AS invoices',
+    ).first(),
+  ).toEqual(before);
+}, 15000);
 beforeAll(async () => {
   fixture = await testEnvironment();
   expect(
@@ -324,7 +661,7 @@ it('deletes only unused brands and preserves every kind of linked record', async
         .first(),
     ).not.toBeNull();
   }
-});
+}, 15000);
 
 it('stores Pathao collectable and collected separately, refreshes collection outcomes, and rejects cross-courier overwrites atomically', async () => {
   const brandId = await brand('Pathao integration');

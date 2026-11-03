@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { letterDocument, letterText } from './letter';
 import {
   assertMoney,
   sumMoney,
@@ -11,6 +12,8 @@ export const manualFields = z
     recipient: z.string().trim().max(200),
     notes: z.string().trim().max(2000),
     stamp: z.enum(['Paid', 'Unpaid', 'Due']).nullable().default(null),
+    kind: z.enum(['itemized', 'letter']).default('itemized'),
+    body: letterDocument.nullable().default(null),
     lines: z
       .array(
         z
@@ -21,17 +24,50 @@ export const manualFields = z
           })
           .strict(),
       )
-      .min(1)
-      .max(50),
+      .max(50)
+      .default([]),
   })
-  .strict();
+  .strict()
+  .superRefine((doc, ctx) => {
+    if (doc.kind === 'itemized') {
+      if (!doc.lines.length)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lines'],
+          message: 'Add at least one item.',
+        });
+      if (doc.body !== null)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['body'],
+          message: 'Itemized invoices cannot contain a letter.',
+        });
+    } else {
+      if (
+        !doc.body ||
+        !letterText(doc.body).trim() ||
+        letterText(doc.body).length > 20000
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['body'],
+          message: 'Enter a letter of up to 20,000 characters.',
+        });
+      if (doc.lines.length || doc.stamp !== null || doc.notes)
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            'Letters cannot include invoice items, payment stamps or separate invoice notes.',
+        });
+    }
+  });
 export const companySchema = z.object({
   companyName: z.string(),
   address: z.string(),
   phone: z.string(),
   email: z.string(),
 });
-export const manualSchema = manualFields.extend({
+export const manualSchema = manualFields.safeExtend({
   id: z.string(),
   number: z.string(),
   revision: z.number().int(),
@@ -40,14 +76,15 @@ export const manualSchema = manualFields.extend({
 });
 export const manualListSchema = z.object({
   items: z.array(
-    manualSchema.pick({
-      id: true,
-      number: true,
-      date: true,
-      title: true,
-      recipient: true,
-      total: true,
-      revision: true,
+    z.object({
+      id: z.string(),
+      number: z.string(),
+      date: z.string(),
+      title: z.string(),
+      recipient: z.string(),
+      total: z.number().int(),
+      revision: z.number().int(),
+      kind: z.enum(['itemized', 'letter']).default('itemized'),
     }),
   ),
   next: z.object({ before: z.string(), beforeId: z.string() }).nullable(),

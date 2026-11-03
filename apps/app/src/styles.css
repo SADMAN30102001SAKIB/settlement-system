@@ -774,6 +774,83 @@ strong {
   gap: 12px;
   align-items: center;
 }
+.challan-heading {
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: start;
+}
+.challan-heading > div:first-child {
+  flex: 1 1 240px;
+}
+.challan-panel output {
+  display: block;
+  padding: 12px 0;
+  font-weight: 700;
+}
+.letter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.letter-toolbar label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.letter-toolbar select {
+  width: auto;
+  max-width: 140px;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+.letter-toolbar .secondary[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.letter-body,
+.letter-editor-body {
+  font-family: 'Manrope Variable', 'Noto Sans Bengali Variable', sans-serif;
+  font-size: 15px;
+  font-synthesis: style;
+  line-height: 1.8;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.letter-editor-body {
+  background: #fff;
+  color: #172e28;
+  min-height: 300px;
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  outline-offset: 3px;
+}
+.letter-body {
+  padding: 24px 0;
+}
+.letter-body p,
+.letter-editor-body p {
+  margin: 0;
+  min-height: 1.8em;
+}
+.letter-body strong,
+.letter-editor-body strong {
+  font-weight: 750;
+}
+.letter-body u,
+.letter-editor-body u {
+  text-decoration: underline;
+}
+.letter-body s,
+.letter-editor-body s {
+  text-decoration: line-through;
+}
 .brand-row.document-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }

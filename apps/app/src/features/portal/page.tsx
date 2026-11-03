@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccountRefresh } from '../../lib/account-refresh';
+import { Challans } from '../payments/challans';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 import {
@@ -376,6 +377,14 @@ function BrandDashboard({ brand }: { brand: NonNullable<BrandSession> }) {
           onClose={() => {
             setSelected(null);
           }}
+        />
+      ) : null}
+      {kind === 'receipts' ? (
+        <Challans
+          brandId={brand.id}
+          brandName={brand.name}
+          revision={summaryRevision}
+          readOnly
         />
       ) : null}
     </main>

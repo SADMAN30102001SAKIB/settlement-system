@@ -155,9 +155,10 @@ export const catalogRoutes = new Hono<AppEnvironment>()
       AND NOT EXISTS (SELECT 1 FROM payment_receipts WHERE brand_id = ?)
       AND NOT EXISTS (SELECT 1 FROM payments WHERE brand_id = ?)
       AND NOT EXISTS (SELECT 1 FROM notes WHERE brand_id = ?)
-      AND NOT EXISTS (SELECT 1 FROM brand_advances WHERE brand_id = ?) RETURNING id`,
+      AND NOT EXISTS (SELECT 1 FROM brand_advances WHERE brand_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM delivery_challans WHERE brand_id = ?) RETURNING id`,
     )
-      .bind(key, key, key, key, key, key, key, key, key)
+      .bind(key, key, key, key, key, key, key, key, key, key)
       .first<{ id: string }>();
     if (!deleted) {
       const existing = await context.env.DB.prepare(
@@ -167,7 +168,7 @@ export const catalogRoutes = new Hono<AppEnvironment>()
         .first<{ id: string }>();
       throw new HTTPException(existing ? 409 : 404, {
         message: existing
-          ? 'This brand has linked orders, advertising budgets, invoices, payments or notes. Resolve those records before deleting the brand. Nothing has been deleted.'
+          ? 'This brand has linked orders, advertising budgets, invoices, payments, notes or delivery challans. Resolve those records before deleting the brand. Nothing has been deleted.'
           : 'Brand not found.',
       });
     }

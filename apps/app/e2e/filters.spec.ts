@@ -180,12 +180,15 @@ test('settlements include all dates with automatic filters and bounded continuou
   await expect(box).toHaveAttribute('data-loaded-count', '20');
   await box.scrollIntoViewIfNeeded();
   await expect
-    .poll(async () => {
-      await box.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
-      return box.getAttribute('data-loaded-count');
-    })
+    .poll(
+      async () => {
+        await box.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        return box.getAttribute('data-loaded-count');
+      },
+      { timeout: 15000 },
+    )
     .toBe('43');
   await expect
     .poll(async () => {

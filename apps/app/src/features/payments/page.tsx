@@ -23,6 +23,7 @@ import {
 import { dateLabel, money } from '../../lib/format';
 import { ReceiptComposer } from './composer';
 import { Advances } from './advances';
+import { Challans } from './challans';
 import { ReceiptView } from './receipt';
 import { StatusSelect } from '../../components/status-select';
 import { receiptStampStatus } from '../../../shared/receipts';
@@ -508,6 +509,12 @@ export function Payments({
             )}
           </section>
           <PriorPayments key={account.version} brandId={brandId} />
+          <Challans
+            key={`challans-${brandId}`}
+            brandId={brandId}
+            brandName={account.brandName}
+            revision={version}
+          />
         </>
       )}
     </div>

@@ -422,6 +422,7 @@ test('admin provisions brand access and owners can only view and export their th
       401,
     );
     await page.goto('/brands');
+    await showBrand(page, name);
     await row
       .getByRole('button', { name: 'Login access', exact: true })
       .click();

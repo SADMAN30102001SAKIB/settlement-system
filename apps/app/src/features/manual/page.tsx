@@ -23,6 +23,12 @@ import { ScrollList, VirtualItems } from '../../components/scroll-list';
 import { Alert, ErrorMessage, Field, PageHeading } from '../../components/ui';
 import { DocumentPaper } from '../../components/document-paper';
 import { downloadDocument } from '../../lib/pdf';
+import { LetterEditor } from './letter-editor';
+import type { JSONContent } from '@tiptap/react';
+const emptyLetter: JSONContent = {
+  type: 'doc',
+  content: [{ type: 'paragraph' }],
+};
 
 type Invoice = z.infer<typeof manualSchema>;
 export function ManualInvoices({ settings }: { settings: Settings }) {
@@ -34,6 +40,8 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
     { description: '', quantity: '1', price: '' },
   ]);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [kind, setKind] = useState<'itemized' | 'letter'>('itemized');
+  const [letterBody, setBody] = useState<JSONContent>(emptyLetter);
   const [pending, setPending] = useState(false),
     [error, setError] = useState('');
   const paper = useRef<HTMLDivElement>(null);
@@ -45,6 +53,8 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
   );
   function edit(item: Invoice | null) {
     setEditing(item);
+    setKind(item?.kind ?? 'itemized');
+    setBody(item?.body ?? emptyLetter);
     setError('');
     setLines(
       item
@@ -114,7 +124,7 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
       <PageHeading
         eyebrow="DOCUMENTS / MANUAL INVOICES"
         title="Make an invoice"
-        description="Standalone budgets and itemized invoices. These do not change brand balances or record payments."
+        description="Standalone itemized invoices and letters. These do not change brand balances or record payments."
         action={
           <button
             className="primary"
@@ -145,7 +155,11 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                       {dateLabel(item.date)} · {item.title}
                     </small>
                     <small>{item.recipient}</small>
-                    <strong>{money(item.total)}</strong>
+                    {item.kind === 'itemized' ? (
+                      <strong>{money(item.total)}</strong>
+                    ) : (
+                      <small>Letter document</small>
+                    )}
                   </div>
                   <div className="actions">
                     <button
@@ -209,16 +223,22 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
               setError('');
               try {
                 const body = manualFields.parse({
+                  kind,
+                  body: kind === 'letter' ? letterBody : null,
                   date: formText(data, 'date'),
                   title: formText(data, 'title'),
                   recipient: formText(data, 'recipient'),
-                  notes: formText(data, 'notes'),
-                  stamp: formText(data, 'stamp') || null,
-                  lines: lines.map((line) => ({
-                    description: line.description,
-                    quantityMilli: parseMoney(line.quantity),
-                    price: parseMoney(line.price),
-                  })),
+                  notes: kind === 'letter' ? '' : formText(data, 'notes'),
+                  stamp:
+                    kind === 'letter' ? null : formText(data, 'stamp') || null,
+                  lines:
+                    kind === 'letter'
+                      ? []
+                      : lines.map((line) => ({
+                          description: line.description,
+                          quantityMilli: parseMoney(line.quantity),
+                          price: parseMoney(line.price),
+                        })),
                 });
                 api(
                   `/manage/manual-invoices${editing ? `/${editing.id}` : ''}`,
@@ -245,11 +265,27 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                     setPending(false);
                   });
               } catch (e) {
-                setError(ErrorMessage(e));
+                setError(
+                  e instanceof z.ZodError
+                    ? (e.issues[0]?.message ?? 'Check the document fields.')
+                    : ErrorMessage(e),
+                );
                 setPending(false);
               }
             }}
           >
+            <Field label="Document type">
+              <select
+                value={kind}
+                disabled={pending}
+                onChange={(e) => {
+                  setKind(e.target.value === 'letter' ? 'letter' : 'itemized');
+                }}
+              >
+                <option value="itemized">Itemized invoice</option>
+                <option value="letter">Letter document</option>
+              </select>
+            </Field>
             <div className="form-grid">
               <Field label="Document title">
                 <input
@@ -274,99 +310,113 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                   defaultValue={editing?.recipient ?? ''}
                 />
               </Field>
-              <Field label="Document stamp">
-                <select name="stamp" defaultValue={editing?.stamp ?? ''}>
-                  <option value="">No stamp</option>
-                  {['Paid', 'Unpaid', 'Due'].map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
+              {kind === 'itemized' ? (
+                <Field label="Document stamp">
+                  <select name="stamp" defaultValue={editing?.stamp ?? ''}>
+                    <option value="">No stamp</option>
+                    {['Paid', 'Unpaid', 'Due'].map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </Field>
+              ) : null}
             </div>
-            <h2>Items</h2>
-            {lines.map((line, index) => (
-              <div className="manual-line" key={index}>
-                <Field label={`Item ${String(index + 1)}`}>
-                  <input
-                    required
-                    maxLength={200}
-                    value={line.description}
-                    onChange={(e) => {
-                      setLines((current) =>
-                        current.map((v, i) =>
-                          i === index
-                            ? { ...v, description: e.target.value }
-                            : v,
-                        ),
-                      );
-                    }}
-                  />
-                </Field>
-                <Field label={`Quantity ${String(index + 1)}`}>
-                  <input
-                    inputMode="decimal"
-                    required
-                    value={line.quantity}
-                    onChange={(e) => {
-                      setLines((current) =>
-                        current.map((v, i) =>
-                          i === index ? { ...v, quantity: e.target.value } : v,
-                        ),
-                      );
-                    }}
-                  />
-                </Field>
-                <Field label={`Unit price ${String(index + 1)} (৳)`}>
-                  <input
-                    inputMode="decimal"
-                    required
-                    value={line.price}
-                    onChange={(e) => {
-                      setLines((current) =>
-                        current.map((v, i) =>
-                          i === index ? { ...v, price: e.target.value } : v,
-                        ),
-                      );
-                    }}
-                  />
-                </Field>
-                <button
-                  type="button"
-                  className="secondary compact danger-text"
-                  disabled={lines.length === 1 || pending}
-                  onClick={() => {
-                    setLines((current) =>
-                      current.filter((_, i) => i !== index),
-                    );
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <div className="actions">
-              <button
-                type="button"
-                className="secondary"
-                disabled={lines.length >= 50 || pending}
-                onClick={() => {
-                  setLines((current) => [
-                    ...current,
-                    { description: '', quantity: '1', price: '' },
-                  ]);
-                }}
-              >
-                Add item
-              </button>
-              <strong>Total {total}</strong>
-            </div>
-            <Field label="Notes (optional)">
-              <textarea
-                name="notes"
-                maxLength={2000}
-                defaultValue={editing?.notes ?? ''}
+            {kind === 'letter' ? (
+              <LetterEditor
+                value={letterBody}
+                onChange={setBody}
+                disabled={pending}
               />
-            </Field>
+            ) : (
+              <>
+                <h2>Items</h2>
+                {lines.map((line, index) => (
+                  <div className="manual-line" key={index}>
+                    <Field label={`Item ${String(index + 1)}`}>
+                      <input
+                        required
+                        maxLength={200}
+                        value={line.description}
+                        onChange={(e) => {
+                          setLines((current) =>
+                            current.map((v, i) =>
+                              i === index
+                                ? { ...v, description: e.target.value }
+                                : v,
+                            ),
+                          );
+                        }}
+                      />
+                    </Field>
+                    <Field label={`Quantity ${String(index + 1)}`}>
+                      <input
+                        inputMode="decimal"
+                        required
+                        value={line.quantity}
+                        onChange={(e) => {
+                          setLines((current) =>
+                            current.map((v, i) =>
+                              i === index
+                                ? { ...v, quantity: e.target.value }
+                                : v,
+                            ),
+                          );
+                        }}
+                      />
+                    </Field>
+                    <Field label={`Unit price ${String(index + 1)} (৳)`}>
+                      <input
+                        inputMode="decimal"
+                        required
+                        value={line.price}
+                        onChange={(e) => {
+                          setLines((current) =>
+                            current.map((v, i) =>
+                              i === index ? { ...v, price: e.target.value } : v,
+                            ),
+                          );
+                        }}
+                      />
+                    </Field>
+                    <button
+                      type="button"
+                      className="secondary compact danger-text"
+                      disabled={lines.length === 1 || pending}
+                      onClick={() => {
+                        setLines((current) =>
+                          current.filter((_, i) => i !== index),
+                        );
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={lines.length >= 50 || pending}
+                    onClick={() => {
+                      setLines((current) => [
+                        ...current,
+                        { description: '', quantity: '1', price: '' },
+                      ]);
+                    }}
+                  >
+                    Add item
+                  </button>
+                  <strong>Total {total}</strong>
+                </div>
+                <Field label="Notes (optional)">
+                  <textarea
+                    name="notes"
+                    maxLength={2000}
+                    defaultValue={editing?.notes ?? ''}
+                  />
+                </Field>
+              </>
+            )}
             {error ? <Alert>{error}</Alert> : null}
             <button className="primary" disabled={pending}>
               {pending ? 'Saving…' : 'Save invoice'}

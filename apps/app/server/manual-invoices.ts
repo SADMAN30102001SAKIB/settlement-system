@@ -33,7 +33,7 @@ export const manualRoutes = new Hono<AppEnvironment>()
       .refine((q) => !!q.before === !!q.beforeId)
       .parse(c.req.query());
     const result = await c.env.DB.prepare(
-      `SELECT id,number,date,title,recipient,total,revision FROM manual_invoices ${q.before && q.beforeId ? 'WHERE date<? OR (date=? AND id<?)' : ''} ORDER BY date DESC,id DESC LIMIT 21`,
+      `SELECT id,number,date,title,recipient,total,revision,COALESCE(json_extract(data,'$.kind'),'itemized') AS kind FROM manual_invoices ${q.before && q.beforeId ? 'WHERE date<? OR (date=? AND id<?)' : ''} ORDER BY date DESC,id DESC LIMIT 21`,
     )
       .bind(...(q.before && q.beforeId ? [q.before, q.before, q.beforeId] : []))
       .all<{ id: string; date: string }>();

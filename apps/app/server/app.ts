@@ -21,6 +21,7 @@ import { checklistRoutes } from './catalog/checklist';
 import { costCorrectionRoutes } from './catalog/cost-correction';
 import { advanceRoutes } from './receipts/advances';
 import { manualRoutes } from './manual-invoices';
+import { challanRoutes } from './challans';
 
 export const app = new Hono<AppEnvironment>()
   .use('/api/*', secureHeaders())
@@ -69,6 +70,7 @@ export const app = new Hono<AppEnvironment>()
   .route('/api/manage/brand-costs', costCorrectionRoutes)
   .route('/api/manage/advances', advanceRoutes)
   .route('/api/manage/manual-invoices', manualRoutes)
+  .route('/api/manage/challans', challanRoutes)
   .route('/api/manage', catalogRoutes)
   .route('/api/manage/settlements', settlementRoutes)
   .route('/api/manage/payments', paymentRoutes)

@@ -32,6 +32,27 @@ export async function downloadDocument(
             'tr, .invoice-footer, .invoice-final, section h2',
           ),
         ].map((node) => node.getBoundingClientRect().top - top);
+        const letter = invoice.querySelector('.letter-body');
+        if (letter) {
+          const walker = cloned.createTreeWalker(letter, NodeFilter.SHOW_TEXT);
+          const rectangles: { top: number; bottom: number }[] = [];
+          while (walker.nextNode()) {
+            const range = cloned.createRange();
+            range.selectNodeContents(walker.currentNode);
+            for (const rect of range.getClientRects())
+              if (rect.height)
+                rectangles.push({ top: rect.top, bottom: rect.bottom });
+          }
+          const lines: { top: number; bottom: number }[] = [];
+          for (const rect of rectangles.sort((a, b) => a.top - b.top)) {
+            const last = lines.at(-1);
+            if (last && rect.top < last.bottom)
+              last.bottom = Math.max(last.bottom, rect.bottom);
+            else lines.push({ ...rect });
+          }
+          rowEdges.push(...lines.map((line) => line.bottom - top + 2));
+          rowEdges.sort((a, b) => a - b);
+        }
       }
     },
   });

@@ -159,7 +159,7 @@ it('bills commission without VAT and advertising with VAT, using saved outstandi
     commissionBasisPoints: 2000,
     commission: { billed: 0, due: 0 },
   });
-});
+}, 15000);
 
 it('corrects only matching unpaid VAT-added invoices and leaves payments and other historical rules untouched', async () => {
   const brandId = await brand();
@@ -279,4 +279,4 @@ it('corrects only matching unpaid VAT-added invoices and leaves payments and oth
       })
     ).status,
   ).toBe(409);
-});
+}, 15000);

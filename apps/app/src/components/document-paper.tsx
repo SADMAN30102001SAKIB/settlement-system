@@ -4,6 +4,8 @@ import type { companySchema } from '../../shared/manual-invoices';
 import { lineTotal } from '../../shared/manual-invoices';
 import { dateLabel, money, amountInput } from '../lib/format';
 import { InvoiceStamp } from './invoice-stamp';
+import type { LetterDocument } from '../../shared/letter';
+import { LetterBody } from './letter-body';
 export function DocumentPaper({
   title,
   number,
@@ -16,6 +18,8 @@ export function DocumentPaper({
   company = settings,
   fileBase = '/api/manage/files',
   stamp = null,
+  kind = 'itemized',
+  body = null,
 }: {
   title: string;
   number: string;
@@ -28,6 +32,8 @@ export function DocumentPaper({
   company?: z.infer<typeof companySchema>;
   fileBase?: string;
   stamp?: 'Paid' | 'Unpaid' | 'Due' | null;
+  kind?: 'itemized' | 'letter';
+  body?: LetterDocument | null;
 }) {
   return (
     <article className="invoice-document">
@@ -55,7 +61,7 @@ export function DocumentPaper({
           <strong>{number}</strong>
           <p>{recipient}</p>
         </div>
-        {stamp ? (
+        {stamp && kind !== 'letter' ? (
           <InvoiceStamp
             settings={settings}
             fileBase={fileBase}
@@ -67,34 +73,42 @@ export function DocumentPaper({
           <strong>{dateLabel(date)}</strong>
         </div>
       </div>
-      <section>
-        <h2>{title}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th className="numeric">Quantity</th>
-              <th className="numeric">Unit price</th>
-              <th className="numeric">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, index) => (
-              <tr key={index}>
-                <td>{line.description}</td>
-                <td className="numeric">{amountInput(line.quantityMilli)}</td>
-                <td className="numeric">{money(line.price)}</td>
-                <td className="numeric">{money(lineTotal(line))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-      <div className="invoice-final">
-        <span>Total</span>
-        <strong>{money(total)}</strong>
-      </div>
-      {notes ? <p className="receipt-note">{notes}</p> : null}
+      {kind === 'letter' && body ? (
+        <LetterBody body={body} />
+      ) : (
+        <>
+          <section>
+            <h2>{title}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="numeric">Quantity</th>
+                  <th className="numeric">Unit price</th>
+                  <th className="numeric">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, index) => (
+                  <tr key={index}>
+                    <td>{line.description}</td>
+                    <td className="numeric">
+                      {amountInput(line.quantityMilli)}
+                    </td>
+                    <td className="numeric">{money(line.price)}</td>
+                    <td className="numeric">{money(lineTotal(line))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <div className="invoice-final">
+            <span>Total</span>
+            <strong>{money(total)}</strong>
+          </div>
+          {notes ? <p className="receipt-note">{notes}</p> : null}
+        </>
+      )}
       <footer className="invoice-footer">
         <p>Prepared by {company.companyName}</p>
         <div className="signature-line">
