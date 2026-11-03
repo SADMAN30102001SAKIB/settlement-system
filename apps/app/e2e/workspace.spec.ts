@@ -431,6 +431,9 @@ test('brand payments split commission and ads into immutable receipts and suppor
   ).toContainText('07');
   await expect(
     navigation.getByRole('link', { name: /Private files/ }),
+  ).toContainText('09');
+  await expect(
+    navigation.getByRole('link', { name: /Make invoice/ }),
   ).toContainText('08');
   if (testInfo.project.name === 'mobile')
     await navigation.getByRole('link', { name: /Payments/ }).click();

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './app';
 import { ConfirmationProvider } from './components/confirmation-provider';
+import { AssetLoadRecovery } from './components/asset-load-recovery';
 import { applyTheme, readTheme } from './lib/theme';
 import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/manrope';
@@ -29,6 +30,7 @@ document.addEventListener(
 createRoot(root).render(
   <StrictMode>
     <ConfirmationProvider>
+      <AssetLoadRecovery />
       <App />
     </ConfirmationProvider>
   </StrictMode>,

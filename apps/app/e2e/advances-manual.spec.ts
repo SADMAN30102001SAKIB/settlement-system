@@ -293,6 +293,45 @@ test('manual invoice editing, fractional quantities, PDF and deletion stay indep
   await expect(form).toHaveCount(0);
   const preview = page.getByRole('dialog', { name: 'Manual invoice preview' });
   await expect(preview.locator('.invoice-final')).toContainText('৳250.00');
+  const number = await preview
+    .locator('.invoice-meta strong')
+    .first()
+    .innerText();
+  const pdfModule = /\/jspdf[^/]*\.js(?:\?.*)?$/;
+  await page.route(pdfModule, async (route) => {
+    await route.fulfill({
+      status: 410,
+      contentType: 'text/plain',
+      body: 'Old deployment asset removed',
+    });
+  });
+  await preview
+    .getByRole('button', { name: 'Download PDF', exact: true })
+    .click();
+  const recovery = page.getByRole('alertdialog', { name: 'Reload required' });
+  await expect(recovery).toContainText('Save any unsaved entries');
+  await recovery.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole('alert')).toContainText(
+    'PDF tools could not load',
+  );
+  await expect(preview.getByRole('alert')).not.toContainText('/assets/');
+  await preview
+    .getByRole('button', { name: 'Download PDF', exact: true })
+    .click();
+  await expect(recovery).toBeVisible();
+  await page.unroute(pdfModule);
+  await recovery
+    .getByRole('button', { name: 'Reload app', exact: true })
+    .click();
+  const restoredRow = page
+    .getByRole('region', { name: 'Manual invoices' })
+    .locator('.brand-row')
+    .filter({ hasText: number });
+  await restoredRow
+    .getByRole('button', { name: 'View / PDF', exact: true })
+    .click();
+  await expect(preview.locator('.invoice-final')).toContainText('৳250.00');
   const download = page.waitForEvent('download');
   await preview
     .getByRole('button', { name: 'Download PDF', exact: true })

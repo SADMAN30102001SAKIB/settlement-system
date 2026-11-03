@@ -6,7 +6,13 @@ export async function downloadDocument(
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
     import('jspdf'),
-  ]);
+  ]).catch((cause: unknown) => {
+    window.dispatchEvent(new Event('pdf:loadError'));
+    throw new Error(
+      'PDF tools could not load. Reload the app and try again, or use Print. Your saved invoices have not changed.',
+      { cause },
+    );
+  });
   await document.fonts.ready;
   let rowEdges: number[] = [];
   const canvas = await html2canvas(element, {
