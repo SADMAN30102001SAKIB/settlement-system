@@ -12,6 +12,7 @@ import { CatalogDialog } from '../../components/catalog-dialog';
 import { ScrollList, VirtualItems } from '../../components/scroll-list';
 import { DocumentPaper } from '../../components/document-paper';
 import { downloadDocument } from '../../lib/pdf';
+import { useConfirmation } from '../../components/confirmation-context';
 type Advance = z.infer<typeof advanceSchema>;
 export function Advances({
   brandId,
@@ -42,6 +43,33 @@ export function Advances({
   const [error, setError] = useState(''),
     [pending, setPending] = useState(false);
   const paper = useRef<HTMLDivElement>(null);
+  const confirm = useConfirmation();
+  async function remove(item: Advance) {
+    if (
+      !(await confirm({
+        title: 'Delete advance payment?',
+        message: `Permanently delete ${money(item.amount)} from ${dateLabel(item.date)}? ${item.reversedAt === null ? 'This removes the deposit from available advance and total money received. Credit already applied to invoices must be restored first.' : 'This advance is already reversed, so balances will not change.'} This cannot be undone.`,
+        action: 'Delete advance',
+        destructive: true,
+      }))
+    )
+      return;
+    setPending(true);
+    setError('');
+    try {
+      await api(`/manage/advances/${item.id}`, okSchema, {
+        method: 'DELETE',
+        body: { version },
+      });
+      setView(null);
+      list.refresh();
+      onSaved?.();
+    } catch (reason) {
+      setError(ErrorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  }
   return (
     <section className="panel advance-panel">
       <div className="section-heading">
@@ -104,6 +132,19 @@ export function Advances({
                       }}
                     >
                       Reverse
+                    </button>
+                  ) : null}
+                  {!readOnly ? (
+                    <button
+                      className="secondary compact danger-text"
+                      disabled={pending}
+                      onClick={() => {
+                        remove(item).catch((reason: unknown) => {
+                          setError(ErrorMessage(reason));
+                        });
+                      }}
+                    >
+                      Delete
                     </button>
                   ) : null}
                 </div>

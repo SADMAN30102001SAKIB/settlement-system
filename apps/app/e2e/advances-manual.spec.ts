@@ -120,7 +120,27 @@ test('brand advances fund commission and ads without double counting and remain 
   await page.goto(`/payments/brand/${brand.id}`);
   await expect(metric('Available advance')).toContainText('৳1,000.00');
   await expect(metric('Total money received')).toContainText('৳2,500.00');
-  await expect(metric('Total paid toward invoices')).toContainText('৳1,500.00');
+  await expect(metric('Total due')).toContainText('৳1,100.00');
+  const history = page.getByRole('region', { name: 'Advance payment history' });
+  await history.screenshot({
+    path: info.outputPath('advance-delete-actions.png'),
+  });
+  await history.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete advance', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Reverse enough credit-payment receipts first',
+  );
+  const receiptNumber = z
+    .object({ item: z.object({ number: z.string() }) })
+    .parse(
+      await (
+        await page.request.get(`/api/manage/receipts/${receiptId}`)
+      ).json(),
+    ).item.number;
+  await expect(page.getByRole('alert')).toContainText(receiptNumber);
   const username = `advance-${crypto.randomUUID().slice(0, 8)}`,
     password = 'brand advance secure password';
   expect(
@@ -155,6 +175,16 @@ test('brand advances fund commission and ads without double counting and remain 
     owner.getByRole('region', { name: 'Advance payment history' }),
   ).toContainText('৳2,500.00');
   await expect(
+    owner
+      .locator('.metric')
+      .filter({ has: owner.getByText('Total due', { exact: true }) }),
+  ).toContainText('৳1,100.00');
+  await expect(
+    owner
+      .getByRole('region', { name: 'Advance payment history' })
+      .getByRole('button', { name: 'Delete', exact: true }),
+  ).toHaveCount(0);
+  await expect(
     owner.getByRole('button', { name: 'Record advance', exact: true }),
   ).toHaveCount(0);
   expect(
@@ -168,7 +198,6 @@ test('brand advances fund commission and ads without double counting and remain 
     (await owner.request.get('/api/manage/manual-invoices')).status(),
   ).toBe(401);
   await ownerContext.close();
-  const history = page.getByRole('region', { name: 'Advance payment history' });
   await history.getByRole('button', { name: 'Reverse', exact: true }).click();
   const reverse = page.getByRole('dialog', { name: 'Reverse advance payment' });
   await reverse.getByLabel('Reversal reason').fill('Mistaken advance entry');
@@ -196,6 +225,34 @@ test('brand advances fund commission and ads without double counting and remain 
   await reverse.getByLabel('Reversal reason').fill('Mistaken advance entry');
   await reverse.getByRole('button', { name: 'Confirm reversal' }).click();
   await expect(reverse).toHaveCount(0);
+  await expect(metric('Available advance')).toContainText('৳0.00');
+  await expect(metric('Total money received')).toContainText('৳0.00');
+  await history.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete advance', exact: true })
+    .click();
+  await expect(history).not.toContainText('Reversed');
+  await page
+    .getByRole('button', { name: 'Record advance', exact: true })
+    .click();
+  await modal.getByLabel('Advance amount (৳)').fill('100');
+  await modal
+    .getByRole('button', { name: 'Save advance', exact: true })
+    .click();
+  await expect(modal).toHaveCount(0);
+  await expect(metric('Available advance')).toContainText('৳100.00');
+  await history.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  await expect(metric('Available advance')).toContainText('৳100.00');
+  await history.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete advance', exact: true })
+    .click();
   await expect(metric('Available advance')).toContainText('৳0.00');
   await expect(metric('Total money received')).toContainText('৳0.00');
   for (const width of [320, 768, 1280]) {

@@ -97,6 +97,14 @@ export const app = new Hono<AppEnvironment>()
       cause = cause.cause;
     }
     const databaseMessage = causes.join(' ');
+    if (databaseMessage.includes('ADVANCE_REQUEST_DELETED'))
+      return context.json(
+        {
+          error:
+            'This advance request was deleted. Reload before recording a new advance.',
+        },
+        409,
+      );
     if (databaseMessage.includes('ADVANCE_IN_USE'))
       return context.json(
         {

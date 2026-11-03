@@ -31,6 +31,69 @@ export async function listAdvances(
   };
 }
 export const advanceRoutes = new Hono<AppEnvironment>()
+  .delete('/:id', async (c) => {
+    const key = id.parse(c.req.param('id'));
+    const input = z
+      .object({ version: z.number().int().nonnegative() })
+      .strict()
+      .parse(await c.req.json<unknown>());
+    const row = await c.env.DB.prepare(
+      `SELECT a.brand_id AS brandId,a.amount,a.reversed_at AS reversedAt,b.payment_version AS version,
+      (SELECT COALESCE(SUM(amount),0) FROM brand_advances WHERE brand_id=a.brand_id AND reversed_at IS NULL)
+      -(SELECT COALESCE(SUM(advance_amount),0) FROM payment_receipts WHERE brand_id=a.brand_id AND reversed_at IS NULL) AS available
+      FROM brand_advances a JOIN brands b ON b.id=a.brand_id WHERE a.id=?`,
+    )
+      .bind(key)
+      .first<{
+        brandId: string;
+        amount: number;
+        reversedAt: number | null;
+        version: number;
+        available: number;
+      }>();
+    if (!row) {
+      if (
+        await c.env.DB.prepare(
+          'SELECT id FROM deleted_advance_requests WHERE id=?',
+        )
+          .bind(key)
+          .first()
+      )
+        return c.json({ ok: true });
+      throw new HTTPException(404, { message: 'Advance not found.' });
+    }
+    if (row.version !== input.version)
+      throw new HTTPException(409, {
+        message:
+          'This account changed. Reload balances before deleting the advance.',
+      });
+    if (row.reversedAt === null && row.amount > row.available) {
+      const receipts = await c.env.DB.prepare(
+        'SELECT number FROM payment_receipts WHERE brand_id=? AND advance_amount>0 AND reversed_at IS NULL ORDER BY date DESC,id DESC LIMIT 11',
+      )
+        .bind(row.brandId)
+        .all<{ number: string }>();
+      throw new HTTPException(409, {
+        message: `This advance cannot be deleted because there is insufficient unused credit. Advance credit is pooled for this brand. Reverse enough credit-payment receipts first: ${receipts.results
+          .slice(0, 10)
+          .map((r) => r.number)
+          .join(
+            ', ',
+          )}${receipts.results.length > 10 ? ' (more in Payment receipts)' : ''}. Then reload balances and retry.`,
+      });
+    }
+    const deleted = await c.env.DB.prepare(
+      'DELETE FROM brand_advances WHERE id=? AND (SELECT payment_version FROM brands WHERE id=brand_id)=? RETURNING id',
+    )
+      .bind(key, input.version)
+      .first();
+    if (!deleted)
+      throw new HTTPException(409, {
+        message:
+          'This account changed. Reload balances before deleting the advance.',
+      });
+    return c.json({ ok: true });
+  })
   .get('/', async (c) => {
     const q = z
       .object({ brandId: id, before: date.optional(), beforeId: id.optional() })

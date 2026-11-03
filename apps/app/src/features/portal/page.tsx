@@ -182,8 +182,8 @@ function PaymentSummary({ revision }: { revision: number }) {
             value={money(item.advance.balance)}
           />
           <Metric
-            label="Total paid toward invoices"
-            value={money(item.totalPaid)}
+            label="Total due"
+            value={money(item.commission.due + item.ads.due)}
           />
           <Metric
             label="Total money received"

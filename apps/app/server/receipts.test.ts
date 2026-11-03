@@ -821,6 +821,120 @@ it('records brand advances once, applies credit without new cash, and restores i
   });
 }, 15000);
 
+it('deletes unused and reversed advances without resurrecting requests or deleting funded credit', async () => {
+  const source = await seed();
+  const other = await seed();
+  const otherBefore = await account(other.brandId);
+  const deposit = {
+    requestId: crypto.randomUUID(),
+    brandId: source.brandId,
+    date: '2026-11-03',
+    amount: 2000000,
+    method: 'Cash',
+    reference: '',
+    note: 'Deletion test',
+  };
+  await request('/api/manage/advances', 'POST', deposit);
+  const current = await account(source.brandId);
+  const path = `/api/manage/advances/${deposit.requestId}`;
+  expect(
+    (await request(path, 'DELETE', { version: current.version - 1 })).status,
+  ).toBe(409);
+  expect(
+    (await request(path, 'DELETE', { version: current.version })).status,
+  ).toBe(200);
+  expect(
+    (await request(path, 'DELETE', { version: current.version })).status,
+  ).toBe(200);
+  expect((await request('/api/manage/advances', 'POST', deposit)).status).toBe(
+    409,
+  );
+  expect((await account(source.brandId)).advance.balance).toBe(0);
+  const applied = { ...deposit, requestId: crypto.randomUUID() };
+  await request('/api/manage/advances', 'POST', applied);
+  const receipt = await create({
+    ...(await inputFor(source, 1500000, 0)),
+    funding: 'advance',
+  });
+  const before = await account(source.brandId);
+  const usedPath = `/api/manage/advances/${applied.requestId}`;
+  const blocked = await request(usedPath, 'DELETE', {
+    version: before.version,
+  });
+  expect(blocked.status).toBe(409);
+  expect(await blocked.text()).toContain(receipt.number);
+  await expect(
+    fixture.env.DB.prepare('DELETE FROM brand_advances WHERE id=?')
+      .bind(applied.requestId)
+      .run(),
+  ).rejects.toThrow('ADVANCE_IN_USE');
+  expect(await account(source.brandId)).toEqual(before);
+  expect(
+    await fixture.env.DB.prepare(
+      'SELECT id FROM deleted_advance_requests WHERE id=?',
+    )
+      .bind(applied.requestId)
+      .first(),
+  ).toBeNull();
+  await request(`/api/manage/receipts/${receipt.id}/reverse`, 'POST', {
+    version: before.version,
+    reason: 'Restore applied advance',
+  });
+  const restored = await account(source.brandId);
+  expect(
+    (await request(usedPath, 'DELETE', { version: restored.version })).status,
+  ).toBe(200);
+  const reversed = { ...deposit, requestId: crypto.randomUUID() };
+  await request('/api/manage/advances', 'POST', reversed);
+  await request(`/api/manage/advances/${reversed.requestId}/reverse`, 'POST', {
+    version: (await account(source.brandId)).version,
+    reason: 'Reverse before deleting',
+  });
+  const reversedBefore = await account(source.brandId);
+  expect(
+    (
+      await request(`/api/manage/advances/${reversed.requestId}`, 'DELETE', {
+        version: reversedBefore.version,
+      })
+    ).status,
+  ).toBe(200);
+  const after = await account(source.brandId);
+  expect(after.advance).toEqual(reversedBefore.advance);
+  expect(after.totalReceived).toBe(reversedBefore.totalReceived);
+  expect(after.commission).toEqual(reversedBefore.commission);
+  expect(after.ads).toEqual(reversedBefore.ads);
+  expect(await account(other.brandId)).toEqual(otherBefore);
+  expect((await request('/api/manage/advances', 'POST', reversed)).status).toBe(
+    409,
+  );
+}, 15000);
+
+it('serializes advance deletion against concurrent invoice applications', async () => {
+  const source = await seed();
+  const id = crypto.randomUUID();
+  await request('/api/manage/advances', 'POST', {
+    requestId: id,
+    brandId: source.brandId,
+    date: '2026-11-03',
+    amount: 2000000,
+    method: 'Cash',
+    reference: '',
+    note: 'Concurrent deletion',
+  });
+  const input = { ...(await inputFor(source, 1500000, 0)), funding: 'advance' };
+  const results = await Promise.all([
+    request(`/api/manage/advances/${id}`, 'DELETE', { version: input.version }),
+    request('/api/manage/receipts', 'POST', input),
+  ]);
+  expect(results.filter((r) => r.ok)).toHaveLength(1);
+  expect(
+    results.filter((r) => !r.ok).every((r) => [409, 422].includes(r.status)),
+  ).toBe(true);
+  const current = await account(source.brandId);
+  expect(current.advance.balance).toBeGreaterThanOrEqual(0);
+  expect(current.totalReceived).toBe(results[0].ok ? 0 : 2000000);
+}, 15000);
+
 it('prevents competing advance applications from spending credit twice', async () => {
   const s = await seed();
   await request('/api/manage/advances', 'POST', {

@@ -275,7 +275,7 @@ test('admin provisions brand access and owners can only view and export their th
         summary.ads.paid,
         summary.advance.received,
         summary.advance.balance,
-        summary.totalPaid,
+        summary.commission.due + summary.ads.due,
         summary.totalReceived,
       ].map(money);
     };

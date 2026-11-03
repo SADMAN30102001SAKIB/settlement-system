@@ -325,8 +325,8 @@ export function Payments({
               value={money(account.advance.balance)}
             />
             <Metric
-              label="Total paid toward invoices"
-              value={money(account.totalPaid)}
+              label="Total due"
+              value={money(account.commission.due + account.ads.due)}
             />
             <Metric
               label="Total money received"

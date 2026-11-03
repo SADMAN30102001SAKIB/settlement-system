@@ -468,6 +468,11 @@ export const deletedReceiptRequests = sqliteTable('deleted_receipt_requests', {
   deletedAt: integer('deleted_at').notNull(),
 });
 
+export const deletedAdvanceRequests = sqliteTable('deleted_advance_requests', {
+  id: text().primaryKey(),
+  deletedAt: integer('deleted_at').notNull(),
+});
+
 export const invoiceStatuses = sqliteTable(
   'invoice_statuses',
   {
