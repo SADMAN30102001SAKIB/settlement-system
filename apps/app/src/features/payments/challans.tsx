@@ -179,11 +179,15 @@ export function Challans({
                 ) : null}
               </tr>
             ))}
+            {!list.loading && !list.error && !list.items.length ? (
+              <tr>
+                <td colSpan={readOnly ? 4 : 5}>
+                  No delivery challans recorded.
+                </td>
+              </tr>
+            ) : null}
           </VirtualBody>
         </table>
-        {!list.loading && !list.error && !list.items.length ? (
-          <p className="muted">No delivery challans recorded.</p>
-        ) : null}
       </ScrollList>
       {opened ? (
         <CatalogDialog

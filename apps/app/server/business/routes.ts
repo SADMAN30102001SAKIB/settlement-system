@@ -45,7 +45,8 @@ const orderFields = z
           ? item.status === 'Pending'
           : item.status === 'Cancelled' ||
             (item.collectedAmount > 0
-              ? item.status === 'Delivered'
+              ? item.status === 'Delivered' ||
+                item.status === 'Partial Delivered'
               : item.status === 'Pending'),
     { message: 'Pathao requires a matching collection and delivery outcome.' },
   );

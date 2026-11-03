@@ -1,9 +1,19 @@
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 import { readFileSync } from 'node:fs';
 import { paymentAccountSchema } from '../shared/receipts';
 const headers = { Origin: 'http://127.0.0.1:5174' };
+async function emptyStyle(cell: Locator) {
+  return cell.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      fontSize: style.fontSize,
+      color: style.color,
+      lineHeight: style.lineHeight,
+    };
+  });
+}
 async function login(page: Page) {
   await page.goto('/');
   await page.getByLabel('Username', { exact: true }).fill('browser-admin');
@@ -46,6 +56,32 @@ test('delivery challans support isolated CRUD, continuous history and read-only 
     );
   const before = await account();
   await page.goto(`/payments/brand/${brand.id}`);
+  const emptyChallans = page.getByText('No delivery challans recorded.', {
+    exact: true,
+  });
+  const emptyReceipts = page.getByText(
+    'No receipts recorded for this brand yet.',
+    { exact: true },
+  );
+  await expect(emptyChallans).toHaveAttribute('colspan', '5');
+  const emptyStyles = new Map<string, Awaited<ReturnType<typeof emptyStyle>>>();
+  for (const theme of ['light', 'dark']) {
+    await page.locator('html').evaluate((element, value) => {
+      element.dataset['theme'] = value;
+    }, theme);
+    await page.waitForFunction(
+      () =>
+        !document
+          .getAnimations()
+          .some((animation) => animation instanceof CSSTransition),
+    );
+    const style = await emptyStyle(emptyReceipts);
+    expect(await emptyStyle(emptyChallans)).toEqual(style);
+    emptyStyles.set(theme, style);
+  }
+  await emptyChallans.screenshot({
+    path: info.outputPath('admin-empty-challans.png'),
+  });
   await page.getByRole('button', { name: 'Add challan', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Add delivery challan' });
   await modal.getByLabel('Challan date').fill('2026-11-03');
@@ -100,6 +136,36 @@ test('delivery challans support isolated CRUD, continuous history and read-only 
     const ownHistory = owner.getByRole('region', {
       name: 'Delivery challan history',
     });
+    await expect(ownHistory).toContainText('৳525.00');
+    await owner.route('**/api/portal/challans', async (route) => {
+      await route.fulfill({ json: { items: [], next: null } });
+    });
+    await owner
+      .getByRole('button', { name: 'Refresh challans', exact: true })
+      .click();
+    const ownEmpty = ownHistory.getByText('No delivery challans recorded.', {
+      exact: true,
+    });
+    await expect(ownEmpty).toHaveAttribute('colspan', '4');
+    for (const theme of ['light', 'dark']) {
+      await owner.locator('html').evaluate((element, value) => {
+        element.dataset['theme'] = value;
+      }, theme);
+      await owner.waitForFunction(
+        () =>
+          !document
+            .getAnimations()
+            .some((animation) => animation instanceof CSSTransition),
+      );
+      expect(await emptyStyle(ownEmpty)).toEqual(emptyStyles.get(theme));
+    }
+    await ownEmpty.screenshot({
+      path: info.outputPath('brand-empty-challans.png'),
+    });
+    await owner.unroute('**/api/portal/challans');
+    await owner
+      .getByRole('button', { name: 'Refresh challans', exact: true })
+      .click();
     await expect(ownHistory).toContainText('৳525.00');
     await expect(ownHistory.getByRole('button')).toHaveCount(0);
     await expect(

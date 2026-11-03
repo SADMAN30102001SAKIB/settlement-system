@@ -28,6 +28,67 @@ const pathaoRow = [
   'Delivery',
 ];
 const pathaoMapping = importMapping(pathaoHeaders, 'pathao');
+it('maps explicit Pathao lifecycle statuses and prefers status over legacy order type', () => {
+  const headers = pathaoHeaders.map((h) =>
+    h === 'Order type' ? 'Order status' : h,
+  );
+  const mapping = importMapping(headers, 'pathao');
+  for (const [source, amount, expected] of [
+    ['Accepted', '0', 'Pending'],
+    ['Waiting for Picked', '0', 'Pending'],
+    ['Waiting for Pickup', '0', 'Pending'],
+    ['In Transit', '0', 'Pending'],
+    ['Ready for Delivery', '0', 'Pending'],
+    ['At Delivery Hub', '0', 'Pending'],
+    ['On the Way To Delivery Hub', '0', 'Pending'],
+    ['Assigned For Delivery', '0', 'Pending'],
+    ['Return In Transit', '0', 'Pending'],
+    ['Delivered', '900', 'Delivered'],
+    ['  PAID   RETURN ', '170', 'Partial Delivered'],
+    ['Return', '0', 'Cancelled'],
+  ]) {
+    const row = pathaoRow.map((v, i) =>
+      i === 7 ? (source ?? '') : i === 3 ? (amount ?? '') : v,
+    );
+    expect(
+      mapOrder(row, mapping, 'ISO', 'courier', false, false, 'pathao').status,
+    ).toBe(expected);
+  }
+  const both = importMapping([...pathaoHeaders, 'Order status'], 'pathao');
+  expect(both.status).toBe(8);
+  expect(
+    mapOrder(
+      [...pathaoRow, 'Paid Return'],
+      both,
+      'ISO',
+      'courier',
+      false,
+      false,
+      'pathao',
+    ).status,
+  ).toBe('Partial Delivered');
+  expect(importMapping([...headers, 'Order status'], 'pathao').status).toBe(-1);
+  for (const [status, amount] of [
+    ['', '900'],
+    ['Delivered', '0'],
+    ['Paid Return', '0'],
+    ['Accepted', '900'],
+    ['Unrecognized', '0'],
+  ])
+    expect(() =>
+      mapOrder(
+        pathaoRow.map((v, i) =>
+          i === 7 ? (status ?? '') : i === 3 ? (amount ?? '') : v,
+        ),
+        mapping,
+        'ISO',
+        'courier',
+        false,
+        false,
+        'pathao',
+      ),
+    ).toThrow();
+});
 function pathao(row: string[]) {
   return mapOrder(row, pathaoMapping, 'ISO', 'courier', false, false, 'pathao');
 }

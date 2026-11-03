@@ -88,7 +88,9 @@ export function importMapping(headers: readonly string[], courier: Courier) {
         ? ['order status updated at']
         : ['delivery time', 'delivery date'],
     status:
-      courier === 'pathao' ? ['order type'] : ['delivery status', 'status'],
+      courier === 'pathao'
+        ? ['order status', 'order type']
+        : ['delivery status', 'status'],
     codAmount: courier === 'pathao' ? ['collectable amount'] : ['cod amount'],
     collectedAmount: courier === 'pathao' ? ['collected amount'] : [],
     shipping: courier === 'pathao' ? ['delivery fee'] : ['shipping charge'],
@@ -96,8 +98,14 @@ export function importMapping(headers: readonly string[], courier: Courier) {
     quantity: ['quantity', 'qty', 'item quantity'],
   };
   const find = (key: keyof typeof aliases) => {
+    const names =
+      courier === 'pathao' &&
+      key === 'status' &&
+      headers.some((header) => header.trim().toLowerCase() === 'order status')
+        ? ['order status']
+        : aliases[key];
     const matches = headers.flatMap((header, index) =>
-      aliases[key].includes(header.trim().toLowerCase()) ? [index] : [],
+      names.includes(header.trim().toLowerCase()) ? [index] : [],
     );
     return matches.length === 1 ? (matches[0] ?? -1) : -1;
   };
@@ -114,11 +122,38 @@ export function importMapping(headers: readonly string[], courier: Courier) {
   };
 }
 export function pathaoStatus(orderType: string, collectedAmount: number) {
-  const type = orderType.trim().toLowerCase();
+  const type = orderType.trim().toLowerCase().replace(/\s+/g, ' ');
   if (type === 'return') return 'Cancelled';
-  if (type !== 'delivery')
-    throw new Error(`Unknown Pathao order type: ${orderType || '(empty)'}.`);
-  return collectedAmount > 0 ? 'Delivered' : 'Pending';
+  if (type === 'delivery') return collectedAmount > 0 ? 'Delivered' : 'Pending';
+  if (type === 'delivered' || type === 'paid return') {
+    if (collectedAmount <= 0)
+      throw new Error(
+        'Delivered or paid-return parcels require a positive collected amount. Check the source.',
+      );
+    return type === 'paid return' ? 'Partial Delivered' : 'Delivered';
+  }
+  if (
+    [
+      'accepted',
+      'waiting for picked',
+      'waiting for pickup',
+      'in transit',
+      'ready for delivery',
+      'at delivery hub',
+      'on the way to delivery hub',
+      'assigned for delivery',
+      'return in transit',
+    ].includes(type)
+  ) {
+    if (collectedAmount > 0)
+      throw new Error(
+        'A pending Pathao parcel has collected money. Check its source status.',
+      );
+    return 'Pending';
+  }
+  throw new Error(
+    `Unknown Pathao order status/type: ${orderType || '(empty)'}.`,
+  );
 }
 export function mapOrder(
   row: readonly string[],

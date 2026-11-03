@@ -396,7 +396,7 @@ export function Importer({
                         courier === 'pathao' && key === 'codAmount'
                           ? 'Collectable amount'
                           : courier === 'pathao' && key === 'status'
-                            ? 'Order type (Return / Delivery)'
+                            ? 'Order status / type'
                             : labels[key]
                       }
                     >

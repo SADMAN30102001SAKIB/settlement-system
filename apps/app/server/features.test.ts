@@ -741,6 +741,27 @@ it('stores Pathao collectable and collected separately, refreshes collection out
     productCost: 200000,
   });
   expect(
+    (await save([mapped('PATHAO-TEST-2', '1200', 'Paid Return')])).status,
+  ).toBe(200);
+  expect(await result()).toMatchObject({
+    deliveredQty: 1,
+    partialQty: 1,
+    pendingQty: 0,
+    deliveredAmount: 900000,
+    partialAmount: 1200000,
+    productCost: 100000,
+  });
+  expect(
+    (
+      await save([
+        {
+          ...mapped('PATHAO-TEST-2', '0'),
+          status: 'Partial Delivered',
+        },
+      ])
+    ).status,
+  ).toBe(422);
+  expect(
     (
       await request('/api/manage/business/import', 'POST', {
         brandId,
