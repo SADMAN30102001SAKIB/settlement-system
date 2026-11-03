@@ -377,9 +377,9 @@ function AdminApp() {
             ['/advertising', 'Advertising', '05'],
             ['/payments', 'Payments', '06'],
             ['/business', 'Business tracking', '07'],
-            ['/files', 'Private files', '08'],
-            ['/account', 'Account settings', '09'],
-            ['/manual-invoices', 'Make invoice', '10'],
+            ['/manual-invoices', 'Make invoice', '08'],
+            ['/files', 'Private files', '09'],
+            ['/account', 'Account settings', '10'],
           ].map(([href, label, marker]) => (
             <a
               key={href}
