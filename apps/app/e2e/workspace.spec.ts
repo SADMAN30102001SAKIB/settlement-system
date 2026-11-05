@@ -125,6 +125,156 @@ async function signIn(page: Page) {
   ).toBeVisible();
 }
 
+test('blank courier charges can be resolved without deleting orders for both couriers', async ({
+  page,
+}, info) => {
+  await signIn(page);
+  const created = await page.request.post('/api/manage/brands', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { name: `Blank charges ${crypto.randomUUID()}`, makingCost: 0 },
+  });
+  expect(created.status()).toBe(201);
+  const {
+    item: { id: brandId },
+  } = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await created.json());
+  await page.goto('/business');
+  const importer = page.locator('.importer');
+  await importer.getByLabel('Brand', { exact: true }).selectOption(brandId);
+  for (const courier of ['steadfast', 'pathao']) {
+    await importer.getByLabel('Courier', { exact: true }).selectOption(courier);
+    const ids = [
+      `ZERO-${courier}-${crypto.randomUUID()}`,
+      `BLANK-${courier}-${crypto.randomUUID()}`,
+    ];
+    const headers =
+      courier === 'pathao'
+        ? [
+            'Order consignment id',
+            'Order created at',
+            'Order status updated at',
+            'Order status',
+            'Collectable Amount',
+            'Delivery fee',
+            'Cod fee',
+            'Collected amount',
+          ]
+        : [
+            'Order ID',
+            'Order date',
+            'Delivery date',
+            'Status',
+            'COD amount',
+            'Shipping charge',
+            'COD charge',
+          ];
+    const rows = [
+      headers,
+      [
+        ids[0],
+        '2026-11-01',
+        '2026-11-02',
+        courier === 'pathao' ? 'Accepted' : 'Delivered',
+        '0',
+        '0',
+        '0',
+        ...(courier === 'pathao' ? ['0'] : []),
+      ],
+      [
+        ids[1],
+        '2026-11-01',
+        '2026-11-02',
+        'Delivered',
+        '',
+        '',
+        '',
+        ...(courier === 'pathao' ? ['100'] : []),
+      ],
+    ];
+    const file = {
+      name: `${courier}.csv`,
+      mimeType: 'text/csv',
+      buffer: Buffer.from(rows.map((row) => row.join(',')).join('\n')),
+    };
+    await importer.locator('input[type=file]').setInputFiles(file);
+    const confirm = importer.getByRole('button', {
+      name: 'Confirm & import 2 orders',
+      exact: true,
+    });
+    await expect(
+      importer.getByText('1 valid rows', { exact: false }),
+    ).toBeVisible();
+    await expect(confirm).toBeDisabled();
+    const decisions = importer.locator('.blank-decisions select');
+    await expect(decisions).toHaveCount(3);
+    for (const select of await decisions.all())
+      await select.selectOption('zero');
+    await expect(
+      importer.getByText('2 valid rows', { exact: false }),
+    ).toBeVisible();
+    await expect(confirm).toBeEnabled();
+    await importer
+      .getByRole('button', { name: 'Change source', exact: true })
+      .click();
+    await importer.locator('input[type=file]').setInputFiles(file);
+    for (const select of await decisions.all())
+      await expect(select).toHaveValue('unresolved');
+    await expect(confirm).toBeDisabled();
+    for (const select of await decisions.all())
+      await select.selectOption('zero');
+    if (courier === 'pathao') {
+      await importer
+        .getByRole('button', { name: 'Change source', exact: true })
+        .click();
+      await importer.locator('input[type=file]').setInputFiles({
+        ...file,
+        buffer: Buffer.from(
+          rows
+            .map((row, index) => (index === 2 ? [...row.slice(0, 7), ''] : row))
+            .map((row) => row.join(','))
+            .join('\n'),
+        ),
+      });
+      for (const select of await decisions.all())
+        await select.selectOption('zero');
+      await expect(confirm).toBeDisabled();
+      await expect(importer).toContainText('Missing Pathao collected amount');
+      await importer
+        .getByRole('button', { name: 'Change source', exact: true })
+        .click();
+      await importer.locator('input[type=file]').setInputFiles(file);
+      for (const select of await decisions.all())
+        await select.selectOption('zero');
+    }
+    await importer.screenshot({
+      path: info.outputPath(`${courier}-resolved-blanks.png`),
+    });
+    await confirm.click();
+    await expect(importer.getByRole('status')).toContainText(
+      '2 orders imported',
+    );
+    const response = await page.request.get(
+      `/api/manage/business/orders?brandId=${brandId}&from=2026-11-01&to=2026-11-02`,
+    );
+    const saved = z
+      .object({
+        items: z.array(
+          z.object({
+            id: z.string(),
+            shipping: z.number(),
+            codCharge: z.number(),
+            codAmount: z.number(),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    expect(saved.items.filter((row) => ids.includes(row.id))).toHaveLength(2);
+    for (const row of saved.items)
+      expect([row.shipping, row.codCharge, row.codAmount]).toEqual([0, 0, 0]);
+  }
+});
+
 test('Pathao workbook imports all parcels with collected-based settlement totals and responsive preview', async ({
   page,
 }, testInfo) => {

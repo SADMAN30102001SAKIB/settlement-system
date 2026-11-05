@@ -28,6 +28,87 @@ const pathaoRow = [
   'Delivery',
 ];
 const pathaoMapping = importMapping(pathaoHeaders, 'pathao');
+it.each(['steadfast', 'pathao'] as const)(
+  'imports zeros and only confirmed blank amounts for %s',
+  (courier) => {
+    const headers =
+      courier === 'pathao'
+        ? pathaoHeaders
+        : [
+            'Order ID',
+            'Order date',
+            'COD amount',
+            'Unused',
+            'COD charge',
+            'Shipping charge',
+            'Delivery date',
+            'Status',
+          ];
+    const mapping = importMapping(headers, courier);
+    const base = pathaoRow.map((v, i) =>
+      i === 7
+        ? courier === 'pathao'
+          ? 'Delivery'
+          : 'Delivered'
+        : courier === 'steadfast' && (i === 1 || i === 6)
+          ? v.slice(0, 10)
+          : v,
+    );
+    for (const key of ['shipping', 'codCharge', 'codAmount'] as const) {
+      const zero = base.map((v, i) => (i === mapping[key] ? '0' : v));
+      expect(
+        mapOrder(zero, mapping, 'ISO', 'courier', false, false, courier)[key],
+      ).toBe(0);
+      const blank = base.map((v, i) => (i === mapping[key] ? '' : v));
+      expect(() =>
+        mapOrder(blank, mapping, 'ISO', 'courier', false, false, courier),
+      ).toThrow(`Missing ${key}`);
+      expect(
+        mapOrder(blank, mapping, 'ISO', 'courier', true, true, courier, true)[
+          key
+        ],
+      ).toBe(0);
+      expect(() =>
+        mapOrder(
+          base,
+          { ...mapping, [key]: -1 },
+          'ISO',
+          'courier',
+          true,
+          true,
+          courier,
+          true,
+        ),
+      ).toThrow(`Missing ${key}`);
+      for (const value of ['-1', 'not money'])
+        expect(() =>
+          mapOrder(
+            base.map((v, i) => (i === mapping[key] ? value : v)),
+            mapping,
+            'ISO',
+            'courier',
+            true,
+            true,
+            courier,
+            true,
+          ),
+        ).toThrow();
+    }
+    if (courier === 'pathao')
+      expect(() =>
+        mapOrder(
+          base.map((v, i) => (i === mapping.collectedAmount ? '' : v)),
+          mapping,
+          'ISO',
+          'courier',
+          true,
+          true,
+          courier,
+          true,
+        ),
+      ).toThrow('Missing Pathao collected amount');
+  },
+);
 it('maps explicit Pathao lifecycle statuses and prefers status over legacy order type', () => {
   const headers = pathaoHeaders.map((h) =>
     h === 'Order type' ? 'Order status' : h,

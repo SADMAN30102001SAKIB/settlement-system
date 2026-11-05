@@ -65,6 +65,7 @@ export function Importer({
   const [message, setMessage] = useState('');
   const [blankCodChargeIsZero, setBlankCodChargeIsZero] = useState(false);
   const [blankCodAmountIsZero, setBlankCodAmountIsZero] = useState(false);
+  const [blankShippingIsZero, setBlankShippingIsZero] = useState(false);
   const [mappingOpen, setMappingOpen] = useState(false);
   const [sourceName, setSourceName] = useState('Pasted spreadsheet');
   function loadRows(data: string[][]) {
@@ -72,6 +73,7 @@ export function Importer({
     setHeader(0);
     setBlankCodChargeIsZero(false);
     setBlankCodAmountIsZero(false);
+    setBlankShippingIsZero(false);
     setMapping(importMapping(data[0] ?? [], courier));
   }
   const seen = new Set<string>();
@@ -85,6 +87,7 @@ export function Importer({
         blankCodChargeIsZero,
         blankCodAmountIsZero,
         courier,
+        blankShippingIsZero,
       );
       if (seen.has(order.id))
         throw new Error('Duplicate order ID in this file.');
@@ -108,8 +111,9 @@ export function Importer({
     format,
     blankCodAmountIsZero,
     blankCodChargeIsZero,
+    blankShippingIsZero,
   ]);
-  const blanks = (key: 'codAmount' | 'codCharge') =>
+  const blanks = (key: 'codAmount' | 'codCharge' | 'shipping') =>
     mapping[key] < 0
       ? 0
       : rows.slice(header + 1).filter((row) => !row[mapping[key]]?.trim())
@@ -240,6 +244,7 @@ export function Importer({
               setMapping(importMapping(rows[header] ?? [], next));
               setBlankCodChargeIsZero(false);
               setBlankCodAmountIsZero(false);
+              setBlankShippingIsZero(false);
               setFormat('ISO');
               setError('');
               setMessage('');
@@ -478,28 +483,32 @@ export function Importer({
           ) : null}
           {mode === 'courier' ? (
             <div className="blank-decisions">
-              {(['codCharge', 'codAmount'] as const)
+              {(['shipping', 'codCharge', 'codAmount'] as const)
                 .filter((key) => blanks(key) > 0)
                 .map((key) => (
                   <Field
                     key={key}
-                    label={`${key === 'codCharge' ? 'Blank COD fees' : 'Blank COD collection'} · ${String(blanks(key))} rows`}
+                    label={`${key === 'shipping' ? 'Blank shipping charges' : key === 'codCharge' ? 'Blank COD fees' : courier === 'pathao' ? 'Blank collectable amounts' : 'Blank COD collection'} · ${String(blanks(key))} rows`}
                     hint="A blank is not automatically zero. Only choose zero if that is what this export means."
                   >
                     <select
                       value={
                         (
-                          key === 'codCharge'
-                            ? blankCodChargeIsZero
-                            : blankCodAmountIsZero
+                          key === 'shipping'
+                            ? blankShippingIsZero
+                            : key === 'codCharge'
+                              ? blankCodChargeIsZero
+                              : blankCodAmountIsZero
                         )
                           ? 'zero'
                           : 'unresolved'
                       }
                       onChange={(event) => {
-                        (key === 'codCharge'
-                          ? setBlankCodChargeIsZero
-                          : setBlankCodAmountIsZero)(
+                        (key === 'shipping'
+                          ? setBlankShippingIsZero
+                          : key === 'codCharge'
+                            ? setBlankCodChargeIsZero
+                            : setBlankCodAmountIsZero)(
                           event.target.value === 'zero',
                         );
                       }}

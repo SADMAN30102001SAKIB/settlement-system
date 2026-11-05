@@ -166,6 +166,7 @@ export function mapOrder(
   blankCodChargeIsZero = false,
   blankCodAmountIsZero = false,
   courier: Courier = 'steadfast',
+  blankShippingIsZero = false,
 ) {
   const mapped = (
     mode === 'orders'
@@ -216,8 +217,10 @@ export function mapOrder(
     throw new Error(`Unknown delivery status: ${get('status') || '(empty)'}.`);
   const amount = (key: ImportColumn) => {
     const confirmedZero =
-      (key === 'codCharge' && blankCodChargeIsZero) ||
-      (key === 'codAmount' && blankCodAmountIsZero);
+      mapping[key] >= 0 &&
+      ((key === 'codCharge' && blankCodChargeIsZero) ||
+        (key === 'codAmount' && blankCodAmountIsZero) ||
+        (key === 'shipping' && blankShippingIsZero));
     if (!get(key) && !confirmedZero)
       throw new Error(
         `Missing ${key}. Correct the source or explicitly confirm a zero amount.`,
