@@ -55,20 +55,14 @@ export function AiChatSkeleton() {
         <ChatHistorySkeleton />
       </aside>
       <div className="ai-thread" aria-hidden="true">
-        <header className="ai-thread-heading">
-          <div className="ai-skeleton-heading">
-            <Skeleton width="70%" height={24} style={{ marginBottom: 10 }} />
-            <Skeleton width="45%" height={10} />
-          </div>
-        </header>
         <div className="ai-messages">
           <ChatMessagesSkeleton />
         </div>
         <div className="ai-composer-area">
           <Skeleton width="65%" height={10} style={{ marginBottom: 10 }} />
           <div className="ai-composer">
-            <Skeleton height={68} radius={8} style={{ flex: 1 }} />
-            <Skeleton width={72} height={68} radius={8} />
+            <Skeleton height={44} radius={8} style={{ flex: 1 }} />
+            <Skeleton width={72} height={44} radius={8} />
           </div>
         </div>
       </div>

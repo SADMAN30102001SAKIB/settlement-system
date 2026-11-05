@@ -30,12 +30,14 @@ export function providerError(error: unknown): string {
 export async function runChat(options: {
   geminiKey: string;
   metaToken: string;
+  gatewayToken: string;
   history: Content[];
   question: string;
   signal: AbortSignal;
   emit: (event: z.infer<typeof aiEvent>) => Promise<void>;
   check: () => Promise<void>;
 }) {
+  if (!options.gatewayToken) throw new Error('AI Gateway is not configured.');
   const { signal, emit, check } = options;
   const client = new Client(
     { name: 'settlement-ads-chat', version: '1.0.0' },
@@ -95,7 +97,24 @@ export async function runChat(options: {
       }
     const ai = new GoogleGenAI({
       apiKey: options.geminiKey,
-      httpOptions: { timeout: 45000, retryOptions: { attempts: 1 } },
+      httpOptions: {
+        baseUrl:
+          'https://gateway.ai.cloudflare.com/v1/fbca92db4dd551f67f6e982d4a70a914/settlement-system/google-ai-studio',
+        headers: {
+          'cf-aig-authorization': `Bearer ${options.gatewayToken}`,
+          'cf-aig-skip-cache': 'true',
+          'cf-aig-collect-log-payload': 'false',
+          'cf-aig-max-attempts': '1',
+        },
+        timeout: 45000,
+        retryOptions: { attempts: 1 },
+        fetch: (input, init) => {
+          const url = new URL(input instanceof Request ? input.url : input);
+          // Gateway's native Gemini endpoint detects provider credentials in the query.
+          url.searchParams.set('key', options.geminiKey);
+          return fetch(url, init);
+        },
+      },
     });
     let model = 'gemini-3.5-flash-lite';
     const fallback = 'gemini-3.1-flash-lite';

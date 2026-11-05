@@ -305,12 +305,8 @@ export function AiChat() {
         </ScrollList>
       </aside>
       <div className="ai-thread">
-        <header className="ai-thread-heading">
-          <div>
-            <h1>Ask about your advertising</h1>
-            <p className="caption">Meta Ads · Read-only · Administrator only</p>
-          </div>
-          {serverRunning ? (
+        {serverRunning ? (
+          <div className="ai-thread-actions">
             <button
               className="secondary compact"
               onClick={() => {
@@ -321,8 +317,8 @@ export function AiChat() {
             >
               Stop response
             </button>
-          ) : null}
-        </header>
+          </div>
+        ) : null}
         {configured === false ? (
           <div className="ai-connection-notice">
             Connect your Gemini API key and Meta token in{' '}
@@ -463,10 +459,10 @@ export function AiChat() {
             </label>
             <textarea
               id="ai-message"
-              placeholder="Ask a question about your Meta advertising…"
+              placeholder="Ask about your Meta ads…"
               value={draft}
               maxLength={8000}
-              rows={2}
+              rows={1}
               disabled={configured !== true || busy || loading || serverRunning}
               onChange={(e) => {
                 setDraft(e.target.value);

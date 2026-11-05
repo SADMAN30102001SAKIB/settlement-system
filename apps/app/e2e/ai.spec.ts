@@ -24,6 +24,31 @@ test('AI connections and responsive streaming chat keep credentials private', as
   page,
 }, testInfo) => {
   await login(page);
+  expect(
+    await page.locator('nav a').evaluateAll((links) =>
+      links.map((link) => ({
+        href: link.getAttribute('href'),
+        number: link.querySelector('.nav-icon')?.textContent.trim(),
+      })),
+    ),
+  ).toEqual(
+    [
+      '/settlements',
+      '/brands',
+      '/notes',
+      '/advertising',
+      '/payments',
+      '/business',
+      '/ai-chat',
+      '/manual-invoices',
+      '/files',
+      '/settings',
+      '/account',
+    ].map((href, index) => ({
+      href,
+      number: String(index + 1).padStart(2, '0'),
+    })),
+  );
   await page.goto('/settings');
   const form = page.locator('.ai-settings');
   await form
@@ -103,8 +128,11 @@ test('AI connections and responsive streaming chat keep credentials private', as
     releaseChatModule(undefined);
   }
   await expect(
-    page.getByRole('heading', { name: 'Ask about your advertising' }),
+    page.getByRole('region', { name: 'Conversation messages' }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Ask about your advertising' }),
+  ).toHaveCount(0);
   await page.unroute(chatModulePattern);
   expect(
     await page.evaluate(
@@ -224,7 +252,9 @@ test('AI connections and responsive streaming chat keep credentials private', as
     expect(composer?.width ?? Infinity).toBeLessThanOrEqual(
       await page.evaluate(() => innerWidth),
     );
-    for (const height of [68, 140]) {
+    const input = page.getByRole('textbox', { name: 'Message', exact: true });
+    expect((await input.boundingBox())?.height).toBe(44);
+    for (const height of [44, 140]) {
       await page
         .getByRole('textbox', { name: 'Message', exact: true })
         .evaluate((element, value) => {

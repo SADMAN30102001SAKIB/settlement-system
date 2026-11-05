@@ -79,10 +79,6 @@
 .ai-chat .ai-history .skeleton {
   background-color: var(--line);
 }
-.ai-skeleton-heading {
-  flex: 1;
-  min-width: 0;
-}
 .ai-history .scroll-list {
   flex: 1;
   min-height: 0;
@@ -122,20 +118,11 @@
   display: flex;
   flex-direction: column;
 }
-.ai-thread-heading {
-  padding: 20px 24px;
+.ai-thread-actions {
+  padding: 8px 14px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
   border-bottom: 1px solid var(--line);
-}
-.ai-thread-heading h1 {
-  margin: 0;
-  font-size: clamp(18px, 2vw, 24px);
-}
-.ai-thread-heading p {
-  margin: 6px 0 0;
 }
 .ai-connection-notice {
   padding: 12px 24px;
@@ -217,7 +204,7 @@
   margin: 18px 0 8px;
 }
 .ai-composer-area {
-  padding: 12px 22px 18px;
+  padding: 8px 22px 10px;
   border-top: 1px solid var(--line);
 }
 .ai-composer-area .alert {
@@ -226,7 +213,7 @@
   margin-bottom: 8px;
 }
 .ai-activity {
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   min-height: 18px;
 }
 .ai-composer {
@@ -236,7 +223,8 @@
 }
 .ai-composer textarea {
   resize: vertical;
-  min-height: 68px;
+  min-height: 44px;
+  height: 44px;
   max-height: 160px;
   flex: 1;
   min-width: 0;
@@ -281,12 +269,6 @@
   }
   .ai-history-row .ai-chat-title {
     padding: 7px 10px;
-  }
-  .ai-thread-heading {
-    padding: 14px;
-  }
-  .ai-thread-heading > button {
-    font-size: 11px;
   }
   .ai-composer-area {
     padding: 10px 12px 12px;

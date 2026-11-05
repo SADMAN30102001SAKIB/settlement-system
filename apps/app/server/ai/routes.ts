@@ -271,6 +271,7 @@ export const aiRoutes = new Hono<AppEnvironment>()
       try {
         const result = await runChat({
           ...credentials,
+          gatewayToken: c.env.AI_GATEWAY_TOKEN,
           history,
           question: input.question,
           signal: controller.signal,

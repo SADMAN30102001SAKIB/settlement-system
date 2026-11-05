@@ -34,6 +34,7 @@ export async function testEnvironment() {
       ...bindings,
       ADMIN_SETUP_TOKEN: randomToken(),
       PASSWORD_PEPPER: randomToken(),
+      AI_GATEWAY_TOKEN: 'fixture-gateway-token',
     } satisfies Env,
   };
 }

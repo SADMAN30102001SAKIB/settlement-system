@@ -9,14 +9,18 @@ it.skipIf(!process.env['AI_LIVE_ENV_FILE'])(
     if (!file) throw new Error('AI_LIVE_ENV_FILE is required.');
     loadEnvFile(file);
     const geminiKey = process.env['GEMINI_API_KEY'],
-      metaToken = process.env['META_ACCESS_TOKEN'];
-    if (!geminiKey || !metaToken)
-      throw new Error('The live test requires both provider credentials.');
+      metaToken = process.env['META_ACCESS_TOKEN'],
+      gatewayToken = process.env['AI_GATEWAY_TOKEN'];
+    if (!geminiKey || !metaToken || !gatewayToken)
+      throw new Error(
+        'The live test requires provider and gateway credentials.',
+      );
     const events: string[] = [];
     try {
       const result = await runChat({
         geminiKey,
         metaToken,
+        gatewayToken,
         history: [],
         question:
           'List the Meta advertising accounts I can access. Only list account names and IDs. Do not query performance or change anything.',
@@ -50,6 +54,7 @@ it.skipIf(!process.env['AI_LIVE_ENV_FILE'])(
         )
           .replaceAll(geminiKey, '[redacted]')
           .replaceAll(metaToken, '[redacted]')
+          .replaceAll(gatewayToken, '[redacted]')
           .slice(0, 1400),
       );
     }

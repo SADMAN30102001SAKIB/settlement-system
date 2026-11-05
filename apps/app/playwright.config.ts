@@ -29,6 +29,7 @@ export default defineConfig({
     env: {
       ADMIN_SETUP_TOKEN: 'browser-test-only-setup-token-never-for-production',
       PASSWORD_PEPPER: randomBytes(32).toString('hex'),
+      AI_GATEWAY_TOKEN: 'browser-test-fake-gateway',
       SETTLEMENT_TEST_STATE: statePath,
       CF_SEND_TELEMETRY: 'false',
     },

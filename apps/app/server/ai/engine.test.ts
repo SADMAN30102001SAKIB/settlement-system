@@ -30,6 +30,7 @@ function fixture(
   const metaCalls: string[] = [];
   const modelRequests: Record<string, unknown>[] = [];
   const models: string[] = [];
+  const gatewayHeaders: Headers[] = [];
   const actions = [
     schema('ads_get_ad_accounts'),
     call('ads_get_ad_accounts'),
@@ -48,6 +49,10 @@ function fixture(
         JSON.parse(typeof init.body === 'string' ? init.body : '{}') as unknown,
       );
       if (url.hostname === 'mcp.facebook.com') {
+        expect(url.searchParams.has('key')).toBe(false);
+        expect(new Headers(init.headers).has('cf-aig-authorization')).toBe(
+          false,
+        );
         const respond = (result: unknown) =>
           Response.json({ jsonrpc: '2.0', id: request['id'], result });
         if (request['method'] === 'initialize')
@@ -89,7 +94,13 @@ function fixture(
           return respond({ content: [], structuredContent: data });
         }
       }
-      if (url.hostname === 'generativelanguage.googleapis.com') {
+      if (url.hostname === 'gateway.ai.cloudflare.com') {
+        expect(url.searchParams.get('key')).toBe('fixture-gemini-key');
+        expect(url.searchParams.get('alt')).toBe('sse');
+        expect(url.pathname).toMatch(
+          /^\/v1\/fbca92db4dd551f67f6e982d4a70a914\/settlement-system\/google-ai-studio\/v1beta\/models\//,
+        );
+        gatewayHeaders.push(new Headers(init.headers));
         models.push(url.pathname);
         modelRequests.push(request);
         if (
@@ -138,11 +149,12 @@ function fixture(
       throw new Error('Unexpected network request.');
     },
   );
-  return { metaCalls, modelRequests, models };
+  return { metaCalls, modelRequests, models, gatewayHeaders };
 }
 const options = () => ({
   geminiKey: 'fixture-gemini-key',
   metaToken: 'fixture-meta-token',
+  gatewayToken: 'fixture-gateway-token',
   question: 'What was my spend yesterday?',
   history: [],
   signal: new AbortController().signal,
@@ -159,6 +171,16 @@ it('runs the real SDK streaming/tool loop and saves SDK history without losing z
     opts = options();
   const result = await runChat(opts);
   expect(result.answer).toContain('zero');
+  expect(f.gatewayHeaders.length).toBeGreaterThan(0);
+  for (const headers of f.gatewayHeaders) {
+    expect(headers.get('cf-aig-authorization')).toBe(
+      'Bearer fixture-gateway-token',
+    );
+    expect(headers.get('cf-aig-skip-cache')).toBe('true');
+    expect(headers.get('cf-aig-collect-log-payload')).toBe('false');
+    expect(headers.get('cf-aig-max-attempts')).toBe('1');
+    expect(headers.get('x-goog-api-key')).toBe('fixture-gemini-key');
+  }
   expect(f.metaCalls).toEqual([
     'ads_get_ad_accounts',
     'ads_get_field_context',
@@ -176,6 +198,14 @@ it('runs the real SDK streaming/tool loop and saves SDK history without losing z
   expect(JSON.stringify(f.modelRequests[0]?.['systemInstruction'])).toContain(
     'read-only Meta Ads analyst',
   );
+});
+it('fails closed without gateway authentication instead of calling providers directly', async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  await expect(runChat({ ...options(), gatewayToken: '' })).rejects.toThrow(
+    'AI Gateway is not configured',
+  );
+  expect(fetch).not.toHaveBeenCalled();
 });
 it('switches models with pending tool results intact without replaying Meta reads', async () => {
   const f = fixture('fallback');

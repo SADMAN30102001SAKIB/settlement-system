@@ -377,15 +377,15 @@ function AdminApp() {
           {[
             ['/settlements', 'Settlement ledger', '01'],
             ['/brands', 'Brands & costs', '02'],
-            ['/settings', 'Invoice settings', '03'],
-            ['/notes', 'Notes & progress', '04'],
-            ['/advertising', 'Advertising', '05'],
-            ['/payments', 'Payments', '06'],
-            ['/business', 'Business tracking', '07'],
+            ['/notes', 'Notes & progress', '03'],
+            ['/advertising', 'Advertising', '04'],
+            ['/payments', 'Payments', '05'],
+            ['/business', 'Business tracking', '06'],
+            ['/ai-chat', 'AI Chat', '07'],
             ['/manual-invoices', 'Make invoice', '08'],
             ['/files', 'Private files', '09'],
-            ['/account', 'Account settings', '10'],
-            ['/ai-chat', 'AI Chat', '11'],
+            ['/settings', 'Invoice settings', '10'],
+            ['/account', 'Account settings', '11'],
           ].map(([href, label, marker]) => (
             <a
               key={href}

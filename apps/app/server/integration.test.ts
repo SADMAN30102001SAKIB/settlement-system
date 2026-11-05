@@ -43,6 +43,7 @@ beforeAll(async () => {
     FILES: (await runtime.getBindings<Pick<Env, 'FILES'>>()).FILES,
     ADMIN_SETUP_TOKEN: setupToken,
     PASSWORD_PEPPER: randomToken(),
+    AI_GATEWAY_TOKEN: 'fixture-gateway-token',
   };
 });
 
