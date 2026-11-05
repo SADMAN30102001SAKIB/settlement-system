@@ -316,18 +316,6 @@ export function AiChat() {
             >
               Stop response
             </button>
-          ) : selected && !busy ? (
-            <button
-              className="secondary compact"
-              disabled={loading}
-              onClick={() => {
-                reload(selected).catch((e: unknown) => {
-                  setError(ErrorMessage(e));
-                });
-              }}
-            >
-              Refresh chat
-            </button>
           ) : null}
         </header>
         {configured === false ? (

@@ -58,22 +58,46 @@ beforeAll(async () => {
 afterAll(async () => {
   await setup.runtime.dispose();
 });
-it('keeps credentials isolated, password-confirmed and concurrency-safe', async () => {
+it('keeps credentials isolated, admin-session protected and concurrency-safe', async () => {
   expect(
     (await request('manage/ai/credentials', 'GET', undefined, false)).status,
   ).toBe(401);
   expect(
     (
-      await request('manage/ai/credentials', 'PUT', {
-        ...keys,
-        password: 'incorrect',
-        revision: 0,
-      })
+      await request(
+        'manage/ai/credentials',
+        'PUT',
+        {
+          ...keys,
+          revision: 0,
+        },
+        false,
+      )
+    ).status,
+  ).toBe(401);
+  expect(
+    (await request('manage/ai/credentials', 'DELETE', { revision: 0 }, false))
+      .status,
+  ).toBe(401);
+  expect(
+    (
+      await app.request(
+        '/api/manage/ai/credentials',
+        {
+          method: 'PUT',
+          headers: {
+            Cookie: cookie,
+            Origin: 'https://untrusted.example',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ...keys, revision: 0 }),
+        },
+        setup.env,
+      )
     ).status,
   ).toBe(403);
   let response = await request('manage/ai/credentials', 'PUT', {
     ...keys,
-    password,
     revision: 0,
   });
   expect(response.status).toBe(200);
@@ -85,7 +109,6 @@ it('keeps credentials isolated, password-confirmed and concurrency-safe', async 
     (
       await request('manage/ai/credentials', 'PUT', {
         ...keys,
-        password,
         revision: 0,
       })
     ).status,
@@ -104,7 +127,6 @@ it('keeps credentials isolated, password-confirmed and concurrency-safe', async 
     (
       await request('manage/ai/credentials', 'PUT', {
         geminiKey: 'replacement-gemini-key',
-        password,
         revision: 1,
       })
     ).status,
@@ -310,7 +332,6 @@ it('has bounded indexed conversation/message lists and recovers failed provider 
   );
   expect((await request('manage/ai/conversations?before=12')).status).toBe(422);
   const disconnected = await request('manage/ai/credentials', 'DELETE', {
-    password,
     revision: 2,
   });
   expect(

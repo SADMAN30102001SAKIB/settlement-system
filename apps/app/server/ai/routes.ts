@@ -4,7 +4,6 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { Content } from '@google/genai';
 import type { AppEnvironment } from '../environment';
-import { confirmAdminPassword } from '../auth/security';
 import { runChat, providerError } from './engine';
 
 const uuid = z.uuid();
@@ -24,11 +23,9 @@ export const aiRoutes = new Hono<AppEnvironment>()
         geminiKey: secret.optional(),
         metaToken: secret.optional(),
         revision: z.number().int().min(0),
-        password: z.string().min(1).max(200),
       })
       .strict()
       .parse(await c.req.json<unknown>());
-    await confirmAdminPassword(c, input.password);
     if (!input.geminiKey && !input.metaToken)
       throw new HTTPException(422, {
         message: 'Enter at least one credential to update.',
@@ -62,12 +59,10 @@ export const aiRoutes = new Hono<AppEnvironment>()
   .delete('/credentials', async (c) => {
     const input = z
       .object({
-        password: z.string().min(1).max(200),
         revision: z.number().int(),
       })
       .strict()
       .parse(await c.req.json<unknown>());
-    await confirmAdminPassword(c, input.password);
     const row = await c.env.DB.prepare(
       'DELETE FROM ai_credentials WHERE id=1 AND revision=? RETURNING id',
     )

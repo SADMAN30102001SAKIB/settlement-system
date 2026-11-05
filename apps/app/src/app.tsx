@@ -247,7 +247,7 @@ function AdminApp() {
         url.origin !== window.location.origin ||
         url.hash ||
         url.search ||
-        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments|account|manual-invoices)(\/|$)/.test(
+        !/^\/(settlements|brands|settings|notes|advertising|business|files|payments|account|manual-invoices|ai-chat)(\/|$)/.test(
           url.pathname,
         )
       )
@@ -431,7 +431,9 @@ function AdminApp() {
           </div>
         </div>
       </aside>
-      <div className="workspace-body">
+      <div
+        className={`workspace-body ${path === '/ai-chat' ? 'ai-workspace' : ''}`}
+      >
         <header className="topbar no-print">
           <button
             className="sidebar-toggle secondary compact"
@@ -539,10 +541,12 @@ function AdminApp() {
             />
           )}
         </main>
-        <footer className="workspace-footer no-print">
-          <span>Hexa Agency Ltd.</span>
-          <span>Every figure. Accounted for.</span>
-        </footer>
+        {path !== '/ai-chat' ? (
+          <footer className="workspace-footer no-print">
+            <span>Hexa Agency Ltd.</span>
+            <span>Every figure. Accounted for.</span>
+          </footer>
+        ) : null}
       </div>
     </div>
   );

@@ -54,7 +54,6 @@ export function AiSettings() {
               ...(geminiKey ? { geminiKey } : {}),
               ...(metaToken ? { metaToken } : {}),
               revision: status?.revision ?? 0,
-              password: formText(data, 'password'),
             },
           })
             .then((value) => {
@@ -97,20 +96,7 @@ export function AiSettings() {
                 : 'A token with access to Meta Ads MCP.'
             }
           />
-          <PasswordField
-            label="Current administrator password"
-            name="password"
-            autoComplete="current-password"
-            required
-            maxLength={200}
-            disabled={pending}
-          />
         </div>
-        <p className="caption">
-          Stored in the database as requested, without application-level
-          encryption. Saved credentials are never returned to your browser or
-          shared with brand users.
-        </p>
         {error ? <Alert>{error}</Alert> : null}
         {saved ? (
           <p role="status" className="success">
@@ -124,14 +110,6 @@ export function AiSettings() {
               type="button"
               disabled={pending}
               onClick={() => {
-                const password =
-                  document.querySelector<HTMLInputElement>(
-                    '.ai-settings input[name="password"]',
-                  )?.value ?? '';
-                if (!password) {
-                  setError('Enter your current administrator password first.');
-                  return;
-                }
                 confirm({
                   title: 'Disconnect AI providers?',
                   message:
@@ -149,7 +127,7 @@ export function AiSettings() {
                           aiCredentialStatus,
                           {
                             method: 'DELETE',
-                            body: { password, revision: status.revision },
+                            body: { revision: status.revision },
                           },
                         ),
                       );
