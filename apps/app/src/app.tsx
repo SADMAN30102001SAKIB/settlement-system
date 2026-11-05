@@ -35,6 +35,7 @@ import { today } from './lib/format';
 import { ThemePicker } from './components/theme-picker';
 import { useConfirmation } from './components/confirmation-context';
 import { confirmInvoiceDeletion } from './features/settlements/delete-invoice';
+import { AiChatSkeleton } from './components/ai-chat-skeleton';
 
 const AiChat = lazy(async () => ({
   default: (await import('./features/ai/page')).AiChat,
@@ -469,7 +470,7 @@ function AdminApp() {
         <main id="main" className="page-content" tabIndex={-1}>
           {error ? <Alert>{error}</Alert> : null}
           {path === '/ai-chat' ? (
-            <Suspense fallback={<p role="status">Opening AI Chat…</p>}>
+            <Suspense fallback={<AiChatSkeleton />}>
               <AiChat />
             </Suspense>
           ) : path.startsWith('/payments') ? (

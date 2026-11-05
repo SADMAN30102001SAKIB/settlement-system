@@ -70,6 +70,19 @@
 .ai-history-heading .ai-history-toggle {
   display: none;
 }
+.ai-history-skeleton {
+  padding: 8px 14px;
+}
+.ai-history-skeleton .skeleton + .skeleton {
+  margin-top: 14px;
+}
+.ai-chat .ai-history .skeleton {
+  background-color: var(--line);
+}
+.ai-skeleton-heading {
+  flex: 1;
+  min-width: 0;
+}
 .ai-history .scroll-list {
   flex: 1;
   min-height: 0;
@@ -253,6 +266,9 @@
   .ai-history .scroll-list {
     display: none;
     max-height: 140px;
+  }
+  .ai-chat-skeleton .ai-history-skeleton {
+    display: none;
   }
   .ai-history.is-open .scroll-list {
     display: block;

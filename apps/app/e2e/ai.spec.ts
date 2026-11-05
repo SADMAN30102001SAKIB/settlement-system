@@ -50,14 +50,62 @@ test('AI connections and responsive streaming chat keep credentials private', as
     name: 'Toggle navigation',
     exact: true,
   });
+  const { promise: chatModuleReady, resolve: releaseChatModule } =
+    Promise.withResolvers<undefined>();
+  const chatModulePattern = '**/src/features/ai/page.tsx*';
+  await page.route(chatModulePattern, async (route) => {
+    await chatModuleReady;
+    await route.continue();
+  });
   if (await menu.isVisible()) await menu.click();
   await page
     .locator('nav')
     .getByRole('link', { name: /AI Chat/ })
     .click();
+  try {
+    const loading = page.getByRole('status', {
+      name: 'Loading AI Chat…',
+      exact: true,
+    });
+    await expect(loading).toBeVisible();
+    await expect(loading).toHaveAttribute('aria-busy', 'true');
+    expect(await loading.locator('.skeleton').count()).toBeGreaterThan(8);
+    await expect(
+      page.getByText('Opening AI Chat…', { exact: true }),
+    ).toHaveCount(0);
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset['theme'] = value;
+      }, theme);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`ai-loading-${theme}.png`),
+        fullPage: true,
+      });
+    }
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect
+      .poll(() =>
+        loading
+          .locator('.skeleton')
+          .first()
+          .evaluate(
+            (element) => getComputedStyle(element, '::after').animationName,
+          ),
+      )
+      .toBe('none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+  } finally {
+    releaseChatModule(undefined);
+  }
   await expect(
     page.getByRole('heading', { name: 'Ask about your advertising' }),
   ).toBeVisible();
+  await page.unroute(chatModulePattern);
   expect(
     await page.evaluate(
       () => document.documentElement.dataset['aiNavigationMarker'],

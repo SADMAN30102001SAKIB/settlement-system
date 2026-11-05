@@ -13,6 +13,10 @@ import { useInfiniteQuery } from '../../lib/infinite-query';
 import { ScrollList } from '../../components/scroll-list';
 import { Alert, ErrorMessage } from '../../components/ui';
 import { useConfirmation } from '../../components/confirmation-context';
+import {
+  ChatHistorySkeleton,
+  ChatMessagesSkeleton,
+} from '../../components/ai-chat-skeleton';
 
 type Turn = z.infer<typeof aiTurnList>['items'][number];
 
@@ -241,6 +245,7 @@ export function AiChat() {
           count={list.items.length}
           {...list.scrollProps}
         >
+          {list.loading && !list.items.length ? <ChatHistorySkeleton /> : null}
           {list.items.map((chat) => (
             <div
               className={`ai-history-row ${selected === chat.id ? 'is-selected' : ''}`}
@@ -362,14 +367,12 @@ export function AiChat() {
               Load earlier messages
             </button>
           ) : null}
-          {!turns.length ? (
+          {!turns.length && loading ? (
+            <ChatMessagesSkeleton />
+          ) : !turns.length ? (
             <div className="ai-welcome">
               <span className="brand-mark">H</span>
-              <h2>
-                {loading
-                  ? 'Opening conversation…'
-                  : 'What would you like to understand?'}
-              </h2>
+              <h2>What would you like to understand?</h2>
               <p>
                 Ask about ad accounts, spend or campaign performance. Include
                 the account and date range for a precise answer.
