@@ -7,6 +7,8 @@ strictPeerDependencies: true
 minimumReleaseAge: 1440
 
 allowBuilds:
+  '@google/genai': false
+  protobufjs: false
   core-js: false
   esbuild: true
   workerd: true

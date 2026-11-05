@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import {
@@ -35,6 +35,10 @@ import { today } from './lib/format';
 import { ThemePicker } from './components/theme-picker';
 import { useConfirmation } from './components/confirmation-context';
 import { confirmInvoiceDeletion } from './features/settlements/delete-invoice';
+
+const AiChat = lazy(async () => ({
+  default: (await import('./features/ai/page')).AiChat,
+}));
 
 function ReportView({
   id,
@@ -380,6 +384,7 @@ function AdminApp() {
             ['/manual-invoices', 'Make invoice', '08'],
             ['/files', 'Private files', '09'],
             ['/account', 'Account settings', '10'],
+            ['/ai-chat', 'AI Chat', '11'],
           ].map(([href, label, marker]) => (
             <a
               key={href}
@@ -461,7 +466,11 @@ function AdminApp() {
         </header>
         <main id="main" className="page-content" tabIndex={-1}>
           {error ? <Alert>{error}</Alert> : null}
-          {path.startsWith('/payments') ? (
+          {path === '/ai-chat' ? (
+            <Suspense fallback={<p role="status">Opening AI Chat…</p>}>
+              <AiChat />
+            </Suspense>
+          ) : path.startsWith('/payments') ? (
             <Payments
               key={path}
               path={path}

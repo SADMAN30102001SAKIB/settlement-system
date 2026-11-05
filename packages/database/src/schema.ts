@@ -9,6 +9,53 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
+export const aiCredentials = sqliteTable('ai_credentials', {
+  id: integer().primaryKey(),
+  geminiKey: text('gemini_key').notNull(),
+  metaToken: text('meta_token').notNull(),
+  revision: integer().notNull().default(1),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const aiConversations = sqliteTable(
+  'ai_conversations',
+  {
+    id: text().primaryKey(),
+    title: text().notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    revision: integer().notNull().default(0),
+    activeRun: text('active_run'),
+    leaseUntil: integer('lease_until').notNull().default(0),
+  },
+  (t) => [index('ai_conversations_created_idx').on(t.createdAt, t.id)],
+);
+
+export const aiTurns = sqliteTable(
+  'ai_turns',
+  {
+    id: text().primaryKey(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: 'cascade' }),
+    sequence: integer().notNull(),
+    question: text().notNull(),
+    answer: text().notNull().default(''),
+    history: text().notNull().default('[]'),
+    status: text({
+      enum: ['running', 'complete', 'error', 'cancelled'],
+    }).notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('ai_turns_conversation_sequence_idx').on(
+      t.conversationId,
+      t.sequence,
+    ),
+    index('ai_turns_context_idx').on(t.conversationId, t.status, t.sequence),
+  ],
+);
+
 export const admins = sqliteTable(
   'admins',
   {

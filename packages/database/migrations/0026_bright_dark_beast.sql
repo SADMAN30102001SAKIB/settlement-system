@@ -1,0 +1,1 @@
+CREATE INDEX `ai_turns_context_idx` ON `ai_turns` (`conversation_id`,`status`,`sequence`);

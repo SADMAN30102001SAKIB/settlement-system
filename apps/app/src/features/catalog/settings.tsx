@@ -15,6 +15,7 @@ import type { Settings as SettingsData } from '../../lib/api';
 import { formText } from '../../lib/format';
 import { ImageUpload } from '../../components/image-upload';
 import { useConfirmation } from '../../components/confirmation-context';
+import { AiSettings } from '../ai/settings';
 
 export function Settings({
   settings,
@@ -90,6 +91,7 @@ export function Settings({
         description="Company details appear on your settlement and advertising invoices."
       />
       <div className="settings-layout">
+        <AiSettings />
         <section className="panel">
           <form
             key={formVersion}
