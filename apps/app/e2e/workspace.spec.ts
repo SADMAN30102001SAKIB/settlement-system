@@ -3210,6 +3210,142 @@ test('payment history and advertising account sections keep clear responsive spa
   }
 });
 
+test('lazy lists pass wheel and touch scrolling to the page at their boundaries', async ({
+  page,
+  isMobile,
+}) => {
+  await signIn(page);
+  let short = false;
+  await page.route(/\/api\/manage\/brands(?:\?|$)/, async (route) => {
+    const next = new URL(route.request().url()).searchParams.has('after');
+    await route.fulfill({
+      json: {
+        items: Array.from({ length: short ? 2 : 20 }, (_, index) => ({
+          id: `scroll-brand-${String(index + (next ? 20 : 0))}`,
+          name: `Scroll brand ${String(index + (next ? 20 : 0)).padStart(2, '0')}`,
+          makingCost: 17500,
+        })),
+        next: short || next ? null : { after: 'next-page' },
+      },
+    });
+  });
+  const box = page.getByRole('region', { name: 'Brands', exact: true });
+  const cdp = await page.context().newCDPSession(page);
+  async function prepare() {
+    await page.goto('/brands');
+    await expect(box).toHaveAttribute('data-loaded-count', short ? '2' : '20');
+    await page.locator('.page-content').evaluate((element) => {
+      const space = document.createElement('div');
+      space.style.height = '100vh';
+      space.setAttribute('aria-hidden', 'true');
+      element.append(space);
+    });
+    await box.evaluate((element) => {
+      const top = element.getBoundingClientRect().top + scrollY;
+      window.scrollTo(0, top - 100);
+    });
+    await expect(box).toHaveCSS('overscroll-behavior-y', 'auto');
+    await expect(box).toHaveCSS('overscroll-behavior-x', 'contain');
+  }
+  async function scroll(distance: number) {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        }),
+    );
+    const bounds = await box.boundingBox();
+    if (!bounds) throw new Error('Missing list bounds');
+    const x = bounds.x + bounds.width / 2;
+    const y = Math.min(bounds.y + bounds.height / 2, 500);
+    if (isMobile) {
+      const timestamp = Date.now() / 1000;
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x, y }],
+        timestamp,
+      });
+      for (let step = 1; step <= 8; step++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x, y: y - (distance * step) / 8 }],
+          timestamp: timestamp + step * 0.025,
+        });
+      }
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y: y - distance }],
+        timestamp: timestamp + 0.4,
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+        timestamp: timestamp + 0.45,
+      });
+    } else {
+      await page.mouse.move(x, y);
+      await page.mouse.wheel(0, distance);
+    }
+  }
+  await prepare();
+  const before = await page.evaluate(() => scrollY);
+  await scroll(180);
+  await expect
+    .poll(() => box.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(20);
+  expect(await page.evaluate(() => scrollY)).toBe(before);
+  // Clear synthetic swipe momentum before checking the next gesture's scroll target.
+  if (isMobile) await prepare();
+  await box.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(box).toHaveAttribute('data-loaded-count', '40');
+  await box.evaluate(async (element) => {
+    for (let frame = 0; frame < 5; frame++) {
+      element.scrollTop = element.scrollHeight;
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    }
+  });
+  await scroll(250);
+  await expect
+    .poll(() => page.evaluate(() => scrollY))
+    .toBeGreaterThan(before + 20);
+  await box.evaluate((element) => {
+    element.scrollTop = 0;
+    window.scrollTo(0, element.getBoundingClientRect().top + scrollY - 100);
+  });
+  const upward = await page.evaluate(() => scrollY);
+  await scroll(-180);
+  await expect
+    .poll(() => page.evaluate(() => scrollY))
+    .toBeLessThan(upward - 20);
+  short = true;
+  await prepare();
+  expect(
+    await box.evaluate(
+      (element) => element.scrollHeight <= element.clientHeight,
+    ),
+  ).toBe(true);
+  const shortBefore = await page.evaluate(() => scrollY);
+  await scroll(180);
+  await expect
+    .poll(() => page.evaluate(() => scrollY))
+    .toBeGreaterThan(shortBefore + 20);
+  await page.getByRole('button', { name: 'Add brand', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCSS(
+    'overscroll-behavior-y',
+    'contain',
+  );
+  await page.keyboard.press('Escape');
+  await cdp.detach();
+});
+
 test('continuous orders preserve drafts, retry failed batches and keep mounted rows bounded', async ({
   page,
 }, testInfo) => {

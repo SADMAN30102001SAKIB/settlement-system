@@ -2610,7 +2610,7 @@ article.invoice-advertising {
 .scroll-list {
   max-height: min(65dvh, 720px);
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: contain auto;
   scrollbar-gutter: stable;
   position: relative;
   overflow-anchor: none;
