@@ -50,9 +50,12 @@ export function Login({
   }
   return (
     <div className="auth-layout">
-      <div className="auth-theme">
+      <header className="auth-theme">
         <ThemePicker />
-      </div>
+        <a className="secondary compact" href="/brand/login">
+          Brand sign-in
+        </a>
+      </header>
       <section className="auth-story">
         <div className="wordmark">
           <span className="brand-mark">H</span> HEXA
@@ -146,12 +149,6 @@ export function Login({
               <span aria-hidden="true">→</span>
             </button>
           </form>
-          <p className="auth-footnote">
-            Brand owner?{' '}
-            <a className="secondary compact" href="/brand/login">
-              Brand sign-in
-            </a>
-          </p>
           <p className="auth-footnote">
             Your session is private. Business data is never stored in this
             browser’s local storage.

@@ -78,6 +78,80 @@ async function checkPasswordButtons(page: Page) {
   }
 }
 
+test('admin and brand sign-in links use matching top controls without overlapping content', async ({
+  page,
+  isMobile,
+}, info) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Username', { exact: true })).toBeVisible();
+  await expect(page.getByText('Brand owner?', { exact: true })).toHaveCount(0);
+  const button = page
+    .getByRole('banner')
+    .getByRole('link', { name: 'Brand sign-in' });
+  await expect(button).toHaveAttribute('href', '/brand/login');
+  const sizes = isMobile ? [390, 320] : [1440, 768];
+  for (const width of sizes) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ['light', 'dark']) {
+      await page.getByLabel('Color theme').selectOption(theme);
+      await expect(button).toBeVisible();
+      const layout = await page.evaluate(() => {
+        const tools = document
+          .querySelector('.auth-theme')
+          ?.getBoundingClientRect();
+        const logo = document
+          .querySelector('.auth-story .wordmark')
+          ?.getBoundingClientRect();
+        const form = document
+          .querySelector('.auth-inner')
+          ?.getBoundingClientRect();
+        if (!tools || !logo || !form) throw new Error('Missing login layout');
+        const overlaps = (a: DOMRect, b: DOMRect) =>
+          a.left < b.right &&
+          a.right > b.left &&
+          a.top < b.bottom &&
+          a.bottom > b.top;
+        return {
+          overlaps: overlaps(tools, logo) || overlaps(tools, form),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(layout).toEqual({ overlaps: false, overflow: false });
+      await page.screenshot({
+        path: info.outputPath(`admin-login-${String(width)}-${theme}.png`),
+        fullPage: true,
+      });
+    }
+  }
+  const adminStyle = await button.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      padding: style.padding,
+      height: element.getBoundingClientRect().height,
+      borderRadius: style.borderRadius,
+    };
+  });
+  await button.click();
+  await expect(page).toHaveURL(/\/brand\/login$/);
+  const back = page
+    .getByRole('banner')
+    .getByRole('link', { name: 'Admin sign-in' });
+  await expect(back).toBeVisible();
+  expect(
+    await back.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        padding: style.padding,
+        height: element.getBoundingClientRect().height,
+        borderRadius: style.borderRadius,
+      };
+    }),
+  ).toEqual(adminStyle);
+  await back.click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(button).toBeVisible();
+});
+
 test('admin provisions brand access and owners can only view and export their three document types', async ({
   page,
   browser,
