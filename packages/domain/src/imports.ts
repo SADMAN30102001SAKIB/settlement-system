@@ -97,12 +97,13 @@ export function importMapping(headers: readonly string[], courier: Courier) {
     codCharge: courier === 'pathao' ? ['cod fee'] : ['cod charge'],
     quantity: ['quantity', 'qty', 'item quantity'],
   };
+  const preferredStatus =
+    courier === 'pathao' ? 'order status' : 'approval status';
   const find = (key: keyof typeof aliases) => {
     const names =
-      courier === 'pathao' &&
       key === 'status' &&
-      headers.some((header) => header.trim().toLowerCase() === 'order status')
-        ? ['order status']
+      headers.some((header) => header.trim().toLowerCase() === preferredStatus)
+        ? [preferredStatus]
         : aliases[key];
     const matches = headers.flatMap((header, index) =>
       names.includes(header.trim().toLowerCase()) ? [index] : [],
@@ -214,7 +215,7 @@ export function mapOrder(
           ? statuses[rawStatus as keyof typeof statuses]
           : undefined;
   if (status === undefined)
-    throw new Error(`Unknown delivery status: ${get('status') || '(empty)'}.`);
+    throw new Error(`Unknown order status: ${get('status') || '(empty)'}.`);
   const amount = (key: ImportColumn) => {
     const confirmedZero =
       mapping[key] >= 0 &&

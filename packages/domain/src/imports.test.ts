@@ -28,6 +28,64 @@ const pathaoRow = [
   'Delivery',
 ];
 const pathaoMapping = importMapping(pathaoHeaders, 'pathao');
+it('prioritizes Steadfast approval status without changing the other mappings or legacy files', () => {
+  const headers = [
+    'Order ID',
+    'Created At',
+    'Delivery Status',
+    'Delivery Time',
+    'COD Amount',
+    'Shipping Charge',
+    'COD Charge',
+  ];
+  const legacy = importMapping(headers, 'steadfast');
+  const approval = importMapping(
+    [...headers, ' Approval Status '],
+    'steadfast',
+  );
+  expect(approval).toEqual({ ...legacy, status: 7 });
+  expect(
+    importMapping(
+      headers.map((header) =>
+        header === 'Delivery Status' ? 'Approval Status' : header,
+      ),
+      'steadfast',
+    ),
+  ).toEqual(legacy);
+  const row = [
+    '001',
+    '2026-11-06',
+    'Delivered',
+    '2026-11-07',
+    '1000',
+    '60',
+    '10',
+  ];
+  const original = mapOrder(row, legacy, 'ISO', 'courier');
+  for (const [source, expected] of [
+    ['Delivered', 'Delivered'],
+    ['Cancelled', 'Cancelled'],
+    ['Partially Delivered', 'Partial Delivered'],
+    ['Pending', 'Pending'],
+  ]) {
+    expect(
+      mapOrder([...row, source ?? ''], approval, 'ISO', 'courier'),
+    ).toEqual({ ...original, status: expected });
+  }
+  for (const source of ['', 'Approved', 'unknown'])
+    expect(() =>
+      mapOrder([...row, source], approval, 'ISO', 'courier'),
+    ).toThrow('Unknown order status');
+  expect(
+    importMapping(
+      [...headers, 'Approval Status', 'approval status'],
+      'steadfast',
+    ).status,
+  ).toBe(-1);
+  expect(
+    importMapping([...pathaoHeaders, 'Approval Status'], 'pathao'),
+  ).toEqual(pathaoMapping);
+});
 it.each(['steadfast', 'pathao'] as const)(
   'imports zeros and only confirmed blank amounts for %s',
   (courier) => {

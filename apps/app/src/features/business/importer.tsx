@@ -19,7 +19,7 @@ const labels = {
   id: 'Order ID',
   orderDate: 'Order date',
   deliveryDate: 'Delivery date',
-  status: 'Delivery status',
+  status: 'Approval status',
   codAmount: 'COD amount',
   shipping: 'Shipping charge',
   codCharge: 'COD charge',
@@ -299,7 +299,7 @@ export function Importer({
               placeholder={
                 courier === 'pathao'
                   ? 'Order consignment id\tOrder created at\tCollectable Amount\tCollected amount\tCod fee\tDelivery fee\tOrder status updated at\tOrder type'
-                  : 'Order Date\tOrder ID\tDelivery Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
+                  : 'Order Date\tOrder ID\tApproval Status\tDelivery Time\tCOD Amount\tShipping Charge\tCOD Charge'
               }
             />
           </Field>

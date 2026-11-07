@@ -389,6 +389,90 @@ test('Pathao workbook imports all parcels with collected-based settlement totals
   ).toHaveValue('119');
 });
 
+test('Steadfast approval-status workbook imports all 27 orders without changing their amounts', async ({
+  page,
+}) => {
+  const file = join(
+    '..',
+    '..',
+    'assets',
+    'consignments_export_2484465_184839_1793973855.xlsx',
+  );
+  test.skip(
+    !existsSync(file),
+    'Local Steadfast approval workbook is unavailable',
+  );
+  await signIn(page);
+  const name = 'Steadfast approval workbook fixture';
+  const existing = z
+    .object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
+    .parse(
+      await (
+        await page.request.get(
+          `/api/manage/brands?q=${encodeURIComponent(name)}`,
+        )
+      ).json(),
+    );
+  let id = existing.items.find((item) => item.name === name)?.id;
+  if (!id) {
+    const created = await page.request.post('/api/manage/brands', {
+      headers: { Origin: 'http://127.0.0.1:5174' },
+      data: { name, makingCost: 100000 },
+    });
+    expect(created.status()).toBe(201);
+    id = z
+      .object({ item: z.object({ id: z.string() }) })
+      .parse(await created.json()).item.id;
+  }
+  await page.goto('/business');
+  const importer = page.locator('.importer');
+  await importer.getByLabel('Brand', { exact: true }).selectOption(id);
+  await expect(importer.getByLabel('Courier', { exact: true })).toHaveValue(
+    'steadfast',
+  );
+  await importer.locator('input[type=file]').setInputFiles(file);
+  await expect(
+    importer.getByRole('region', { name: 'Source reconciliation' }),
+  ).toBeVisible();
+  for (const decision of await importer
+    .locator('.blank-decisions select')
+    .all())
+    await decision.selectOption('zero');
+  await expect(
+    importer.getByText('27 valid rows', { exact: false }),
+  ).toBeVisible();
+  await importer
+    .getByRole('button', { name: 'Check date format & column mapping' })
+    .click();
+  const status = importer.getByLabel('Approval status', { exact: true });
+  await expect(status.locator('option:checked')).toHaveText(
+    '3: Approval Status',
+  );
+  await importer
+    .getByRole('button', { name: 'Confirm & import 27 orders', exact: true })
+    .click();
+  await expect(importer.getByRole('status')).toContainText(
+    '27 orders imported',
+  );
+  const result: unknown = await (
+    await page.request.get(
+      `/api/manage/business/settlement?brandId=${id}&from=2026-01-01&to=2026-12-31`,
+    )
+  ).json();
+  expect(result).toMatchObject({
+    deliveredQty: 17,
+    cancelledQty: 1,
+    partialQty: 4,
+    pendingQty: 5,
+    deliveredAmount: 20720000,
+    partialAmount: 1690000,
+    shipping: 2320000,
+    deliveredCodCharge: 129800,
+    partialCodCharge: 2700,
+    productCost: 1700000,
+  });
+});
+
 test('Pathao status workbook imports all 35 parcels with paid returns and pending lifecycle statuses', async ({
   page,
 }, info) => {
