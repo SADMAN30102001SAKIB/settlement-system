@@ -7,6 +7,7 @@ import { dateLabel, money } from '../../lib/format';
 import { Alert, ErrorMessage, PageHeading, Spinner } from '../../components/ui';
 import { InvoiceStamp } from '../../components/invoice-stamp';
 import { paymentStatus } from '@settlement/domain/payments';
+import { DocumentPreview } from '../../components/document-preview';
 
 export function Invoice({
   report,
@@ -160,243 +161,248 @@ export function Invoice({
         />
         {error ? <Alert>{error}</Alert> : null}
       </div>
-      <article
-        className={`invoice-document ${'campaigns' in report ? 'invoice-advertising' : 'invoice-settlement'}`}
-        ref={documentRef}
-      >
-        {settings.watermarkFileId ? (
-          <img
-            className="invoice-watermark"
-            src={`${fileBase}/${settings.watermarkFileId}`}
-            alt=""
-          />
-        ) : null}
-        <header className="invoice-header">
-          <div>
-            <p className="eyebrow">
-              {'campaigns' in report
-                ? 'ADVERTISING COST INVOICE'
-                : 'DELIVERY & SALES SETTLEMENT'}
-            </p>
-            <h1>{settings.companyName}</h1>
-            <p>{settings.address}</p>
-            <p>
-              {settings.phone}
-              {settings.phone && settings.email ? ' · ' : ''}
-              {settings.email}
-            </p>
-          </div>
-          <span className="invoice-logo">H</span>
-        </header>
-        <div className="invoice-meta">
-          <div>
-            <small>INVOICE NUMBER</small>
-            <strong>{report.invoiceNumber}</strong>
-            <p>{report.brandName}</p>
-          </div>
-          <InvoiceStamp
-            fileBase={fileBase}
-            status={
-              report.statusOverride ??
-              paymentStatus(
-                'campaigns' in report ? report.total : report.commission,
-                report.paid,
-              ).status
-            }
-            settings={settings}
-          />
-          <div>
-            <small>REPORT DATE</small>
-            <strong>{dateLabel(report.date)}</strong>
-            <p>{report.period}</p>
-          </div>
-        </div>
-        {'campaigns' in report ? (
-          <>
-            <section>
-              <h2>Campaign-wise advertising spend</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Campaign</th>
-                    <th>Amount spent</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.campaigns.map((line, index) => (
-                    <tr key={index}>
-                      <td>{index + 1}</td>
-                      <td>{line.name}</td>
-                      <td>{money(line.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-            <table className="invoice-ad-totals">
-              <tbody>
-                {row(
-                  'Advertising subtotal',
-                  calculateAdvertising(
-                    report.campaigns.map((line) => line.amount),
-                    report.vatBasisPoints,
-                  ).subtotal,
-                )}
-                {row(
-                  `Advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
-                  calculateAdvertising(
-                    report.campaigns.map((line) => line.amount),
-                    report.vatBasisPoints,
-                  ).vat,
-                )}
-              </tbody>
-            </table>
-            <div className="invoice-final">
-              <span>Total advertising cost</span>
-              <strong>{money(report.total)}</strong>
+      <DocumentPreview>
+        <article
+          className={`invoice-document ${'campaigns' in report ? 'invoice-advertising' : 'invoice-settlement'}`}
+          ref={documentRef}
+        >
+          {settings.watermarkFileId ? (
+            <img
+              className="invoice-watermark"
+              src={`${fileBase}/${settings.watermarkFileId}`}
+              alt=""
+            />
+          ) : null}
+          <header className="invoice-header">
+            <div>
+              <p className="eyebrow">
+                {'campaigns' in report
+                  ? 'ADVERTISING COST INVOICE'
+                  : 'DELIVERY & SALES SETTLEMENT'}
+              </p>
+              <h1>{settings.companyName}</h1>
+              <p>{settings.address}</p>
+              <p>
+                {settings.phone}
+                {settings.phone && settings.email ? ' · ' : ''}
+                {settings.email}
+              </p>
             </div>
-          </>
-        ) : (
-          <>
-            <section>
-              <h2>Delivery summary</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Particular</th>
-                    <th>Parcels</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Delivered</td>
-                    <td>{report.deliveredQty}</td>
-                    <td>{money(report.deliveredAmount)}</td>
-                  </tr>
-                  <tr>
-                    <td>Cancelled</td>
-                    <td>{report.cancelledQty}</td>
-                    <td>
-                      {report.rule === 'legacy'
-                        ? money(report.cancelledAmount)
-                        : '—'}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Partial delivered</td>
-                    <td>{report.partialQty}</td>
-                    <td>{money(report.partialAmount)}</td>
-                  </tr>
-                  <tr>
-                    <td>Pending</td>
-                    <td>{report.pendingQty}</td>
-                    <td>—</td>
-                  </tr>
-                </tbody>
-              </table>
-            </section>
-            <section>
-              <h2>Settlement calculation</h2>
-              <table>
-                <tbody>
-                  {row('Delivered collection', report.deliveredAmount)}
-                  {report.rule === 'legacy'
-                    ? row('Less: cancelled amount', -report.cancelledAmount)
-                    : null}
-                  {row('Add: partial collection', report.partialAmount)}
-                  {report.rule === 'v3' ? (
-                    <>
-                      {report.deductShipping
-                        ? row('Less: delivery charges', -report.shipping)
-                        : null}
-                      {row(
-                        'Less: delivered COD charges',
-                        -report.deliveredCodCharge,
-                      )}
-                      {row(
-                        'Less: partial COD charges',
-                        -report.partialCodCharge,
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {row('Less: shipping charges', -report.shipping)}
-                      {row('Less: COD charges', -report.codCharge)}
-                    </>
-                  )}
-                  {row('Gross settlement', report.gross, true)}
-                  {row('Less: advertising cost', -report.ads)}
-                  {report.rule === 'v3' &&
-                  !report.advertisingVatOnly &&
-                  !report.vatAddedToAgency
-                    ? row(
-                        `Less: advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
-                        -calculateSettlement(report).vat,
-                      )
-                    : null}
-                  {row('Less: product cost', -report.productCost)}
-                  {report.rule === 'v3' &&
-                  report.deliveredUnits !== null &&
-                  report.costPerPiece !== null ? (
+            <span className="invoice-logo">H</span>
+          </header>
+          <div className="invoice-meta">
+            <div>
+              <small>INVOICE NUMBER</small>
+              <strong>{report.invoiceNumber}</strong>
+              <p>{report.brandName}</p>
+            </div>
+            <InvoiceStamp
+              fileBase={fileBase}
+              status={
+                report.statusOverride ??
+                paymentStatus(
+                  'campaigns' in report ? report.total : report.commission,
+                  report.paid,
+                ).status
+              }
+              settings={settings}
+            />
+            <div>
+              <small>REPORT DATE</small>
+              <strong>{dateLabel(report.date)}</strong>
+              <p>{report.period}</p>
+            </div>
+          </div>
+          {'campaigns' in report ? (
+            <>
+              <section>
+                <h2>Campaign-wise advertising spend</h2>
+                <table>
+                  <thead>
                     <tr>
-                      <td colSpan={2} className="invoice-cost-note">
-                        {report.deliveredUnits} delivered items ×{' '}
-                        {money(report.costPerPiece)} per item
-                      </td>
+                      <th>#</th>
+                      <th>Campaign</th>
+                      <th>Amount spent</th>
                     </tr>
-                  ) : null}
-                  {row('Net amount', report.net, true)}
-                </tbody>
-              </table>
-            </section>
-            <div className="invoice-final">
-              <span>
-                Agency share · {report.agencyBasisPoints / 100}%
-                {report.vatAddedToAgency && !report.advertisingVatOnly
-                  ? ' + advertising VAT'
-                  : ''}
-              </span>
-              <strong>{money(report.commission)}</strong>
-            </div>
-            {report.vatAddedToAgency && !report.advertisingVatOnly ? (
-              <table>
+                  </thead>
+                  <tbody>
+                    {report.campaigns.map((line, index) => (
+                      <tr key={index}>
+                        <td>{index + 1}</td>
+                        <td>{line.name}</td>
+                        <td>{money(line.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              <table className="invoice-ad-totals">
                 <tbody>
                   {row(
-                    'Agency percentage on net',
-                    report.commission - calculateSettlement(report).vat,
+                    'Advertising subtotal',
+                    calculateAdvertising(
+                      report.campaigns.map((line) => line.amount),
+                      report.vatBasisPoints,
+                    ).subtotal,
                   )}
-                  {row('Add: advertising VAT', calculateSettlement(report).vat)}
+                  {row(
+                    `Advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
+                    calculateAdvertising(
+                      report.campaigns.map((line) => line.amount),
+                      report.vatBasisPoints,
+                    ).vat,
+                  )}
                 </tbody>
               </table>
-            ) : null}
-          </>
-        )}
-        <footer className="invoice-footer">
-          <p>
-            Generated by {settings.companyName}
-            <br />
-            <small>
-              {'rule' in report
-                ? `Calculation version: ${report.rule}${report.rule === 'v3' ? (report.deductShipping ? ' / delivery deducted' : ' / original shipping rule') : ''} · `
-                : ''}
-              Amounts in BDT
-            </small>
-          </p>
-          <div className="signature-line">
-            {settings.signatureFileId ? (
-              <img
-                className="invoice-signature"
-                src={`${fileBase}/${settings.signatureFileId}`}
-                alt="Authorized signature"
-              />
-            ) : null}
-            <span className="signature-rule" />
-            <span>{settings.signatureLabel}</span>
-          </div>
-        </footer>
-      </article>
+              <div className="invoice-final">
+                <span>Total advertising cost</span>
+                <strong>{money(report.total)}</strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <section>
+                <h2>Delivery summary</h2>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Particular</th>
+                      <th>Parcels</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Delivered</td>
+                      <td>{report.deliveredQty}</td>
+                      <td>{money(report.deliveredAmount)}</td>
+                    </tr>
+                    <tr>
+                      <td>Cancelled</td>
+                      <td>{report.cancelledQty}</td>
+                      <td>
+                        {report.rule === 'legacy'
+                          ? money(report.cancelledAmount)
+                          : '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Partial delivered</td>
+                      <td>{report.partialQty}</td>
+                      <td>{money(report.partialAmount)}</td>
+                    </tr>
+                    <tr>
+                      <td>Pending</td>
+                      <td>{report.pendingQty}</td>
+                      <td>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+              <section>
+                <h2>Settlement calculation</h2>
+                <table>
+                  <tbody>
+                    {row('Delivered collection', report.deliveredAmount)}
+                    {report.rule === 'legacy'
+                      ? row('Less: cancelled amount', -report.cancelledAmount)
+                      : null}
+                    {row('Add: partial collection', report.partialAmount)}
+                    {report.rule === 'v3' ? (
+                      <>
+                        {report.deductShipping
+                          ? row('Less: delivery charges', -report.shipping)
+                          : null}
+                        {row(
+                          'Less: delivered COD charges',
+                          -report.deliveredCodCharge,
+                        )}
+                        {row(
+                          'Less: partial COD charges',
+                          -report.partialCodCharge,
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {row('Less: shipping charges', -report.shipping)}
+                        {row('Less: COD charges', -report.codCharge)}
+                      </>
+                    )}
+                    {row('Gross settlement', report.gross, true)}
+                    {row('Less: advertising cost', -report.ads)}
+                    {report.rule === 'v3' &&
+                    !report.advertisingVatOnly &&
+                    !report.vatAddedToAgency
+                      ? row(
+                          `Less: advertising VAT (${String(report.vatBasisPoints / 100)}%)`,
+                          -calculateSettlement(report).vat,
+                        )
+                      : null}
+                    {row('Less: product cost', -report.productCost)}
+                    {report.rule === 'v3' &&
+                    report.deliveredUnits !== null &&
+                    report.costPerPiece !== null ? (
+                      <tr>
+                        <td colSpan={2} className="invoice-cost-note">
+                          {report.deliveredUnits} delivered items ×{' '}
+                          {money(report.costPerPiece)} per item
+                        </td>
+                      </tr>
+                    ) : null}
+                    {row('Net amount', report.net, true)}
+                  </tbody>
+                </table>
+              </section>
+              <div className="invoice-final">
+                <span>
+                  Agency share · {report.agencyBasisPoints / 100}%
+                  {report.vatAddedToAgency && !report.advertisingVatOnly
+                    ? ' + advertising VAT'
+                    : ''}
+                </span>
+                <strong>{money(report.commission)}</strong>
+              </div>
+              {report.vatAddedToAgency && !report.advertisingVatOnly ? (
+                <table>
+                  <tbody>
+                    {row(
+                      'Agency percentage on net',
+                      report.commission - calculateSettlement(report).vat,
+                    )}
+                    {row(
+                      'Add: advertising VAT',
+                      calculateSettlement(report).vat,
+                    )}
+                  </tbody>
+                </table>
+              ) : null}
+            </>
+          )}
+          <footer className="invoice-footer">
+            <p>
+              Generated by {settings.companyName}
+              <br />
+              <small>
+                {'rule' in report
+                  ? `Calculation version: ${report.rule}${report.rule === 'v3' ? (report.deductShipping ? ' / delivery deducted' : ' / original shipping rule') : ''} · `
+                  : ''}
+                Amounts in BDT
+              </small>
+            </p>
+            <div className="signature-line">
+              {settings.signatureFileId ? (
+                <img
+                  className="invoice-signature"
+                  src={`${fileBase}/${settings.signatureFileId}`}
+                  alt="Authorized signature"
+                />
+              ) : null}
+              <span className="signature-rule" />
+              <span>{settings.signatureLabel}</span>
+            </div>
+          </footer>
+        </article>
+      </DocumentPreview>
     </>
   );
 }

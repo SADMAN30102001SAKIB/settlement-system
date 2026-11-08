@@ -508,11 +508,16 @@ test('admin provisions brand access and owners can only view and export their th
     await expect(access.getByRole('status')).toContainText(
       'Brand access disabled',
     );
+    await access.getByRole('button', { name: 'Close', exact: true }).click();
+    await showBrand(page, name);
     await expect(row).toContainText('Login disabled');
     await owner.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(
       owner.getByRole('button', { name: 'Sign in to brand portal' }),
     ).toBeVisible();
+    await row
+      .getByRole('button', { name: 'Login access', exact: true })
+      .click();
     await access.getByLabel('Allow brand sign-in').check();
     await access
       .getByLabel('New brand password', { exact: true })

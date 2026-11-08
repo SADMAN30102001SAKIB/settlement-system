@@ -941,10 +941,10 @@ test('brand payments split commission and ads into immutable receipts and suppor
   const navigation = page.locator('.sidebar');
   await expect(
     navigation.getByRole('link', { name: /Payments/ }),
-  ).toContainText('06');
+  ).toContainText('05');
   await expect(
     navigation.getByRole('link', { name: /Business tracking/ }),
-  ).toContainText('07');
+  ).toContainText('06');
   await expect(
     navigation.getByRole('link', { name: /Private files/ }),
   ).toContainText('09');
@@ -1047,11 +1047,16 @@ test('brand payments split commission and ads into immutable receipts and suppor
   await expect(page.locator('.invoice-document')).toContainText('৳11,000.00');
   await expect(page.locator('.invoice-document')).toContainText('৳16,000.00');
   await expect(page.locator('.invoice-meta')).toContainText('28 Oct 2026');
-  const signature = await page
-    .getByRole('img', { name: 'Authorized signature', exact: true })
-    .boundingBox();
-  expect(signature?.width).toBe(130);
-  expect(signature?.height).toBe(60);
+  const signature = page.getByRole('img', {
+    name: 'Authorized signature',
+    exact: true,
+  });
+  const signatureSize = await signature.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { width: parseFloat(style.width), height: parseFloat(style.height) };
+  });
+  expect(signatureSize.width).toBeCloseTo(130, 1);
+  expect(signatureSize.height).toBeCloseTo(60, 1);
   const firstId = new URL(page.url()).pathname.split('/').at(-1);
   if (!firstId) throw new Error('Missing receipt id');
   const first = z
@@ -2773,9 +2778,9 @@ test('settings use themed confirmations, custom checkboxes and reduced-motion pr
   await expect(
     page.getByRole('button', { name: 'Delete image', exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator('.form-footer')).not.toContainText(
-    'Restore company defaults',
-  );
+  await expect(
+    page.locator('.form-footer:not(.ai-settings-actions)'),
+  ).not.toContainText('Restore company defaults');
   const restore = page.getByRole('button', {
     name: 'Restore company defaults',
     exact: true,

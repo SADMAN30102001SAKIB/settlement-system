@@ -6,6 +6,7 @@ import { dateLabel, money, amountInput } from '../lib/format';
 import { InvoiceStamp } from './invoice-stamp';
 import type { LetterDocument } from '../../shared/letter';
 import { LetterBody } from './letter-body';
+import { DocumentPreview } from './document-preview';
 export function DocumentPaper({
   title,
   number,
@@ -36,93 +37,95 @@ export function DocumentPaper({
   body?: LetterDocument | null;
 }) {
   return (
-    <article className="invoice-document">
-      {settings.watermarkFileId ? (
-        <img
-          className="invoice-watermark"
-          src={`${fileBase}/${settings.watermarkFileId}`}
-          alt=""
-        />
-      ) : null}
-      <header className="invoice-header">
-        <div>
-          <p className="eyebrow">{title}</p>
-          <h1>{company.companyName}</h1>
-          <p>{company.address}</p>
-          <p>
-            {company.phone} · {company.email}
-          </p>
-        </div>
-        <span className="invoice-logo">H</span>
-      </header>
-      <div className="invoice-meta">
-        <div>
-          <small>DOCUMENT NUMBER</small>
-          <strong>{number}</strong>
-          <p>{recipient}</p>
-        </div>
-        {stamp && kind !== 'letter' ? (
-          <InvoiceStamp
-            settings={settings}
-            fileBase={fileBase}
-            status={stamp}
+    <DocumentPreview>
+      <article className="invoice-document">
+        {settings.watermarkFileId ? (
+          <img
+            className="invoice-watermark"
+            src={`${fileBase}/${settings.watermarkFileId}`}
+            alt=""
           />
         ) : null}
-        <div>
-          <small>DATE</small>
-          <strong>{dateLabel(date)}</strong>
-        </div>
-      </div>
-      {kind === 'letter' && body ? (
-        <LetterBody body={body} />
-      ) : (
-        <>
-          <section>
-            <h2>{title}</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th className="numeric">Quantity</th>
-                  <th className="numeric">Unit price</th>
-                  <th className="numeric">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, index) => (
-                  <tr key={index}>
-                    <td>{line.description}</td>
-                    <td className="numeric">
-                      {amountInput(line.quantityMilli)}
-                    </td>
-                    <td className="numeric">{money(line.price)}</td>
-                    <td className="numeric">{money(lineTotal(line))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-          <div className="invoice-final">
-            <span>Total</span>
-            <strong>{money(total)}</strong>
+        <header className="invoice-header">
+          <div>
+            <p className="eyebrow">{title}</p>
+            <h1>{company.companyName}</h1>
+            <p>{company.address}</p>
+            <p>
+              {company.phone} · {company.email}
+            </p>
           </div>
-          {notes ? <p className="receipt-note">{notes}</p> : null}
-        </>
-      )}
-      <footer className="invoice-footer">
-        <p>Prepared by {company.companyName}</p>
-        <div className="signature-line">
-          {settings.signatureFileId ? (
-            <img
-              className="invoice-signature"
-              src={`${fileBase}/${settings.signatureFileId}`}
-              alt="Authorized signature"
+          <span className="invoice-logo">H</span>
+        </header>
+        <div className="invoice-meta">
+          <div>
+            <small>DOCUMENT NUMBER</small>
+            <strong>{number}</strong>
+            <p>{recipient}</p>
+          </div>
+          {stamp && kind !== 'letter' ? (
+            <InvoiceStamp
+              settings={settings}
+              fileBase={fileBase}
+              status={stamp}
             />
           ) : null}
-          <span className="signature-rule" />
-          <span>{settings.signatureLabel}</span>
+          <div>
+            <small>DATE</small>
+            <strong>{dateLabel(date)}</strong>
+          </div>
         </div>
-      </footer>
-    </article>
+        {kind === 'letter' && body ? (
+          <LetterBody body={body} />
+        ) : (
+          <>
+            <section>
+              <h2>{title}</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th className="numeric">Quantity</th>
+                    <th className="numeric">Unit price</th>
+                    <th className="numeric">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line, index) => (
+                    <tr key={index}>
+                      <td>{line.description}</td>
+                      <td className="numeric">
+                        {amountInput(line.quantityMilli)}
+                      </td>
+                      <td className="numeric">{money(line.price)}</td>
+                      <td className="numeric">{money(lineTotal(line))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <div className="invoice-final">
+              <span>Total</span>
+              <strong>{money(total)}</strong>
+            </div>
+            {notes ? <p className="receipt-note">{notes}</p> : null}
+          </>
+        )}
+        <footer className="invoice-footer">
+          <p>Prepared by {company.companyName}</p>
+          <div className="signature-line">
+            {settings.signatureFileId ? (
+              <img
+                className="invoice-signature"
+                src={`${fileBase}/${settings.signatureFileId}`}
+                alt="Authorized signature"
+              />
+            ) : null}
+            <span className="signature-rule" />
+            <span>{settings.signatureLabel}</span>
+          </div>
+        </footer>
+      </article>
+    </DocumentPreview>
   );
 }

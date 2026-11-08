@@ -19,6 +19,7 @@ import { StatusSelect } from '../../components/status-select';
 import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
 import { deleteReceipt } from './delete-receipt';
+import { DocumentPreview } from '../../components/document-preview';
 
 export function ReceiptView({
   item,
@@ -92,7 +93,7 @@ export function ReceiptView({
           </button>
         }
       />
-      <div className="actions no-print">
+      <div className="actions no-print receipt-actions">
         {!readOnly ? (
           <Field label="Receipt stamp status">
             <StatusSelect
@@ -145,158 +146,162 @@ export function ReceiptView({
         </button>
       </div>
       {error ? <Alert>{error}</Alert> : null}
-      <article ref={documentRef} className="invoice-document invoice-receipt">
-        {settings.watermarkFileId ? (
-          <img
-            className="invoice-watermark"
-            src={`${fileBase}/${settings.watermarkFileId}`}
-            alt=""
-          />
-        ) : null}
-        <header className="invoice-header">
-          <div>
-            <p className="eyebrow">PAYMENT RECEIPT · NOT A NEW BILL</p>
-            <h1>{data.companyName}</h1>
-            <p>{data.address}</p>
-            <p>
-              {data.phone} · {data.email}
-            </p>
+      <DocumentPreview>
+        <article ref={documentRef} className="invoice-document invoice-receipt">
+          {settings.watermarkFileId ? (
+            <img
+              className="invoice-watermark"
+              src={`${fileBase}/${settings.watermarkFileId}`}
+              alt=""
+            />
+          ) : null}
+          <header className="invoice-header">
+            <div>
+              <p className="eyebrow">PAYMENT RECEIPT · NOT A NEW BILL</p>
+              <h1>{data.companyName}</h1>
+              <p>{data.address}</p>
+              <p>
+                {data.phone} · {data.email}
+              </p>
+            </div>
+            <span className="invoice-logo">H</span>
+          </header>
+          <div className="invoice-meta">
+            <div>
+              <small>RECEIPT / BRAND</small>
+              <strong>{item.number}</strong>
+              <p>{data.brandName}</p>
+            </div>
+            <InvoiceStamp
+              status={receiptStampStatus(item)}
+              settings={settings}
+              fileBase={fileBase}
+            />
+            <div>
+              <small>PAYMENT DATE</small>
+              <strong>{dateLabel(item.date)}</strong>
+              <p>
+                {data.advanceUsed ? 'Advance credit application' : data.method}
+                {data.reference ? ` · ${data.reference}` : ''}
+              </p>
+            </div>
           </div>
-          <span className="invoice-logo">H</span>
-        </header>
-        <div className="invoice-meta">
-          <div>
-            <small>RECEIPT / BRAND</small>
-            <strong>{item.number}</strong>
-            <p>{data.brandName}</p>
-          </div>
-          <InvoiceStamp
-            status={receiptStampStatus(item)}
-            settings={settings}
-            fileBase={fileBase}
-          />
-          <div>
-            <small>PAYMENT DATE</small>
-            <strong>{dateLabel(item.date)}</strong>
-            <p>
-              {data.advanceUsed ? 'Advance credit application' : data.method}
-              {data.reference ? ` · ${data.reference}` : ''}
-            </p>
-          </div>
-        </div>
-        {item.reversedAt !== null ? (
-          <div className="receipt-reversed">
-            <strong>REVERSED — NOT AN ACTIVE PAYMENT</strong>
-            <p>{item.reversalReason}</p>
-            <small>
-              Reversed {recordedTime(item.reversedAt)}. Original figures below
-              are retained for audit.
-            </small>
-          </div>
-        ) : null}
-        <section>
-          <h2>Payment allocation</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice / period</th>
-                <th>Category</th>
-                <th className="numeric">Received</th>
-                <th className="numeric">Invoice balance after</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((line) => (
-                <tr key={line.kind + line.invoiceId}>
-                  <td>
-                    {line.invoiceNumber}
-                    {item.deletedInvoiceIds.includes(line.invoiceId) ? (
-                      <small>
-                        Source invoice deleted · historical figures retained
-                      </small>
-                    ) : null}
-                    <small>{line.period}</small>
-                    <small>Bill date {dateLabel(line.date)}</small>
-                  </td>
-                  <td>
-                    {line.kind === 'commission' ? 'Commission' : 'Advertising'}
-                  </td>
-                  <td className="numeric">{money(line.received)}</td>
-                  <td className="numeric">{money(line.balanceAfter)}</td>
+          {item.reversedAt !== null ? (
+            <div className="receipt-reversed">
+              <strong>REVERSED — NOT AN ACTIVE PAYMENT</strong>
+              <p>{item.reversalReason}</p>
+              <small>
+                Reversed {recordedTime(item.reversedAt)}. Original figures below
+                are retained for audit.
+              </small>
+            </div>
+          ) : null}
+          <section>
+            <h2>Payment allocation</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice / period</th>
+                  <th>Category</th>
+                  <th className="numeric">Received</th>
+                  <th className="numeric">Invoice balance after</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        <section>
-          <h2>Brand account · balances at recording time</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th className="numeric">Due before</th>
-                <th className="numeric">This payment</th>
-                <th className="numeric">Due after</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Commission</td>
-                <td className="numeric">{money(data.commissionBefore)}</td>
-                <td className="numeric">{money(data.commissionReceived)}</td>
-                <td className="numeric">{money(data.commissionAfter)}</td>
-              </tr>
-              <tr>
-                <td>Advertising</td>
-                <td className="numeric">{money(data.adsBefore)}</td>
-                <td className="numeric">{money(data.adsReceived)}</td>
-                <td className="numeric">{money(data.adsAfter)}</td>
-              </tr>
-            </tbody>
-          </table>
-          {data.commissionCredit || data.adsCredit ? (
-            <p>
-              Existing credits kept separately: commission{' '}
-              {money(data.commissionCredit)} · advertising{' '}
-              {money(data.adsCredit)}.
+              </thead>
+              <tbody>
+                {data.lines.map((line) => (
+                  <tr key={line.kind + line.invoiceId}>
+                    <td>
+                      {line.invoiceNumber}
+                      {item.deletedInvoiceIds.includes(line.invoiceId) ? (
+                        <small>
+                          Source invoice deleted · historical figures retained
+                        </small>
+                      ) : null}
+                      <small>{line.period}</small>
+                      <small>Bill date {dateLabel(line.date)}</small>
+                    </td>
+                    <td>
+                      {line.kind === 'commission'
+                        ? 'Commission'
+                        : 'Advertising'}
+                    </td>
+                    <td className="numeric">{money(line.received)}</td>
+                    <td className="numeric">{money(line.balanceAfter)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <section>
+            <h2>Brand account · balances at recording time</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th className="numeric">Due before</th>
+                  <th className="numeric">This payment</th>
+                  <th className="numeric">Due after</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Commission</td>
+                  <td className="numeric">{money(data.commissionBefore)}</td>
+                  <td className="numeric">{money(data.commissionReceived)}</td>
+                  <td className="numeric">{money(data.commissionAfter)}</td>
+                </tr>
+                <tr>
+                  <td>Advertising</td>
+                  <td className="numeric">{money(data.adsBefore)}</td>
+                  <td className="numeric">{money(data.adsReceived)}</td>
+                  <td className="numeric">{money(data.adsAfter)}</td>
+                </tr>
+              </tbody>
+            </table>
+            {data.commissionCredit || data.adsCredit ? (
+              <p>
+                Existing credits kept separately: commission{' '}
+                {money(data.commissionCredit)} · advertising{' '}
+                {money(data.adsCredit)}.
+              </p>
+            ) : null}
+          </section>
+          <div className="invoice-final">
+            <span>
+              {data.advanceUsed
+                ? 'Advance credit applied'
+                : 'Total received on this receipt'}
+            </span>
+            <strong>{money(item.total)}</strong>
+          </div>
+          {data.advanceUsed ? (
+            <p className="receipt-note">
+              Funded from previously received advance credit. New money received
+              on this receipt: {money(item.total - data.advanceUsed)}.
             </p>
           ) : null}
-        </section>
-        <div className="invoice-final">
-          <span>
-            {data.advanceUsed
-              ? 'Advance credit applied'
-              : 'Total received on this receipt'}
-          </span>
-          <strong>{money(item.total)}</strong>
-        </div>
-        {data.advanceUsed ? (
-          <p className="receipt-note">
-            Funded from previously received advance credit. New money received
-            on this receipt: {money(item.total - data.advanceUsed)}.
-          </p>
-        ) : null}
-        {data.note ? <p className="receipt-note">{data.note}</p> : null}
-        <footer className="invoice-footer">
-          <p>
-            Recorded {recordedTime(item.createdAt)}
-            <br />
-            Later payments do not change this receipt. Reversals retain the
-            original figures.
-          </p>
-          <div className="signature-line">
-            {settings.signatureFileId ? (
-              <img
-                className="invoice-signature"
-                src={`${fileBase}/${settings.signatureFileId}`}
-                alt="Authorized signature"
-              />
-            ) : null}
-            <span className="signature-rule" />
-            <span>{settings.signatureLabel}</span>
-          </div>
-        </footer>
-      </article>
+          {data.note ? <p className="receipt-note">{data.note}</p> : null}
+          <footer className="invoice-footer">
+            <p>
+              Recorded {recordedTime(item.createdAt)}
+              <br />
+              Later payments do not change this receipt. Reversals retain the
+              original figures.
+            </p>
+            <div className="signature-line">
+              {settings.signatureFileId ? (
+                <img
+                  className="invoice-signature"
+                  src={`${fileBase}/${settings.signatureFileId}`}
+                  alt="Authorized signature"
+                />
+              ) : null}
+              <span className="signature-rule" />
+              <span>{settings.signatureLabel}</span>
+            </div>
+          </footer>
+        </article>
+      </DocumentPreview>
       {!readOnly && item.proofFileId ? (
         <section className="panel no-print">
           <h2>Payment proof</h2>
