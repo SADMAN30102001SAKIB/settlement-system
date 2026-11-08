@@ -128,13 +128,20 @@ export function pathaoStatus(
   collectableAmount: number,
 ) {
   const type = orderType.trim().toLowerCase().replace(/\s+/g, ' ');
+  const returns = [
+    'return',
+    'return requested',
+    'paid return',
+    'returned to merchant',
+    'return at sorting hub',
+    'pickup cancel',
+    'pickup failed',
+  ];
   if (
     ![
       'delivery',
       'delivered',
-      'return',
-      'return requested',
-      'paid return',
+      ...returns,
       'accepted',
       'waiting for picked',
       'waiting for pickup',
@@ -158,8 +165,7 @@ export function pathaoStatus(
     return collectedAmount === collectableAmount
       ? 'Delivered'
       : 'Partial Delivered';
-  if (['return', 'return requested', 'paid return'].includes(type))
-    return 'Cancelled';
+  if (returns.includes(type)) return 'Cancelled';
   if (type === 'delivered')
     throw new Error(
       'A delivered parcel requires a positive collected amount. Check the source.',

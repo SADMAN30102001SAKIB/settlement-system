@@ -239,6 +239,60 @@ function pathao(row: string[]) {
   return mapOrder(row, pathaoMapping, 'ISO', 'courier', false, false, 'pathao');
 }
 
+it.each([
+  'Return',
+  'Return Requested',
+  'Paid Return',
+  'Returned To Merchant',
+  'Return At Sorting Hub',
+  'Pickup Cancel',
+  'Pickup Failed',
+])(
+  'maps Pathao %s using collected amounts without changing Steadfast',
+  (source) => {
+    for (const collected of ['0', '900', '1200']) {
+      const row = pathaoRow.map((value, index) =>
+        index === 7
+          ? `  ${source.toUpperCase().replaceAll(' ', '   ')}  `
+          : index === 3
+            ? collected
+            : value,
+      );
+      expect(pathao(row)).toMatchObject({
+        status:
+          collected === '0'
+            ? 'Cancelled'
+            : collected === '900'
+              ? 'Partial Delivered'
+              : 'Delivered',
+        deliveryDate: collected === '0' ? null : '2026-10-31',
+        orderDate: '2026-10-30',
+        collectedAmount: Number(collected) * 1000,
+      });
+      const headers = [
+        'Order ID',
+        'Order date',
+        'COD amount',
+        'Unused',
+        'COD charge',
+        'Shipping charge',
+        'Delivery date',
+        'Approval Status',
+      ];
+      expect(() =>
+        mapOrder(
+          row.map((value, index) =>
+            index === 1 || index === 6 ? value.slice(0, 10) : value,
+          ),
+          importMapping(headers, 'steadfast'),
+          'ISO',
+          'courier',
+        ),
+      ).toThrow('Unknown order status');
+    }
+  },
+);
+
 it('maps Pathao collectable and collected separately and uses explicit outcome precedence', () => {
   expect(pathao(pathaoRow)).toMatchObject({
     courier: 'pathao',

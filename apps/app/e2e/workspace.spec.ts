@@ -473,6 +473,107 @@ test('Steadfast approval-status workbook imports all 27 orders without changing 
   });
 });
 
+test('Pathao accepts the four additional zero-collection return statuses', async ({
+  page,
+}) => {
+  await signIn(page);
+  const created = await page.request.post('/api/manage/brands', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: {
+      name: `Pathao return statuses ${crypto.randomUUID()}`,
+      makingCost: 100000,
+    },
+  });
+  expect(created.status()).toBe(201);
+  const id = z
+    .object({ item: z.object({ id: z.string() }) })
+    .parse(await created.json()).item.id;
+  const statuses = [
+    'Returned To Merchant',
+    'Return At Sorting Hub',
+    'Pickup Cancel',
+    'Pickup Failed',
+  ];
+  const ids = statuses.map(() => `PATHAO-RETURN-${crypto.randomUUID()}`);
+  const rows = [
+    [
+      'Order consignment id',
+      'Order created at',
+      'Collectable Amount',
+      'Collected amount',
+      'Cod fee',
+      'Delivery fee',
+      'Order status',
+      'Order status updated at',
+    ],
+    ...statuses.map((status, index) => [
+      ids[index],
+      '2026-11-05',
+      '1200',
+      '0',
+      '0',
+      '60',
+      status,
+      '2026-11-07',
+    ]),
+  ];
+  await page.goto('/business');
+  const importer = page.locator('.importer');
+  await importer.getByLabel('Brand', { exact: true }).selectOption(id);
+  await importer.getByLabel('Courier', { exact: true }).selectOption('pathao');
+  await importer.locator('input[type=file]').setInputFiles({
+    name: 'pathao-returns.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(rows.map((row) => row.join(',')).join('\n')),
+  });
+  await expect(
+    importer.getByText('4 valid rows', { exact: false }),
+  ).toBeVisible();
+  await importer
+    .getByRole('button', { name: 'Confirm & import 4 orders', exact: true })
+    .click();
+  await expect(importer.getByRole('status')).toContainText('4 orders imported');
+  const summary: unknown = await (
+    await page.request.get(
+      `/api/manage/business/settlement?brandId=${id}&from=2026-11-01&to=2026-11-30`,
+    )
+  ).json();
+  expect(summary).toMatchObject({
+    cancelledQty: 4,
+    deliveredQty: 0,
+    partialQty: 0,
+    pendingQty: 0,
+    productCost: 0,
+    deliveredAmount: 0,
+    partialAmount: 0,
+  });
+  const saved: unknown = await (
+    await page.request.get(
+      `/api/manage/business/orders?brandId=${id}&from=2026-11-01&to=2026-11-30`,
+    )
+  ).json();
+  const items = z
+    .object({
+      items: z.array(
+        z.object({
+          id: z.string(),
+          status: z.string(),
+          orderDate: z.string(),
+          deliveryDate: z.string().nullable(),
+        }),
+      ),
+    })
+    .parse(saved).items;
+  expect(items).toHaveLength(4);
+  expect(new Set(items.map((item) => item.id))).toEqual(new Set(ids));
+  for (const item of items)
+    expect(item).toMatchObject({
+      status: 'Cancelled',
+      orderDate: '2026-11-05',
+      deliveryDate: null,
+    });
+});
+
 for (const fixture of [
   {
     file: 'deliveries_2026-11-03.xlsx',
