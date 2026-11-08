@@ -34,20 +34,27 @@ const orderFields = z
       item.partialQuantity === null || item.partialQuantity <= item.quantity,
     { message: 'Partial quantity cannot exceed quantity.' },
   )
-  .refine((item) => item.status === 'Pending' || item.deliveryDate !== null, {
-    message: 'Finalized orders require a delivery date.',
-  })
+  .refine(
+    (item) =>
+      item.status === 'Pending' ||
+      (item.courier === 'pathao' && item.status === 'Cancelled') ||
+      item.deliveryDate !== null,
+    {
+      message: 'Finalized orders require a delivery date.',
+    },
+  )
   .refine(
     (item) =>
       item.courier === 'steadfast'
         ? item.collectedAmount === null
         : item.collectedAmount === null
           ? item.status === 'Pending'
-          : item.status === 'Cancelled' ||
-            (item.collectedAmount > 0
-              ? item.status === 'Delivered' ||
+          : item.collectedAmount > 0
+            ? item.collectedAmount === item.codAmount
+              ? item.status === 'Delivered'
+              : item.collectedAmount < item.codAmount &&
                 item.status === 'Partial Delivered'
-              : item.status === 'Pending'),
+            : item.status === 'Pending' || item.status === 'Cancelled',
     { message: 'Pathao requires a matching collection and delivery outcome.' },
   );
 const filterFields = z.object({

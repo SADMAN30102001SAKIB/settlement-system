@@ -701,13 +701,14 @@ it('stores Pathao collectable and collected separately, refreshes collection out
     return response.json();
   };
   expect(await result()).toMatchObject({
-    deliveredQty: 1,
+    deliveredQty: 0,
     pendingQty: 1,
     cancelledQty: 1,
-    partialQty: 0,
-    deliveredAmount: 900000,
-    productCost: 100000,
-    deliveredCodCharge: 6000,
+    partialQty: 1,
+    deliveredAmount: 0,
+    partialAmount: 900000,
+    productCost: 0,
+    partialCodCharge: 6000,
     shipping: 120000,
   });
   const stored = await fixture.env.DB.prepare(
@@ -720,6 +721,36 @@ it('stores Pathao collectable and collected separately, refreshes collection out
     collected_amount: 900000,
     cod_amount: 1200000,
   });
+  for (const change of [
+    { status: 'Delivered' },
+    { status: 'Cancelled' },
+    { deliveryDate: null },
+    { collectedAmount: 1200010 },
+  ]) {
+    expect(
+      (
+        await request('/api/manage/business/import', 'POST', {
+          brandId,
+          rows: [{ ...rows[0], ...change }],
+        })
+      ).status,
+    ).toBe(422);
+  }
+  await fixture.env.DB.prepare(
+    'UPDATE orders SET delivery_date=? WHERE id IN (?,?)',
+  )
+    .bind('2026-10-31', 'PATHAO-TEST-2', 'PATHAO-TEST-3')
+    .run();
+  expect((await save(rows)).status).toBe(200);
+  const undelivered = await fixture.env.DB.prepare(
+    'SELECT order_date,delivery_date FROM orders WHERE id IN (?,?)',
+  )
+    .bind('PATHAO-TEST-2', 'PATHAO-TEST-3')
+    .all();
+  expect(undelivered.results).toEqual([
+    { order_date: '2026-10-30', delivery_date: null },
+    { order_date: '2026-10-30', delivery_date: null },
+  ]);
   const invalid = { ...rows[0], collectedAmount: null };
   expect(
     (
@@ -735,21 +766,22 @@ it('stores Pathao collectable and collected separately, refreshes collection out
   ).toBe(422);
   expect((await save([mapped('PATHAO-TEST-2', '1200')])).status).toBe(200);
   expect(await result()).toMatchObject({
-    deliveredQty: 2,
+    deliveredQty: 1,
     pendingQty: 0,
-    deliveredAmount: 2100000,
-    productCost: 200000,
+    deliveredAmount: 1200000,
+    partialAmount: 900000,
+    productCost: 100000,
   });
   expect(
-    (await save([mapped('PATHAO-TEST-2', '1200', 'Paid Return')])).status,
+    (await save([mapped('PATHAO-TEST-2', '600', 'Paid Return')])).status,
   ).toBe(200);
   expect(await result()).toMatchObject({
-    deliveredQty: 1,
-    partialQty: 1,
+    deliveredQty: 0,
+    partialQty: 2,
     pendingQty: 0,
-    deliveredAmount: 900000,
-    partialAmount: 1200000,
-    productCost: 100000,
+    deliveredAmount: 0,
+    partialAmount: 1500000,
+    productCost: 0,
   });
   expect(
     (

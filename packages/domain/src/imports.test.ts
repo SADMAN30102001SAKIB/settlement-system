@@ -108,9 +108,11 @@ it.each(['steadfast', 'pathao'] as const)(
         ? courier === 'pathao'
           ? 'Delivery'
           : 'Delivered'
-        : courier === 'steadfast' && (i === 1 || i === 6)
-          ? v.slice(0, 10)
-          : v,
+        : courier === 'pathao' && i === 3
+          ? '0'
+          : courier === 'steadfast' && (i === 1 || i === 6)
+            ? v.slice(0, 10)
+            : v,
     );
     for (const key of ['shipping', 'codCharge', 'codAmount'] as const) {
       const zero = base.map((v, i) => (i === mapping[key] ? '0' : v));
@@ -182,8 +184,14 @@ it('maps explicit Pathao lifecycle statuses and prefers status over legacy order
     ['On the Way To Delivery Hub', '0', 'Pending'],
     ['Assigned For Delivery', '0', 'Pending'],
     ['Return In Transit', '0', 'Pending'],
-    ['Delivered', '900', 'Delivered'],
+    ['On hold', '0', 'Pending'],
+    ['Delivered', '1200', 'Delivered'],
+    ['Delivered', '900', 'Partial Delivered'],
     ['  PAID   RETURN ', '170', 'Partial Delivered'],
+    ['Paid Return', '0', 'Cancelled'],
+    ['Return Requested', '0', 'Cancelled'],
+    ['Return', '900', 'Partial Delivered'],
+    ['Accepted', '900', 'Partial Delivered'],
     ['Return', '0', 'Cancelled'],
   ]) {
     const row = pathaoRow.map((v, i) =>
@@ -210,8 +218,7 @@ it('maps explicit Pathao lifecycle statuses and prefers status over legacy order
   for (const [status, amount] of [
     ['', '900'],
     ['Delivered', '0'],
-    ['Paid Return', '0'],
-    ['Accepted', '900'],
+    ['Delivered', '1200.01'],
     ['Unrecognized', '0'],
   ])
     expect(() =>
@@ -236,7 +243,7 @@ it('maps Pathao collectable and collected separately and uses explicit outcome p
   expect(pathao(pathaoRow)).toMatchObject({
     courier: 'pathao',
     id: 'P0001',
-    status: 'Delivered',
+    status: 'Partial Delivered',
     codAmount: 1200000,
     collectedAmount: 900000,
     orderDate: '2026-10-30',
@@ -246,12 +253,18 @@ it('maps Pathao collectable and collected separately and uses explicit outcome p
   expect(pathao(pathaoRow.map((v, i) => (i === 3 ? '0' : v))).status).toBe(
     'Pending',
   );
-  for (const amount of ['0', '900'])
+  for (const amount of ['0', '900', '1200'])
     expect(
       pathao(
         pathaoRow.map((v, i) => (i === 3 ? amount : i === 7 ? ' Return ' : v)),
       ).status,
-    ).toBe('Cancelled');
+    ).toBe(
+      amount === '0'
+        ? 'Cancelled'
+        : amount === '1200'
+          ? 'Delivered'
+          : 'Partial Delivered',
+    );
   for (const amount of ['', '-1', 'not money'])
     expect(() =>
       pathao(pathaoRow.map((v, i) => (i === 3 ? amount : v))),
@@ -297,6 +310,28 @@ it('maps Pathao collectable and collected separately and uses explicit outcome p
       'pathao',
     ),
   ).toMatchObject({ status: 'Pending', collectedAmount: null, codAmount: 0 });
+});
+
+it('keeps Pathao booking dates separate from outcome dates', () => {
+  for (const source of ['On hold', 'Return Requested', 'Paid Return']) {
+    const order = pathao(
+      pathaoRow.map((v, i) =>
+        i === 7 ? source : i === 3 ? '0' : i === 6 ? '' : v,
+      ),
+    );
+    expect(order.orderDate).toBe('2026-10-30');
+    expect(order.deliveryDate).toBeNull();
+  }
+  for (const amount of ['900', '1200']) {
+    const row = pathaoRow.map((v, i) =>
+      i === 7 ? 'Delivered' : i === 3 ? amount : v,
+    );
+    expect(pathao(row)).toMatchObject({
+      orderDate: '2026-10-30',
+      deliveryDate: '2026-10-31',
+    });
+    expect(() => pathao(row.map((v, i) => (i === 6 ? '' : v)))).toThrow();
+  }
 });
 
 it('extracts supported Pathao text-PDF columns and rejects unsupported layouts', () => {

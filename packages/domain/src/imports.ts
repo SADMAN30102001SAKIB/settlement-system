@@ -122,19 +122,19 @@ export function importMapping(headers: readonly string[], courier: Courier) {
     quantity: find('quantity'),
   };
 }
-export function pathaoStatus(orderType: string, collectedAmount: number) {
+export function pathaoStatus(
+  orderType: string,
+  collectedAmount: number,
+  collectableAmount: number,
+) {
   const type = orderType.trim().toLowerCase().replace(/\s+/g, ' ');
-  if (type === 'return') return 'Cancelled';
-  if (type === 'delivery') return collectedAmount > 0 ? 'Delivered' : 'Pending';
-  if (type === 'delivered' || type === 'paid return') {
-    if (collectedAmount <= 0)
-      throw new Error(
-        'Delivered or paid-return parcels require a positive collected amount. Check the source.',
-      );
-    return type === 'paid return' ? 'Partial Delivered' : 'Delivered';
-  }
   if (
-    [
+    ![
+      'delivery',
+      'delivered',
+      'return',
+      'return requested',
+      'paid return',
       'accepted',
       'waiting for picked',
       'waiting for pickup',
@@ -144,17 +144,27 @@ export function pathaoStatus(orderType: string, collectedAmount: number) {
       'on the way to delivery hub',
       'assigned for delivery',
       'return in transit',
+      'on hold',
     ].includes(type)
-  ) {
-    if (collectedAmount > 0)
-      throw new Error(
-        'A pending Pathao parcel has collected money. Check its source status.',
-      );
-    return 'Pending';
-  }
-  throw new Error(
-    `Unknown Pathao order status/type: ${orderType || '(empty)'}.`,
-  );
+  )
+    throw new Error(
+      `Unknown Pathao order status/type: ${orderType || '(empty)'}.`,
+    );
+  if (collectedAmount > collectableAmount)
+    throw new Error(
+      'Collected amount exceeds collectable amount. Check the source.',
+    );
+  if (collectedAmount > 0)
+    return collectedAmount === collectableAmount
+      ? 'Delivered'
+      : 'Partial Delivered';
+  if (['return', 'return requested', 'paid return'].includes(type))
+    return 'Cancelled';
+  if (type === 'delivered')
+    throw new Error(
+      'A delivered parcel requires a positive collected amount. Check the source.',
+    );
+  return 'Pending';
 }
 export function mapOrder(
   row: readonly string[],
@@ -197,25 +207,6 @@ export function mapOrder(
       : null;
   const id = get('id');
   if (!id || id.length > 100) throw new Error('Missing or invalid order ID.');
-  const statuses = {
-    delivered: 'Delivered',
-    cancelled: 'Cancelled',
-    canceled: 'Cancelled',
-    'partial delivered': 'Partial Delivered',
-    'partially delivered': 'Partial Delivered',
-    pending: 'Pending',
-  } as const;
-  const rawStatus = get('status').toLowerCase();
-  const status =
-    mode === 'orders'
-      ? 'Pending'
-      : courier === 'pathao'
-        ? pathaoStatus(get('status'), collectedAmount ?? 0)
-        : Object.hasOwn(statuses, rawStatus)
-          ? statuses[rawStatus as keyof typeof statuses]
-          : undefined;
-  if (status === undefined)
-    throw new Error(`Unknown order status: ${get('status') || '(empty)'}.`);
   const amount = (key: ImportColumn) => {
     const confirmedZero =
       mapping[key] >= 0 &&
@@ -230,6 +221,26 @@ export function mapOrder(
     if (value < 0) throw new Error('Amounts cannot be negative.');
     return value;
   };
+  const codAmount = mode === 'orders' ? 0 : amount('codAmount');
+  const statuses = {
+    delivered: 'Delivered',
+    cancelled: 'Cancelled',
+    canceled: 'Cancelled',
+    'partial delivered': 'Partial Delivered',
+    'partially delivered': 'Partial Delivered',
+    pending: 'Pending',
+  } as const;
+  const rawStatus = get('status').toLowerCase();
+  const status =
+    mode === 'orders'
+      ? 'Pending'
+      : courier === 'pathao'
+        ? pathaoStatus(get('status'), collectedAmount ?? 0, codAmount)
+        : Object.hasOwn(statuses, rawStatus)
+          ? statuses[rawStatus as keyof typeof statuses]
+          : undefined;
+  if (status === undefined)
+    throw new Error(`Unknown order status: ${get('status') || '(empty)'}.`);
   return {
     id,
     courier,
@@ -239,7 +250,10 @@ export function mapOrder(
       format,
     ),
     deliveryDate:
-      mode === 'orders' || (!get('deliveryDate') && status === 'Pending')
+      mode === 'orders' ||
+      (courier === 'pathao' &&
+        (status === 'Pending' || status === 'Cancelled')) ||
+      (!get('deliveryDate') && status === 'Pending')
         ? null
         : importDate(
             courier === 'pathao'
@@ -261,7 +275,7 @@ export function mapOrder(
     })(),
     partialQuantity: null,
     salesOverride: null,
-    codAmount: mode === 'orders' ? 0 : amount('codAmount'),
+    codAmount,
     shipping: mode === 'orders' ? 0 : amount('shipping'),
     codCharge: mode === 'orders' ? 0 : amount('codCharge'),
   };

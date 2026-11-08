@@ -185,11 +185,11 @@ test('blank courier charges can be resolved without deleting orders for both cou
         ids[1],
         '2026-11-01',
         '2026-11-02',
-        'Delivered',
+        courier === 'pathao' ? 'Accepted' : 'Delivered',
         '',
         '',
         '',
-        ...(courier === 'pathao' ? ['100'] : []),
+        ...(courier === 'pathao' ? ['0'] : []),
       ],
     ];
     const file = {
@@ -473,72 +473,186 @@ test('Steadfast approval-status workbook imports all 27 orders without changing 
   });
 });
 
-test('Pathao status workbook imports all 35 parcels with paid returns and pending lifecycle statuses', async ({
-  page,
-}, info) => {
-  const file = join('..', '..', 'assets', 'deliveries_2026-11-03.xlsx');
-  test.skip(!existsSync(file), 'Local Pathao status workbook is unavailable');
-  await signIn(page);
-  const name = 'Pathao status workbook fixture';
-  const existing = z
-    .object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
-    .parse(
-      await (
-        await page.request.get(
-          `/api/manage/brands?q=${encodeURIComponent(name)}`,
-        )
-      ).json(),
-    );
-  let id = existing.items.find((item) => item.name === name)?.id;
-  if (!id) {
-    const created = await page.request.post('/api/manage/brands', {
-      headers: { Origin: 'http://127.0.0.1:5174' },
-      data: { name, makingCost: 100000 },
+for (const fixture of [
+  {
+    file: 'deliveries_2026-11-03.xlsx',
+    count: 35,
+    collected: '৳20,710.00',
+    totals: {
+      deliveredQty: 16,
+      partialQty: 2,
+      pendingQty: 17,
+      cancelledQty: 0,
+      deliveredAmount: 20540000,
+      partialAmount: 170000,
+      productCost: 1600000,
+      shipping: 1600000,
+      deliveredCodCharge: 102700,
+      partialCodCharge: 850,
+    },
+  },
+  {
+    file: 'GB (20 to 7).xlsx',
+    count: 43,
+    collected: '৳33,870.00',
+    totals: {
+      deliveredQty: 24,
+      partialQty: 10,
+      pendingQty: 6,
+      cancelledQty: 3,
+      deliveredAmount: 31860000,
+      partialAmount: 2010000,
+      productCost: 2400000,
+      shipping: 3450000,
+      deliveredCodCharge: 318600,
+      partialCodCharge: 20100,
+    },
+  },
+]) {
+  test(`Pathao status workbook imports all ${String(fixture.count)} parcels with amount-based outcomes`, async ({
+    page,
+  }, info) => {
+    const file = join('..', '..', 'assets', fixture.file);
+    test.skip(!existsSync(file), 'Local Pathao status workbook is unavailable');
+    await signIn(page);
+    const name = `Pathao status workbook ${String(fixture.count)} fixture`;
+    const existing = z
+      .object({
+        items: z.array(z.object({ id: z.string(), name: z.string() })),
+      })
+      .parse(
+        await (
+          await page.request.get(
+            `/api/manage/brands?q=${encodeURIComponent(name)}`,
+          )
+        ).json(),
+      );
+    let id = existing.items.find((item) => item.name === name)?.id;
+    if (!id) {
+      const created = await page.request.post('/api/manage/brands', {
+        headers: { Origin: 'http://127.0.0.1:5174' },
+        data: { name, makingCost: 100000 },
+      });
+      expect(created.status()).toBe(201);
+      id = z
+        .object({ item: z.object({ id: z.string() }) })
+        .parse(await created.json()).item.id;
+    }
+    await page.goto('/business');
+    const importer = page.locator('.importer');
+    await importer.getByLabel('Brand', { exact: true }).selectOption(id);
+    await importer
+      .getByLabel('Courier', { exact: true })
+      .selectOption('pathao');
+    await importer.locator('input[type=file]').setInputFiles(file);
+    await expect(
+      importer.getByText(`${String(fixture.count)} valid rows`, {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(importer).not.toContainText('Unknown Pathao');
+    await expect(
+      importer.getByRole('region', { name: 'Source reconciliation' }),
+    ).toContainText(fixture.collected);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await importer.screenshot({
+      path: info.outputPath('pathao-status-preview.png'),
     });
-    expect(created.status()).toBe(201);
-    id = z
-      .object({ item: z.object({ id: z.string() }) })
-      .parse(await created.json()).item.id;
-  }
-  await page.goto('/business');
-  const importer = page.locator('.importer');
-  await importer.getByLabel('Brand', { exact: true }).selectOption(id);
-  await importer.getByLabel('Courier', { exact: true }).selectOption('pathao');
-  await importer.locator('input[type=file]').setInputFiles(file);
-  await expect(
-    importer.getByText('35 valid rows', { exact: false }),
-  ).toBeVisible();
-  await expect(importer).not.toContainText('Unknown Pathao');
-  await expect(
-    importer.getByRole('region', { name: 'Source reconciliation' }),
-  ).toContainText('৳20,710.00');
-  await importer.screenshot({
-    path: info.outputPath('pathao-status-preview.png'),
+    await importer
+      .getByRole('button', {
+        name: `Confirm & import ${String(fixture.count)} orders`,
+        exact: true,
+      })
+      .click();
+    await expect(importer.getByRole('status')).toContainText(
+      `${String(fixture.count)} orders imported`,
+    );
+    const result: unknown = await (
+      await page.request.get(
+        `/api/manage/business/settlement?brandId=${id}&from=2026-01-01&to=2026-12-31`,
+      )
+    ).json();
+    expect(result).toMatchObject(fixture.totals);
+    const raw = await readSheet(file);
+    const statusIndex = raw[0]?.indexOf('Order status') ?? -1;
+    for (const row of raw.slice(1)) {
+      const response = await page.request.get(
+        `/api/manage/business/orders?brandId=${id}&from=2026-01-01&to=2026-12-31&q=${encodeURIComponent(String(row[0]))}`,
+      );
+      const item = z
+        .object({
+          items: z.array(
+            z.object({
+              orderDate: z.string(),
+              deliveryDate: z.string().nullable(),
+              status: z.string(),
+              codAmount: z.number(),
+              collectedAmount: z.number(),
+            }),
+          ),
+        })
+        .parse(await response.json()).items[0];
+      expect(item).toBeDefined();
+      const collected = Number(row[3]),
+        collectable = Number(row[2]);
+      const expected =
+        collected > 0
+          ? collected === collectable
+            ? 'Delivered'
+            : 'Partial Delivered'
+          : ['Return', 'Return Requested', 'Paid Return'].includes(
+                String(row[statusIndex]),
+              )
+            ? 'Cancelled'
+            : 'Pending';
+      expect(item).toMatchObject({
+        status: expected,
+        codAmount: Math.round(collectable * 1000),
+        collectedAmount: Math.round(collected * 1000),
+      });
+      if (expected === 'Pending' || expected === 'Cancelled')
+        expect(item?.deliveryDate).toBeNull();
+      else expect(item?.deliveryDate).not.toBeNull();
+    }
+    if (fixture.count === 43) {
+      await page.goto('/settlements/new');
+      await page
+        .getByRole('button', { name: 'Load settlement totals', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: 'Courier file', exact: true })
+        .click();
+      const source = page.locator('.importer');
+      await source.getByLabel('Brand', { exact: true }).selectOption(id);
+      await source
+        .getByLabel('Courier', { exact: true })
+        .selectOption('pathao');
+      await source.locator('input[type=file]').setInputFiles(file);
+      await expect(
+        source.getByText('43 valid rows', { exact: false }),
+      ).toBeVisible();
+      await source
+        .getByRole('button', { name: 'Confirm & use rows in settlement' })
+        .click();
+      await expect(
+        page.getByLabel('Delivered amount (৳)', { exact: true }),
+      ).toHaveValue('31860');
+      await expect(
+        page.getByLabel('Partial collection (৳)', { exact: true }),
+      ).toHaveValue('2010');
+      await expect(
+        page.getByLabel('Delivered parcels', { exact: true }),
+      ).toHaveValue('24');
+      await expect(
+        page.getByLabel('Partial parcels', { exact: true }),
+      ).toHaveValue('10');
+    }
   });
-  await importer
-    .getByRole('button', { name: 'Confirm & import 35 orders', exact: true })
-    .click();
-  await expect(importer.getByRole('status')).toContainText(
-    '35 orders imported',
-  );
-  const result: unknown = await (
-    await page.request.get(
-      `/api/manage/business/settlement?brandId=${id}&from=2026-01-01&to=2026-12-31`,
-    )
-  ).json();
-  expect(result).toMatchObject({
-    deliveredQty: 16,
-    partialQty: 2,
-    pendingQty: 17,
-    cancelledQty: 0,
-    deliveredAmount: 20540000,
-    partialAmount: 170000,
-    productCost: 1600000,
-    shipping: 1600000,
-    deliveredCodCharge: 102700,
-    partialCodCharge: 850,
-  });
-});
+}
 
 async function uploadStamps(page: Page) {
   await page.goto('/settings');

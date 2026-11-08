@@ -274,7 +274,8 @@ export function SettlementSource({
                       values.cancelledAmount += row.codAmount;
                     } else if (row.status === 'Partial Delivered') {
                       values.partialQty++;
-                      values.partialAmount += row.codAmount;
+                      values.partialAmount +=
+                        row.collectedAmount ?? row.codAmount;
                       values.partialCodCharge += row.codCharge;
                     } else values.pendingQty++;
                     if (row.status !== 'Pending') {
