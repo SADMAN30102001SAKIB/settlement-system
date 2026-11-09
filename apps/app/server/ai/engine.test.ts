@@ -98,7 +98,7 @@ function fixture(
         expect(url.searchParams.get('key')).toBe('fixture-gemini-key');
         expect(url.searchParams.get('alt')).toBe('sse');
         expect(url.pathname).toMatch(
-          /^\/v1\/fbca92db4dd551f67f6e982d4a70a914\/settlement-system\/google-ai-studio\/v1beta\/models\//,
+          /^\/v1\/fbca92db4dd551f67f6e982d4a70a914\/default\/google-ai-studio\/v1beta\/models\//,
         );
         gatewayHeaders.push(new Headers(init.headers));
         models.push(url.pathname);
@@ -197,6 +197,9 @@ it('runs the real SDK streaming/tool loop and saves SDK history without losing z
   );
   expect(JSON.stringify(f.modelRequests[0]?.['systemInstruction'])).toContain(
     'read-only Meta Ads analyst',
+  );
+  expect(JSON.stringify(f.modelRequests[0]?.['systemInstruction'])).toContain(
+    '624037278949191',
   );
 });
 it('fails closed without gateway authentication instead of calling providers directly', async () => {
