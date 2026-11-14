@@ -459,7 +459,7 @@ export function BrandPortal() {
       <header className="portal-header no-print">
         <a href="/brand" className="wordmark">
           <BrandMark />
-          HEXA <small>BRAND PORTAL</small>
+          <small>BRAND PORTAL</small>
         </a>
         <div className="actions">
           <ThemePicker />

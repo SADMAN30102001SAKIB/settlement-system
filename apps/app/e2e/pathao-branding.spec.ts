@@ -164,22 +164,42 @@ test('supplied branding renders in both themes and document exports', async ({
   page,
 }, info) => {
   await page.goto('/brand/login');
-  for (const theme of ['Light', 'Dark']) {
-    await page.getByLabel('Color theme').selectOption({ label: theme });
-    const logo = page.getByRole('img', { name: 'Hexa logo' });
-    await expect(logo).toBeVisible();
-    expect(
-      await logo.evaluate(
-        (image) =>
-          image instanceof HTMLImageElement &&
-          image.complete &&
-          image.naturalWidth > 0,
-      ),
-    ).toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`brand-login-${theme}.png`),
-      fullPage: true,
-    });
+  await expect(page.locator('.portal-header .wordmark')).toHaveText(
+    'BRAND PORTAL',
+  );
+  for (const width of [320, 390, 1280]) {
+    await page.setViewportSize({ width, height: 850 });
+    for (const theme of ['Light', 'Dark']) {
+      await page.getByLabel('Color theme').selectOption({ label: theme });
+      const logo = page.getByRole('img', { name: 'Hexa logo' });
+      await expect(logo).toBeVisible();
+      expect(
+        await logo.evaluate(
+          (image) =>
+            image instanceof HTMLImageElement &&
+            image.complete &&
+            image.naturalWidth > 0,
+        ),
+      ).toBe(true);
+      const themeBox = await page.getByLabel('Color theme').boundingBox();
+      const signInBox = await page
+        .getByRole('link', { name: 'Admin sign-in', exact: true })
+        .boundingBox();
+      expect(themeBox?.height).toBe(44);
+      expect(signInBox?.height).toBe(44);
+      expect(
+        Math.abs((themeBox?.y ?? -100) - (signInBox?.y ?? 0)),
+      ).toBeLessThan(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`brand-login-${theme}-${String(width)}.png`),
+        fullPage: true,
+      });
+    }
   }
   const manifest = await page.request.get('/manifest.webmanifest');
   expect(manifest.ok()).toBe(true);
