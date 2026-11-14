@@ -28,6 +28,32 @@ const pathaoRow = [
   'Delivery',
 ];
 const pathaoMapping = importMapping(pathaoHeaders, 'pathao');
+it('accepts Pathao pickup hold and sorting-hub stages without weakening contradictory delivery checks', () => {
+  for (const stage of [
+    'Pickup On Hold',
+    'At Sorting Hub',
+    ' pickup  on hold ',
+  ]) {
+    const row = pathaoRow.map((value, index) =>
+      index === 7 ? stage : index === 3 ? '0' : value,
+    );
+    expect(pathao(row)).toMatchObject({
+      status: 'Pending',
+      deliveryDate: null,
+      collectedAmount: 0,
+    });
+    expect(
+      pathao(row.map((value, index) => (index === 3 ? '900' : value))).status,
+    ).toBe('Partial Delivered');
+  }
+  expect(() =>
+    pathao(
+      pathaoRow.map((value, index) =>
+        index === 7 ? 'Delivered' : index === 2 || index === 3 ? '0' : value,
+      ),
+    ),
+  ).toThrow('positive collected amount');
+});
 it('prioritizes Steadfast approval status without changing the other mappings or legacy files', () => {
   const headers = [
     'Order ID',

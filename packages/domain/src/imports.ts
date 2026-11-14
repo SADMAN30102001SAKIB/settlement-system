@@ -152,6 +152,8 @@ export function pathaoStatus(
       'assigned for delivery',
       'return in transit',
       'on hold',
+      'pickup on hold',
+      'at sorting hub',
     ].includes(type)
   )
     throw new Error(

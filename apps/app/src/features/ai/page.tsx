@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BrandMark } from '../../components/brand-mark';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { z } from 'zod';
@@ -367,7 +368,7 @@ export function AiChat() {
             <ChatMessagesSkeleton />
           ) : !turns.length ? (
             <div className="ai-welcome">
-              <span className="brand-mark">H</span>
+              <BrandMark />
               <h2>What would you like to understand?</h2>
               <p>
                 Ask about ad accounts, spend or campaign performance. Include

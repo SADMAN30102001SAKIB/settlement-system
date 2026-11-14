@@ -8,6 +8,7 @@ import {
   SkeletonInvoice,
 } from './components/ui';
 import { Login } from './features/auth/login';
+import { BrandMark } from './components/brand-mark';
 import { Brands } from './features/catalog/brands';
 import { ManualInvoices } from './features/manual/page';
 import { Settings } from './features/catalog/settings';
@@ -310,7 +311,7 @@ function AdminApp() {
   if (session === null || settings === null)
     return (
       <main className="boot-screen">
-        <div className="brand-mark">H</div>
+        <BrandMark />
         <h1>
           {error ? 'Unable to open workspace' : 'Opening your workspace…'}
         </h1>
@@ -367,7 +368,7 @@ function AdminApp() {
             setNavOpen(false);
           }}
         >
-          <span className="brand-mark">H</span>
+          <BrandMark />
           <span>
             HEXA<small>AGENCY WORKSPACE</small>
           </span>

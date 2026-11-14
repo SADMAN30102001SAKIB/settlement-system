@@ -20,6 +20,7 @@ import { receiptStampStatus } from '../../../shared/receipts';
 import { stampStatusSchema } from '../../../shared/invoice-status';
 import { deleteReceipt } from './delete-receipt';
 import { DocumentPreview } from '../../components/document-preview';
+import { BrandMark } from '../../components/brand-mark';
 
 export function ReceiptView({
   item,
@@ -164,7 +165,7 @@ export function ReceiptView({
                 {data.phone} · {data.email}
               </p>
             </div>
-            <span className="invoice-logo">H</span>
+            <BrandMark className="invoice-logo" />
           </header>
           <div className="invoice-meta">
             <div>

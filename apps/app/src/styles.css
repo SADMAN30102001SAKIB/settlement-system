@@ -1580,14 +1580,35 @@ strong {
   margin-top: 2px;
   color: #91a89b;
 }
+.portal-header .brand-mark,
+.boot-screen .brand-mark,
+.ai-welcome .brand-mark {
+  filter: brightness(0);
+}
+:root[data-theme='dark'] .portal-header .brand-mark,
+:root[data-theme='dark'] .boot-screen .brand-mark,
+:root[data-theme='dark'] .ai-welcome .brand-mark {
+  filter: none;
+}
+.checkbox-field {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  line-height: 1.5;
+}
+.import-footer .checkbox-field {
+  flex-basis: 100%;
+}
 .brand-mark {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #c9e0a9;
+  background: transparent;
   width: 37px;
   height: 40px;
-  border-radius: 9px;
+  border-radius: 0;
+  object-fit: contain;
+  flex-shrink: 0;
   color: #1c3b2e;
   font:
     800 25px 'Manrope Variable',
@@ -2373,9 +2394,11 @@ td .text-button {
   font-size: 10px !important;
 }
 .invoice-document .invoice-logo {
-  border: 1px solid #b2c5ac;
-  border-radius: 10px;
-  padding: 6px 16px;
+  border: 0;
+  padding: 0;
+  width: 80px;
+  height: 64px;
+  object-fit: contain;
   align-self: start;
   font-size: 32px;
 }

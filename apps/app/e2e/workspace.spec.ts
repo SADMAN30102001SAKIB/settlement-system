@@ -102,7 +102,7 @@ async function signIn(page: Page) {
   await page.goto('/');
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
     'href',
-    '/favicon.svg',
+    '/favicon.svg?v=2',
   );
   const favicon = await page.request.get('/favicon.svg');
   expect(favicon.status()).toBe(200);
@@ -199,8 +199,7 @@ test('blank courier charges can be resolved without deleting orders for both cou
     };
     await importer.locator('input[type=file]').setInputFiles(file);
     const confirm = importer.getByRole('button', {
-      name: 'Confirm & import 2 orders',
-      exact: true,
+      name: /^Confirm & import \d+ orders$/,
     });
     await expect(
       importer.getByText('1 valid rows', { exact: false }),

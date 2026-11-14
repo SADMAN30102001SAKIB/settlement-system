@@ -7,6 +7,7 @@ import { InvoiceStamp } from './invoice-stamp';
 import type { LetterDocument } from '../../shared/letter';
 import { LetterBody } from './letter-body';
 import { DocumentPreview } from './document-preview';
+import { BrandMark } from './brand-mark';
 export function DocumentPaper({
   title,
   number,
@@ -55,7 +56,7 @@ export function DocumentPaper({
               {company.phone} · {company.email}
             </p>
           </div>
-          <span className="invoice-logo">H</span>
+          <BrandMark className="invoice-logo" />
         </header>
         <div className="invoice-meta">
           <div>

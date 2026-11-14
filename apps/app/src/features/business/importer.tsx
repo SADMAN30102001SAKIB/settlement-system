@@ -14,6 +14,7 @@ import { money } from '../../lib/format';
 import { readImport } from './import-file';
 import { FilePicker } from '../../components/file-picker';
 import { ScrollList, VirtualBody } from '../../components/scroll-list';
+import { useConfirmation } from '../../components/confirmation-context';
 
 const labels = {
   id: 'Order ID',
@@ -40,6 +41,8 @@ export function Importer({
     rows: ReturnType<typeof mapOrder>[],
   ) => boolean;
 }) {
+  const confirm = useConfirmation();
+  const [skipInvalidFor, setSkipInvalidFor] = useState('');
   const [brandId, setBrandId] = useState(initialBrandId);
   const [mode, setMode] = useState<'orders' | 'courier'>('courier');
   const [courier, setCourier] = useState<Courier>('steadfast');
@@ -69,6 +72,7 @@ export function Importer({
   const [mappingOpen, setMappingOpen] = useState(false);
   const [sourceName, setSourceName] = useState('Pasted spreadsheet');
   function loadRows(data: string[][]) {
+    setSkipInvalidFor('');
     setRows(data);
     setHeader(0);
     setBlankCodChargeIsZero(false);
@@ -77,6 +81,13 @@ export function Importer({
     setMapping(importMapping(data[0] ?? [], courier));
   }
   const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const row of rows.slice(header + 1)) {
+    const id = row[mapping.id]?.trim();
+    if (!id) continue;
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
   const preview = rows.slice(header + 1).map((row, index) => {
     try {
       const order = mapOrder(
@@ -89,9 +100,8 @@ export function Importer({
         courier,
         blankShippingIsZero,
       );
-      if (seen.has(order.id))
+      if (duplicates.has(order.id))
         throw new Error('Duplicate order ID in this file.');
-      seen.add(order.id);
       return { row: index + header + 2, order, error: '' };
     } catch (reason) {
       return {
@@ -103,6 +113,7 @@ export function Importer({
   });
   const invalid = preview.some((row) => row.error);
   const previewKey = JSON.stringify([
+    brandId,
     sourceName,
     header,
     mapping,
@@ -133,6 +144,8 @@ export function Importer({
   const valid = preview.flatMap((row) =>
     row.order === null ? [] : [row.order],
   );
+  const excluded = preview.filter((row) => row.order === null);
+  const skipInvalid = skipInvalidFor === previewKey;
   const reconciliation = valid.reduce(
     (sum, row) => ({
       cod: sum.cod + row.codAmount,
@@ -164,23 +177,29 @@ export function Importer({
     if (
       pending ||
       !brandId ||
-      invalid ||
+      (invalid && !skipInvalid) ||
       modeConflict ||
-      !preview.length ||
+      !valid.length ||
       preview.length > 2000
+    )
+      return;
+    if (
+      invalid &&
+      !(await confirm({
+        title: 'Import valid orders only?',
+        message: `${String(valid.length)} valid orders will be used. ${String(excluded.length)} flagged source rows will be skipped; any existing orders for those rows remain unchanged. Daily advertising will be allocated across saved orders only.`,
+        action: 'Use valid orders only',
+      }))
     )
       return;
     setPending(true);
     setError('');
     try {
       if (onReviewed !== undefined) {
-        const loaded = onReviewed(
-          brandId,
-          preview.flatMap((row) => (row.order === null ? [] : [row.order])),
-        );
+        const loaded = onReviewed(brandId, valid);
         if (!loaded) return;
         setMessage(
-          'Verified rows loaded into the settlement form. Review and save the invoice below.',
+          `Verified rows loaded into the settlement form. Review and save the invoice below.${excluded.length ? ` Skipped source rows: ${excluded.map((row) => String(row.row)).join(', ')}.` : ''}`,
         );
         setRows([]);
         return;
@@ -190,13 +209,11 @@ export function Importer({
         body: {
           brandId,
           mode,
-          rows: preview.flatMap((row) =>
-            row.order === null ? [] : [row.order],
-          ),
+          rows: valid,
         },
       });
       setMessage(
-        `${String(preview.length)} orders imported. Existing IDs were updated without duplicate orders or costs.`,
+        `${String(valid.length)} orders imported. Existing IDs were updated without duplicate orders or costs.${excluded.length ? ` Skipped ${String(excluded.length)} flagged rows (source rows: ${excluded.map((row) => String(row.row)).join(', ')}). Existing orders for skipped rows were not changed.` : ''}`,
       );
       setRows([]);
       setText('');
@@ -588,7 +605,9 @@ export function Importer({
                   <tr key={row.row}>
                     <td>{row.row}</td>
                     <td>{row.order?.orderDate ?? '—'}</td>
-                    <td>{row.order?.id ?? '—'}</td>
+                    <td>
+                      {row.order?.id ?? rows[row.row - 1]?.[mapping.id] ?? '—'}
+                    </td>
                     <td>{row.order?.status ?? '—'}</td>
                     <td>{row.order?.deliveryDate ?? '—'}</td>
                     <td>{row.order ? money(row.order.codAmount) : '—'}</td>
@@ -610,6 +629,18 @@ export function Importer({
             </table>
           </ScrollList>
           <div className="import-footer">
+            {invalid ? (
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={skipInvalid}
+                  onChange={(event) => {
+                    setSkipInvalidFor(event.target.checked ? previewKey : '');
+                  }}
+                />
+                Import valid orders only; skip {excluded.length} flagged rows
+              </label>
+            ) : null}
             <p className="muted">
               Review the totals and rows above. Confirming updates existing IDs
               without duplicating orders.
@@ -619,8 +650,8 @@ export function Importer({
               disabled={
                 pending ||
                 !brandId ||
-                invalid ||
-                !preview.length ||
+                (invalid && !skipInvalid) ||
+                !valid.length ||
                 modeConflict ||
                 preview.length > 2000
               }
@@ -637,7 +668,7 @@ export function Importer({
               ) : onReviewed ? (
                 'Confirm & use rows in settlement'
               ) : (
-                `Confirm & import ${String(preview.length)} orders`
+                `Confirm & import ${String(valid.length)} orders`
               )}
             </button>
           </div>

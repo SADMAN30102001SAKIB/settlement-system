@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BrandMark } from '../../components/brand-mark';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
 
@@ -58,7 +59,7 @@ export function Login({
       </header>
       <section className="auth-story">
         <div className="wordmark">
-          <span className="brand-mark">H</span> HEXA
+          <BrandMark /> HEXA
           <span className="wordmark-sub">/ WORKSPACE</span>
         </div>
         <div>

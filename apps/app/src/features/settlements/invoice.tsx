@@ -8,6 +8,7 @@ import { Alert, ErrorMessage, PageHeading, Spinner } from '../../components/ui';
 import { InvoiceStamp } from '../../components/invoice-stamp';
 import { paymentStatus } from '@settlement/domain/payments';
 import { DocumentPreview } from '../../components/document-preview';
+import { BrandMark } from '../../components/brand-mark';
 
 export function Invoice({
   report,
@@ -188,7 +189,7 @@ export function Invoice({
                 {settings.email}
               </p>
             </div>
-            <span className="invoice-logo">H</span>
+            <BrandMark className="invoice-logo" />
           </header>
           <div className="invoice-meta">
             <div>

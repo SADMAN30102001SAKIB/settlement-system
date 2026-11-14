@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BrandMark } from '../../components/brand-mark';
 import { useAccountRefresh } from '../../lib/account-refresh';
 import { Challans } from '../payments/challans';
 import type { SubmitEvent } from 'react';
@@ -457,7 +458,8 @@ export function BrandPortal() {
     <div className="brand-portal">
       <header className="portal-header no-print">
         <a href="/brand" className="wordmark">
-          <span className="brand-mark">H</span>HEXA <small>BRAND PORTAL</small>
+          <BrandMark />
+          HEXA <small>BRAND PORTAL</small>
         </a>
         <div className="actions">
           <ThemePicker />
