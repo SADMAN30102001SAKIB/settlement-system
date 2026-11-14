@@ -369,9 +369,7 @@ function AdminApp() {
           }}
         >
           <BrandMark />
-          <span>
-            HEXA<small>AGENCY WORKSPACE</small>
-          </span>
+          <small>AGENCY WORKSPACE</small>
         </a>
         <p className="nav-label">WORKSPACE</p>
         <nav aria-label="Main navigation">

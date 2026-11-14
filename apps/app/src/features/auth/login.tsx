@@ -59,7 +59,7 @@ export function Login({
       </header>
       <section className="auth-story">
         <div className="wordmark">
-          <BrandMark /> HEXA
+          <BrandMark />
           <span className="wordmark-sub">/ WORKSPACE</span>
         </div>
         <div>

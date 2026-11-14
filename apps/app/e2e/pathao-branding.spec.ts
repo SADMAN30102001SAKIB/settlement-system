@@ -29,6 +29,9 @@ test('Pathao workbook imports verified rows only after explicit exclusion and co
     page.getByRole('heading', { name: 'The numbers, in focus.' }),
   ).toBeVisible();
   const headers = { Origin: 'http://127.0.0.1:5174' };
+  await expect(page.locator('.sidebar .wordmark')).toHaveText(
+    'AGENCY WORKSPACE',
+  );
   const name = 'Pathao admin workbook validation';
   const existing = z
     .object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
@@ -211,4 +214,30 @@ test('supplied branding renders in both themes and document exports', async ({
     '/apple-touch-icon.png',
   ])
     expect((await page.request.get(asset)).ok()).toBe(true);
+  await page.goto('/');
+  await expect(page.locator('.auth-story .wordmark')).toHaveText('/ WORKSPACE');
+  for (const width of [320, 390, 1280]) {
+    await page.setViewportSize({ width, height: 850 });
+    for (const theme of ['Light', 'Dark']) {
+      await page.getByLabel('Color theme').selectOption({ label: theme });
+      const themeBox = await page.getByLabel('Color theme').boundingBox();
+      const signInBox = await page
+        .getByRole('link', { name: 'Brand sign-in', exact: true })
+        .boundingBox();
+      expect(themeBox?.height).toBe(44);
+      expect(signInBox?.height).toBe(44);
+      expect(
+        Math.abs((themeBox?.y ?? -100) - (signInBox?.y ?? 0)),
+      ).toBeLessThan(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(`admin-login-${theme}-${String(width)}.png`),
+        fullPage: true,
+      });
+    }
+  }
 });
