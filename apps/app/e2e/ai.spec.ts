@@ -20,6 +20,45 @@ async function login(page: Page) {
     page.getByRole('heading', { name: 'The numbers, in focus.' }),
   ).toBeVisible();
 }
+test('long chat history scrolls without pushing the composer off-screen', async ({
+  page,
+  isMobile,
+}) => {
+  await login(page);
+  await page.setViewportSize({ width: isMobile ? 390 : 1366, height: 720 });
+  await page.route('**/api/manage/ai/conversations', (route) =>
+    route.fulfill({
+      json: {
+        items: Array.from({ length: 20 }, (_, index) => ({
+          id: crypto.randomUUID(),
+          title: `Saved chat ${String(index + 1)}`,
+          createdAt: Date.now() - index,
+          revision: 0,
+        })),
+        next: null,
+      },
+    }),
+  );
+  await page.goto('/ai-chat');
+  if (isMobile) await page.locator('.ai-history-toggle').click();
+  const history = page.getByRole('region', { name: 'Chat history' });
+  await expect(
+    history.getByRole('button', { name: /^Open chat:/ }),
+  ).toHaveCount(20);
+  const composer = page.getByRole('textbox', { name: 'Message', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(composer).toBeInViewport({ ratio: 1 });
+  await expect(send).toBeInViewport({ ratio: 1 });
+  expect(
+    await history.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.scrollTop;
+    }),
+  ).toBeGreaterThan(0);
+  await expect(composer).toBeInViewport({ ratio: 1 });
+  await expect(send).toBeInViewport({ ratio: 1 });
+});
+
 test('AI connections and responsive streaming chat keep credentials private', async ({
   page,
 }, testInfo) => {
