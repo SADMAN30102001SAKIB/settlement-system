@@ -367,6 +367,7 @@ async function seed() {
     brandId,
     date: '2026-10-27',
     period: 'October',
+    vatBasisPoints: 1000,
     campaigns: [{ name: 'Ads', amount: 20000000 }],
   });
   expect(a.status).toBe(201);

@@ -5,7 +5,10 @@ import {
   invoiceCounters,
   payments,
 } from '@settlement/database/schema';
-import { calculateAdvertising } from '@settlement/domain/advertising';
+import {
+  calculateAdvertising,
+  DEFAULT_ADVERTISING_VAT_BASIS_POINTS,
+} from '@settlement/domain/advertising';
 import {
   and,
   desc,
@@ -33,7 +36,7 @@ const fields = z
     brandId: id,
     date,
     period: z.string().trim().min(1).max(120),
-    vatBasisPoints: rate.default(1000),
+    vatBasisPoints: rate.optional(),
     campaigns: z
       .array(z.object({ name, amount: money }).strict())
       .min(1)
@@ -224,6 +227,8 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
   })
   .post('/', async (context) => {
     const input = fields.parse(await context.req.json<unknown>());
+    const vatBasisPoints =
+      input.vatBasisPoints ?? DEFAULT_ADVERTISING_VAT_BASIS_POINTS;
     const database = context.get('database')();
     const [brand] = await database
       .select({ name: brands.name })
@@ -259,9 +264,9 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
           input.period.toLocaleLowerCase('en-US'),
           calculateAdvertising(
             input.campaigns.map((line) => line.amount),
-            input.vatBasisPoints,
+            vatBasisPoints,
           ).total,
-          input.vatBasisPoints,
+          vatBasisPoints,
           now,
           now,
         ),
@@ -303,7 +308,10 @@ export const advertisingRoutes = new Hono<AppEnvironment>()
         message:
           'The brand of a saved advertising invoice cannot change because payments may already be allocated.',
       });
-    if (current.vatBasisPoints !== input.vatBasisPoints)
+    if (
+      input.vatBasisPoints !== undefined &&
+      current.vatBasisPoints !== input.vatBasisPoints
+    )
       throw new HTTPException(409, {
         message: 'Saved VAT rules cannot change. Create a new invoice instead.',
       });

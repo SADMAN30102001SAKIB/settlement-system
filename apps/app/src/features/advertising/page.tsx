@@ -6,8 +6,11 @@ import { ScrollList, VirtualBody } from '../../components/scroll-list';
 import { useInfiniteQuery } from '../../lib/infinite-query';
 import type { SubmitEvent } from 'react';
 import { z } from 'zod';
-import { calculateAdvertising } from '@settlement/domain/advertising';
-import { parseMoney, sumMoney } from '@settlement/domain/money';
+import {
+  calculateAdvertising,
+  DEFAULT_ADVERTISING_VAT_BASIS_POINTS,
+} from '@settlement/domain/advertising';
+import { parseMoney, parsePercentage } from '@settlement/domain/money';
 import { AdvertisingLedger } from './ledger';
 
 import {
@@ -53,7 +56,11 @@ function Editor({
   onBack: () => void;
 }) {
   const [brandId, setBrandId] = useState(item?.brandId ?? '');
-  const vatBasisPoints = item?.vatBasisPoints ?? 1000;
+  const [vatPercentage, setVatPercentage] = useState(
+    String(
+      (item?.vatBasisPoints ?? DEFAULT_ADVERTISING_VAT_BASIS_POINTS) / 100,
+    ),
+  );
   const [date, setDate] = useState(item?.date ?? today());
   const [period, setPeriod] = useState(item?.period ?? '');
   const [lines, setLines] = useState(
@@ -65,11 +72,14 @@ function Editor({
   );
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  let total = 0;
+  let totals: ReturnType<typeof calculateAdvertising> | null = null;
   try {
-    total = sumMoney(lines.map((line) => parseMoney(line.amount || '0')));
+    totals = calculateAdvertising(
+      lines.map((line) => parseMoney(line.amount || '0')),
+      parsePercentage(vatPercentage),
+    );
   } catch {
-    total = 0;
+    // Leave the preview blank while an amount or rate is being corrected.
   }
   async function save(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -85,7 +95,7 @@ function Editor({
             brandId,
             date,
             period,
-            vatBasisPoints,
+            vatBasisPoints: parsePercentage(vatPercentage),
             campaigns: lines.map((line) => ({
               name: line.name,
               amount: parseMoney(line.amount),
@@ -165,6 +175,24 @@ function Editor({
               placeholder="e.g. 01–07 October 2026"
             />
           </Field>
+          <Field
+            label="Advertising VAT (%)"
+            hint={
+              item
+                ? 'This invoice keeps its saved VAT rate.'
+                : 'Added to the campaign subtotal and saved with this invoice.'
+            }
+          >
+            <input
+              required
+              inputMode="decimal"
+              readOnly={item !== null}
+              value={vatPercentage}
+              onChange={(event) => {
+                setVatPercentage(event.target.value);
+              }}
+            />
+          </Field>
         </div>
         <h2>Campaigns</h2>
         {lines.map((line, index) => (
@@ -231,12 +259,10 @@ function Editor({
           </button>
           <div>
             <p>
-              Subtotal {money(total)} · VAT{' '}
-              {money(calculateAdvertising([total], vatBasisPoints).vat)}
+              Subtotal {totals ? money(totals.subtotal) : '—'} · VAT{' '}
+              {totals ? money(totals.vat) : '—'}
             </p>
-            <strong>
-              Total {money(calculateAdvertising([total], vatBasisPoints).total)}
-            </strong>
+            <strong>Total {totals ? money(totals.total) : '—'}</strong>
           </div>
         </div>
         {error ? <Alert>{error}</Alert> : null}

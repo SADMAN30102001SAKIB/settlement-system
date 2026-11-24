@@ -1,5 +1,7 @@
 import { percentage, sumMoney, toPaisaPrecision } from './money';
 
+export const DEFAULT_ADVERTISING_VAT_BASIS_POINTS = 1500;
+
 export function calculateAdvertising(
   amounts: readonly number[],
   vatBasisPoints: number,

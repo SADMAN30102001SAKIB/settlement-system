@@ -851,6 +851,7 @@ test('brand payments split commission and ads into immutable receipts and suppor
       brandId: brand.id,
       date: '2026-10-27',
       period: 'October advertising',
+      vatBasisPoints: 1000,
       campaigns: [{ name: 'Campaign', amount: 20000000 }],
     },
   });
@@ -1181,6 +1182,7 @@ test('date ledger scrolls and filters bills, and date-specific payments do not a
         brandId,
         date: `2026-10-${String(day).padStart(2, '0')}`,
         period: `Daily advertising ${String(day)}`,
+        vatBasisPoints: 1000,
         campaigns: [{ name: 'Campaign', amount: 1000000 }],
       },
     });
@@ -1521,6 +1523,7 @@ test('all-brand ledger provides direct view, edit, payment, PDF and safe delete 
         brandId: brand,
         date: '2026-10-26',
         period: 'Action test ' + suffix,
+        vatBasisPoints: 1000,
         campaigns: [{ name: 'Campaign', amount: 2000000 }],
       },
     });
@@ -2032,8 +2035,13 @@ test('advertising invoice, payment proof and invoice image controls work end to 
   await page.getByRole('button', { name: '+ Add campaign' }).click();
   await page.getByLabel('Campaign 2', { exact: true }).fill('Retargeting');
   await page.getByLabel('Amount (৳)', { exact: true }).last().fill('200');
+  const vat = page.getByLabel('Advertising VAT (%)', { exact: true });
+  await expect(vat).toHaveValue('15');
+  await expect(page.getByText('Total ৳345.00', { exact: true })).toBeVisible();
+  await vat.fill('12.5');
+  await expect(page.getByText('Total ৳337.50', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save invoice', exact: true }).click();
-  await expect(page.locator('.invoice-final')).toContainText('৳330');
+  await expect(page.locator('.invoice-final')).toContainText('৳337.50');
   const image = {
     name: 'browser-proof.png',
     mimeType: 'image/png',

@@ -845,6 +845,7 @@ it('atomically edits campaigns and applies direct, account and advance payments 
     brandId,
     date: '2026-10-01',
     period: 'First day',
+    vatBasisPoints: 1000,
     campaigns: [{ name: 'Campaign A', amount: 100000 }],
   };
   const first = await request('/api/manage/advertising', 'POST', input);
@@ -1197,6 +1198,7 @@ it('lists all advertising brands and paginates invoices with VAT-inclusive accou
       brandId: i === 23 ? b : a,
       date: `2026-10-${String(i + 1).padStart(2, '0')}`,
       period: `PDF requirement ${String(i)}`,
+      vatBasisPoints: 1000,
       campaigns: [{ name: 'Spend', amount: 100000 }],
     });
     expect(response.status).toBe(201);
@@ -1310,12 +1312,46 @@ it('preserves original VAT rules when editing saved invoices', async () => {
       })
     ).status,
   ).toBe(409);
+  expect(
+    (
+      await request(`/api/manage/advertising/${key}`, 'PUT', {
+        brandId,
+        date: '2026-10-26',
+        period: 'Old VAT',
+        revision: 1,
+        campaigns: [{ name: 'Renamed', amount: 2000000 }],
+      })
+    ).status,
+  ).toBe(200);
   const detail = z
     .object({
       item: z.object({ total: z.number(), vatBasisPoints: z.number() }),
     })
     .parse(await (await request(`/api/manage/advertising/${key}`)).json());
   expect(detail.item).toMatchObject({ total: 2000000, vatBasisPoints: 0 });
+});
+
+it('adds 15% advertising VAT by default and stores a custom rate on new invoices', async () => {
+  const brandId = await brand('New advertising VAT');
+  for (const rate of [undefined, 1250, 0]) {
+    const response = await request('/api/manage/advertising', 'POST', {
+      brandId,
+      date: '2026-11-24',
+      period: `VAT ${String(rate)}`,
+      vatBasisPoints: rate,
+      campaigns: [{ name: 'Campaign', amount: 2000000 }],
+    });
+    expect(response.status).toBe(201);
+    const key = z.object({ id: z.string() }).parse(await response.json()).id;
+    expect(
+      await (await request(`/api/manage/advertising/${key}`)).json(),
+    ).toMatchObject({
+      item: {
+        vatBasisPoints: rate ?? 1500,
+        total: 2000000 + 200 * (rate ?? 1500),
+      },
+    });
+  }
 });
 
 it('excludes workspace expenses from brand reports and safely reallocates reassigned orders', async () => {
