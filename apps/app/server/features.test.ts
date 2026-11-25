@@ -313,9 +313,15 @@ it('stores formatted bilingual letters without stamps, charges, unsafe markup or
           ],
         },
       ],
-    }).content[0]?.content[0],
+    }).content[0],
   ).toMatchObject({
-    marks: [{ attrs: { color: null, backgroundColor: 'rgb(255, 243, 163)' } }],
+    content: [
+      {
+        marks: [
+          { attrs: { color: null, backgroundColor: 'rgb(255, 243, 163)' } },
+        ],
+      },
+    ],
   });
   expect(
     (await request('/api/manage/manual-invoices', 'POST', body)).status,

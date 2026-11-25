@@ -24,6 +24,9 @@ import { Alert, ErrorMessage, Field, PageHeading } from '../../components/ui';
 import { DocumentPaper } from '../../components/document-paper';
 import { downloadDocument } from '../../lib/pdf';
 import { LetterEditor } from './letter-editor';
+import { newLetterLayout } from './letter-layout';
+import { downloadLetter, printLetter } from './letter-output';
+import { defaultLetterLayout } from '../../../shared/letter';
 import type { JSONContent } from '@tiptap/react';
 const emptyLetter: JSONContent = {
   type: 'doc',
@@ -42,6 +45,12 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [kind, setKind] = useState<'itemized' | 'letter'>('itemized');
   const [letterBody, setBody] = useState<JSONContent>(emptyLetter);
+  const [letterSetup, setLetterSetup] = useState(newLetterLayout);
+  const [draftHeading, setDraftHeading] = useState({
+    title: 'Invoice',
+    date: today(),
+    recipient: '',
+  });
   const [pending, setPending] = useState(false),
     [error, setError] = useState('');
   const paper = useRef<HTMLDivElement>(null);
@@ -55,6 +64,14 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
     setEditing(item);
     setKind(item?.kind ?? 'itemized');
     setBody(item?.body ?? emptyLetter);
+    setLetterSetup(
+      item ? (item.pageSetup ?? defaultLetterLayout) : newLetterLayout(),
+    );
+    setDraftHeading({
+      title: item?.title ?? 'Invoice',
+      date: item?.date ?? today(),
+      recipient: item?.recipient ?? '',
+    });
     setError('');
     setLines(
       item
@@ -215,7 +232,9 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
           wide
         >
           <form
-            className="panel"
+            className={
+              kind === 'letter' ? 'panel letter-invoice-form' : 'panel'
+            }
             onSubmit={(event) => {
               event.preventDefault();
               const data = new FormData(event.currentTarget);
@@ -225,6 +244,7 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                 const body = manualFields.parse({
                   kind,
                   body: kind === 'letter' ? letterBody : null,
+                  ...(kind === 'letter' ? { pageSetup: letterSetup } : {}),
                   date: formText(data, 'date'),
                   title: formText(data, 'title'),
                   recipient: formText(data, 'recipient'),
@@ -293,6 +313,10 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                   required
                   maxLength={100}
                   defaultValue={editing?.title ?? 'Invoice'}
+                  onChange={(event) => {
+                    const title = event.currentTarget.value;
+                    setDraftHeading((heading) => ({ ...heading, title }));
+                  }}
                 />
               </Field>
               <Field label="Document date">
@@ -301,6 +325,10 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                   name="date"
                   required
                   defaultValue={editing?.date ?? today()}
+                  onChange={(event) => {
+                    const date = event.currentTarget.value;
+                    setDraftHeading((heading) => ({ ...heading, date }));
+                  }}
                 />
               </Field>
               <Field label="Prepared for (optional)">
@@ -308,6 +336,10 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                   name="recipient"
                   maxLength={200}
                   defaultValue={editing?.recipient ?? ''}
+                  onChange={(event) => {
+                    const recipient = event.currentTarget.value;
+                    setDraftHeading((heading) => ({ ...heading, recipient }));
+                  }}
                 />
               </Field>
               {kind === 'itemized' ? (
@@ -326,6 +358,23 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
                 value={letterBody}
                 onChange={setBody}
                 disabled={pending}
+                layout={letterSetup}
+                onLayout={setLetterSetup}
+                renderSurface={(editor) => (
+                  <DocumentPaper
+                    {...draftHeading}
+                    date={draftHeading.date || today()}
+                    number={editing?.number ?? 'Assigned on save'}
+                    lines={[]}
+                    notes=""
+                    total={0}
+                    company={editing?.company ?? settings}
+                    settings={settings}
+                    kind="letter"
+                    pageSetup={letterSetup}
+                    letterEditor={editor}
+                  />
+                )}
               />
             ) : (
               <>
@@ -439,13 +488,15 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
               className="primary"
               disabled={pending}
               onClick={() => {
+                const root = paper.current;
                 const document =
-                  paper.current?.querySelector<HTMLElement>(
-                    '.invoice-document',
-                  );
-                if (!document) return;
+                  root?.querySelector<HTMLElement>('.invoice-document');
+                if (!root || !document) return;
                 setPending(true);
-                downloadDocument(document, view.number)
+                (view.pageSetup
+                  ? downloadLetter(root, view.number, view.pageSetup)
+                  : downloadDocument(document, view.number)
+                )
                   .catch((e: unknown) => {
                     setError(ErrorMessage(e));
                   })
@@ -459,7 +510,8 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
             <button
               className="secondary"
               onClick={() => {
-                window.print();
+                if (view.pageSetup) printLetter(view.pageSetup);
+                else window.print();
               }}
             >
               Print

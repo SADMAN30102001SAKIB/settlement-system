@@ -1,40 +1,87 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { TextStyle } from '@tiptap/extension-text-style/text-style';
-import { Color } from '@tiptap/extension-text-style/color';
-import { BackgroundColor } from '@tiptap/extension-text-style/background-color';
 import type { JSONContent } from '@tiptap/react';
+import {
+  letterAlignments,
+  letterBorders,
+  letterFonts,
+  letterImageSource,
+  letterLink,
+  letterSpacings,
+} from '../../../shared/letter';
+import type { LetterLayout } from '../../../shared/letter';
+import { CatalogDialog } from '../../components/catalog-dialog';
+import { Alert, ErrorMessage, Field } from '../../components/ui';
+import { formText } from '../../lib/format';
+import { letterExtensions } from './letter-extensions';
+import { applyLetterInlineStyles } from './letter-inline-styles';
+import { LetterPageSetup } from './letter-page-setup';
+
+async function letterImage(file: File) {
+  if (
+    !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
+    file.size > 10 * 1024 * 1024
+  )
+    throw new Error('Choose a JPG, PNG, or WebP image under 10 MB.');
+  const image = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  try {
+    const size = Math.min(1, 1200 / Math.max(image.width, image.height));
+    for (const scale of [size, size * 0.7, size * 0.45]) {
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) break;
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const png = canvas.toDataURL('image/png');
+      if (letterImageSource.safeParse(png).success)
+        return {
+          src: png,
+          alt: file.name.slice(0, 200),
+          width: canvas.width,
+          height: canvas.height,
+        };
+      context.globalCompositeOperation = 'destination-over';
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const jpeg = canvas.toDataURL('image/jpeg', 0.84);
+      if (letterImageSource.safeParse(jpeg).success)
+        return {
+          src: jpeg,
+          alt: file.name.slice(0, 200),
+          width: canvas.width,
+          height: canvas.height,
+        };
+    }
+    throw new Error('This image could not be resized for the letter.');
+  } finally {
+    image.close();
+  }
+}
+
 export function LetterEditor({
   value,
   onChange,
   disabled,
+  layout,
+  onLayout,
+  renderSurface,
 }: {
   value: JSONContent;
   onChange: (body: JSONContent) => void;
   disabled: boolean;
+  layout: LetterLayout;
+  onLayout: (value: LetterLayout) => void;
+  renderSurface: (editor: ReactNode) => ReactNode;
 }) {
+  const [dialog, setDialog] = useState<'setup' | 'table' | 'link' | null>(null);
+  const [imagePending, setImagePending] = useState(false);
+  const [error, setError] = useState('');
+  const imageInput = useRef<HTMLInputElement>(null);
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        bulletList: false,
-        orderedList: false,
-        listItem: false,
-        listKeymap: false,
-        code: false,
-        codeBlock: false,
-        heading: false,
-        horizontalRule: false,
-        link: false,
-        dropcursor: false,
-        gapcursor: false,
-        trailingNode: false,
-      }),
-      TextStyle,
-      Color,
-      BackgroundColor,
-    ],
+    extensions: letterExtensions(),
     content: value,
     injectCSS: false,
     parseOptions: { preserveWhitespace: 'full' },
@@ -50,12 +97,33 @@ export function LetterEditor({
       onChange(current.getJSON());
     },
   });
+  useEffect(() => {
+    const current = editor.view.dom;
+    const apply = () => {
+      applyLetterInlineStyles(current);
+    };
+    const observer = new MutationObserver(apply);
+    observer.observe(current, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['style'],
+    });
+    apply();
+    return () => {
+      observer.disconnect();
+    };
+  }, [editor]);
   const active = useEditorState({
     editor,
     selector: ({ editor: current }) => {
       const attrs = current.getAttributes('textStyle');
       const color: unknown = attrs['color'],
         background: unknown = attrs['backgroundColor'];
+      const paragraph = current.getAttributes('paragraph');
+      const font: unknown = attrs['fontFamily'];
+      const fontSize: unknown = attrs['fontSize'];
+      const href: unknown = current.getAttributes('link')['href'];
       return {
         bold: current.isActive('bold'),
         italic: current.isActive('italic'),
@@ -63,12 +131,70 @@ export function LetterEditor({
         strike: current.isActive('strike'),
         color: typeof color === 'string' ? color : '',
         background: typeof background === 'string' ? background : '',
+        font: typeof font === 'string' ? font : '',
+        fontSize: typeof fontSize === 'string' ? fontSize : '',
+        align: String(paragraph['textAlign'] ?? ''),
+        spacing: String(paragraph['lineSpacing'] ?? ''),
+        indent: Number(paragraph['indent'] ?? 0),
+        link: typeof href === 'string' ? href : '',
+        hasSelection: !current.state.selection.empty,
+        bullet: current.isActive('bulletList'),
+        numbered: current.isActive('orderedList'),
+        checklist: current.isActive('taskList'),
+        table: current.isActive('table'),
+        border: String(
+          current.getAttributes('table')['letterBorder'] ?? 'solid',
+        ),
+        height: String(
+          current.getAttributes('tableRow')['letterRowHeight'] ?? '',
+        ),
+        undo: current.can().undo(),
+        redo: current.can().redo(),
       };
     },
   });
   useEffect(() => {
-    editor.setEditable(!disabled);
-  }, [editor, disabled]);
+    editor.setEditable(!disabled && !imagePending);
+  }, [editor, disabled, imagePending]);
+  const locked = disabled || imagePending;
+  function button(
+    label: string,
+    action: () => void,
+    pressed?: boolean,
+    unavailable = false,
+  ) {
+    return (
+      <button
+        type="button"
+        className="secondary compact"
+        aria-pressed={pressed}
+        disabled={locked || unavailable}
+        onMouseDown={(event) => {
+          event.preventDefault();
+        }}
+        onClick={action}
+      >
+        {label}
+      </button>
+    );
+  }
+  function indent(delta: number) {
+    const chain = editor.chain().focus();
+    if (editor.isActive('listItem') || editor.isActive('taskItem')) {
+      const type = editor.isActive('taskItem') ? 'taskItem' : 'listItem';
+      if (delta > 0) chain.sinkListItem(type).run();
+      else chain.liftListItem(type).run();
+    } else {
+      chain
+        .updateAttributes('paragraph', {
+          indent: Math.max(0, Math.min(6, active.indent + delta)),
+        })
+        .run();
+    }
+  }
+  function close() {
+    setDialog(null);
+  }
   return (
     <div className="letter-editor">
       <div
@@ -76,6 +202,49 @@ export function LetterEditor({
         role="toolbar"
         aria-label="Letter formatting"
       >
+        <label>
+          Font family
+          <select
+            value={active.font}
+            disabled={locked}
+            onChange={(event) => {
+              const value = event.currentTarget.value || null;
+              editor
+                .chain()
+                .focus()
+                .setMark('textStyle', { fontFamily: value })
+                .removeEmptyTextStyle()
+                .run();
+            }}
+          >
+            <option value="">Default</option>
+            {letterFonts.map((font) => (
+              <option key={font}>{font}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Font size
+          <select
+            value={active.fontSize}
+            disabled={locked}
+            onChange={(event) => {
+              const chain = editor.chain().focus();
+              if (event.currentTarget.value)
+                chain.setFontSize(event.currentTarget.value).run();
+              else chain.unsetFontSize().run();
+            }}
+          >
+            <option value="">Default</option>
+            {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72].map(
+              (size) => (
+                <option key={size} value={`${String(size)}pt`}>
+                  {size} pt
+                </option>
+              ),
+            )}
+          </select>
+        </label>
         {(['bold', 'italic', 'underline', 'strike'] as const).map((mark) => (
           <button
             type="button"
@@ -87,7 +256,7 @@ export function LetterEditor({
                 : mark.charAt(0).toUpperCase() + mark.slice(1)
             }
             aria-pressed={active[mark]}
-            disabled={disabled}
+            disabled={locked}
             onMouseDown={(event) => {
               event.preventDefault();
             }}
@@ -109,7 +278,7 @@ export function LetterEditor({
           <select
             aria-label="Letter text color"
             value={active.color}
-            disabled={disabled}
+            disabled={locked}
             onChange={(e) => {
               const chain = editor.chain().focus();
               if (e.target.value) chain.setColor(e.target.value).run();
@@ -134,7 +303,7 @@ export function LetterEditor({
           <select
             aria-label="Letter highlight"
             value={active.background}
-            disabled={disabled}
+            disabled={locked}
             onChange={(e) => {
               const chain = editor.chain().focus();
               if (e.target.value)
@@ -152,42 +321,441 @@ export function LetterEditor({
             ) : null}
           </select>
         </label>
-        <button
-          type="button"
-          className="secondary compact"
-          disabled={disabled}
-          onClick={() => {
-            editor.chain().focus().unsetAllMarks().run();
+        <label>
+          Text alignment
+          <select
+            value={active.align}
+            disabled={locked}
+            onChange={(event) => {
+              editor
+                .chain()
+                .focus()
+                .updateAttributes('paragraph', {
+                  textAlign: event.currentTarget.value || null,
+                })
+                .run();
+            }}
+          >
+            <option value="">Default</option>
+            {letterAlignments.map((align) => (
+              <option key={align} value={align}>
+                {align.charAt(0).toUpperCase() + align.slice(1)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Line spacing
+          <select
+            value={active.spacing}
+            disabled={locked}
+            onChange={(event) => {
+              editor
+                .chain()
+                .focus()
+                .updateAttributes('paragraph', {
+                  lineSpacing: Number(event.currentTarget.value) || null,
+                })
+                .run();
+            }}
+          >
+            <option value="">Default</option>
+            {letterSpacings.map((spacing) => (
+              <option key={spacing}>{spacing}</option>
+            ))}
+          </select>
+        </label>
+        {button(
+          'Insert link',
+          () => {
+            setDialog('link');
+          },
+          !!active.link,
+        )}
+        {button(imagePending ? 'Adding image…' : 'Insert image', () => {
+          imageInput.current?.click();
+        })}
+        <input
+          ref={imageInput}
+          hidden
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          aria-label="Upload letter image"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (!file) return;
+            setError('');
+            setImagePending(true);
+            void letterImage(file)
+              .then((attrs) => {
+                editor
+                  .chain()
+                  .focus()
+                  .insertContent({ type: 'letterImage', attrs })
+                  .run();
+              })
+              .catch((reason: unknown) => {
+                setError(ErrorMessage(reason));
+              })
+              .finally(() => {
+                setImagePending(false);
+              });
           }}
-        >
-          Clear formatting
-        </button>
-        <button
-          type="button"
-          className="secondary compact"
-          disabled={disabled || !editor.can().undo()}
-          onClick={() => {
+        />
+        {button(
+          'Checklist',
+          () => {
+            editor.chain().focus().toggleTaskList().run();
+          },
+          active.checklist,
+        )}
+        {button(
+          'Bulleted list',
+          () => {
+            editor.chain().focus().toggleBulletList().run();
+          },
+          active.bullet,
+        )}
+        {button(
+          'Numbered list',
+          () => {
+            editor.chain().focus().toggleOrderedList().run();
+          },
+          active.numbered,
+        )}
+        {button('Decrease indent', () => {
+          indent(-1);
+        })}
+        {button('Increase indent', () => {
+          indent(1);
+        })}
+        {button('Clear formatting', () => {
+          editor
+            .chain()
+            .focus()
+            .unsetAllMarks()
+            .updateAttributes('paragraph', {
+              textAlign: null,
+              lineSpacing: null,
+              indent: null,
+            })
+            .run();
+        })}
+        {button(
+          'Undo',
+          () => {
             editor.chain().focus().undo().run();
-          }}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          className="secondary compact"
-          disabled={disabled || !editor.can().redo()}
-          onClick={() => {
+          },
+          undefined,
+          !active.undo,
+        )}
+        {button(
+          'Redo',
+          () => {
             editor.chain().focus().redo().run();
-          }}
-        >
-          Redo
-        </button>
+          },
+          undefined,
+          !active.redo,
+        )}
+        {button(
+          'Insert table',
+          () => {
+            setDialog('table');
+          },
+          undefined,
+          active.table,
+        )}
+        {button(
+          'Insert page break',
+          () => {
+            editor
+              .chain()
+              .focus()
+              .insertContent([{ type: 'pageBreak' }, { type: 'paragraph' }])
+              .run();
+          },
+          undefined,
+          active.table || active.bullet || active.numbered || active.checklist,
+        )}
+        {button('Page setup', () => {
+          setDialog('setup');
+        })}
       </div>
-      <EditorContent editor={editor} />
-      <small className="caption">
-        English or বাংলা · Bold, italic, underline, strikethrough, color and
-        highlighting.
-      </small>
+      {active.table ? (
+        <div
+          className="letter-toolbar letter-table-tools"
+          role="toolbar"
+          aria-label="Table tools"
+        >
+          {button('Add row above', () => {
+            editor.chain().focus().addRowBefore().run();
+          })}
+          {button('Add row below', () => {
+            editor.chain().focus().addRowAfter().run();
+          })}
+          {button('Remove row', () => {
+            editor.chain().focus().deleteRow().run();
+          })}
+          {button('Add column left', () => {
+            editor.chain().focus().addColumnBefore().run();
+          })}
+          {button('Add column right', () => {
+            editor.chain().focus().addColumnAfter().run();
+          })}
+          {button('Remove column', () => {
+            editor.chain().focus().deleteColumn().run();
+          })}
+          {button(
+            'Merge cells',
+            () => {
+              editor.chain().focus().mergeCells().run();
+            },
+            undefined,
+            !editor.can().mergeCells(),
+          )}
+          {button(
+            'Split cell',
+            () => {
+              editor.chain().focus().splitCell().run();
+            },
+            undefined,
+            !editor.can().splitCell(),
+          )}
+          {button('Remove table', () => {
+            editor.chain().focus().deleteTable().run();
+          })}
+          <label>
+            Table borders{' '}
+            <select
+              value={active.border}
+              onChange={(event) => {
+                editor
+                  .chain()
+                  .focus()
+                  .updateAttributes('table', {
+                    letterBorder: event.currentTarget.value,
+                  })
+                  .run();
+              }}
+            >
+              {letterBorders.map((border) => (
+                <option key={border}>{border}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Row height{' '}
+            <select
+              value={active.height}
+              onChange={(event) => {
+                editor
+                  .chain()
+                  .focus()
+                  .updateAttributes('tableRow', {
+                    letterRowHeight: Number(event.currentTarget.value) || null,
+                  })
+                  .run();
+              }}
+            >
+              <option value="">Automatic</option>
+              {[24, 32, 40, 48, 64, 80, 100, 140, 200, 300].map((size) => (
+                <option key={size} value={size}>
+                  {size} px
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Cell alignment{' '}
+            <select
+              value={String(
+                editor.getAttributes('tableCell')['letterCellAlignment'] ??
+                  editor.getAttributes('tableHeader')['letterCellAlignment'] ??
+                  '',
+              )}
+              onChange={(event) => {
+                editor
+                  .chain()
+                  .focus()
+                  .setCellAttribute(
+                    'letterCellAlignment',
+                    event.currentTarget.value || null,
+                  )
+                  .run();
+              }}
+            >
+              <option value="">Default</option>
+              <option value="top">Top</option>
+              <option value="middle">Middle</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </label>
+          <small className="caption">
+            Drag a column edge to resize. Drag across cells to select a range.
+          </small>
+        </div>
+      ) : null}
+      {error ? <Alert>{error}</Alert> : null}
+      {renderSurface(
+        <EditorContent className="letter-edit-content" editor={editor} />,
+      )}
+      {dialog === 'setup' ? (
+        <LetterPageSetup
+          value={layout}
+          onClose={close}
+          onApply={(value) => {
+            onLayout(value);
+            close();
+          }}
+        />
+      ) : null}
+      {dialog === 'table'
+        ? createPortal(
+            <CatalogDialog title="Insert table" onClose={close} pending={false}>
+              <form
+                className="panel"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const data = new FormData(event.currentTarget);
+                  close();
+                  editor
+                    .chain()
+                    .focus()
+                    .insertTable({
+                      rows: Number(data.get('rows')),
+                      cols: Number(data.get('columns')),
+                      withHeaderRow: false,
+                    })
+                    .run();
+                }}
+              >
+                <div className="form-grid">
+                  <Field label="Rows">
+                    <input
+                      name="rows"
+                      type="number"
+                      min="1"
+                      max="100"
+                      required
+                      defaultValue="3"
+                    />
+                  </Field>
+                  <Field label="Columns">
+                    <input
+                      name="columns"
+                      type="number"
+                      min="1"
+                      max="12"
+                      required
+                      defaultValue="3"
+                    />
+                  </Field>
+                </div>
+                <div className="actions">
+                  <button type="button" className="secondary" onClick={close}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="primary">
+                    Insert table
+                  </button>
+                </div>
+              </form>
+            </CatalogDialog>,
+            document.body,
+          )
+        : null}
+      {dialog === 'link' ? (
+        <LinkDialog
+          current={active.link}
+          hasSelection={active.hasSelection}
+          onClose={close}
+          onApply={(href, text) => {
+            close();
+            const chain = editor.chain().focus().extendMarkRange('link');
+            if (!href) chain.unsetLink().run();
+            else if (active.hasSelection || active.link)
+              chain.setLink({ href }).run();
+            else
+              chain
+                .insertContent({
+                  type: 'text',
+                  text: text?.length ? text : href,
+                  marks: [{ type: 'link', attrs: { href } }],
+                })
+                .run();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function LinkDialog({
+  current,
+  hasSelection,
+  onClose,
+  onApply,
+}: {
+  current: string;
+  hasSelection: boolean;
+  onClose: () => void;
+  onApply: (href: string, text?: string) => void;
+}) {
+  const [error, setError] = useState('');
+  return createPortal(
+    <CatalogDialog title="Insert link" pending={false} onClose={onClose}>
+      <form
+        className="panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const data = new FormData(event.currentTarget);
+          const href = letterLink.safeParse(formText(data, 'href'));
+          if (!href.success) {
+            setError(href.error.issues[0]?.message ?? 'Check the link.');
+            return;
+          }
+          onApply(href.data, formText(data, 'text'));
+        }}
+      >
+        <Field label="Link address">
+          <input
+            name="href"
+            required
+            maxLength={2048}
+            defaultValue={current}
+            placeholder="https://example.com"
+          />
+        </Field>
+        {!current && !hasSelection ? (
+          <Field label="Link text (optional)">
+            <input name="text" maxLength={200} />
+          </Field>
+        ) : null}
+        {error ? <Alert>{error}</Alert> : null}
+        <div className="actions">
+          {current ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                onApply('');
+              }}
+            >
+              Remove link
+            </button>
+          ) : null}
+          <button type="button" className="secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary">
+            Apply link
+          </button>
+        </div>
+      </form>
+    </CatalogDialog>,
+    document.body,
   );
 }

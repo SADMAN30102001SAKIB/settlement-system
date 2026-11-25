@@ -4,8 +4,10 @@ import type { companySchema } from '../../shared/manual-invoices';
 import { lineTotal } from '../../shared/manual-invoices';
 import { dateLabel, money, amountInput } from '../lib/format';
 import { InvoiceStamp } from './invoice-stamp';
-import type { LetterDocument } from '../../shared/letter';
+import type { ReactNode } from 'react';
+import type { LetterDocument, LetterLayout } from '../../shared/letter';
 import { LetterBody } from './letter-body';
+import { LetterSheets } from '../features/manual/letter-sheets';
 import { DocumentPreview } from './document-preview';
 import { BrandMark } from './brand-mark';
 export function DocumentPaper({
@@ -22,6 +24,8 @@ export function DocumentPaper({
   stamp = null,
   kind = 'itemized',
   body = null,
+  pageSetup,
+  letterEditor,
 }: {
   title: string;
   number: string;
@@ -36,97 +40,109 @@ export function DocumentPaper({
   stamp?: 'Paid' | 'Unpaid' | 'Due' | null;
   kind?: 'itemized' | 'letter';
   body?: LetterDocument | null;
+  pageSetup?: LetterLayout | undefined;
+  letterEditor?: ReactNode;
 }) {
-  return (
-    <DocumentPreview>
-      <article className="invoice-document">
-        {settings.watermarkFileId ? (
-          <img
-            className="invoice-watermark"
-            src={`${fileBase}/${settings.watermarkFileId}`}
-            alt=""
+  const layout = kind === 'letter' ? pageSetup : undefined;
+  const article = (
+    <article
+      className={
+        layout ? 'invoice-document letter-sheet-flow' : 'invoice-document'
+      }
+    >
+      {settings.watermarkFileId ? (
+        <img
+          className="invoice-watermark"
+          src={`${fileBase}/${settings.watermarkFileId}`}
+          alt=""
+        />
+      ) : null}
+      <header className="invoice-header">
+        <div>
+          <p className="eyebrow">{title}</p>
+          <h1>{company.companyName}</h1>
+          <p>{company.address}</p>
+          <p>
+            {company.phone} · {company.email}
+          </p>
+        </div>
+        <BrandMark className="invoice-logo" />
+      </header>
+      <div className="invoice-meta">
+        <div>
+          <small>DOCUMENT NUMBER</small>
+          <strong>{number}</strong>
+          <p>{recipient}</p>
+        </div>
+        {stamp && kind !== 'letter' ? (
+          <InvoiceStamp
+            settings={settings}
+            fileBase={fileBase}
+            status={stamp}
           />
         ) : null}
-        <header className="invoice-header">
-          <div>
-            <p className="eyebrow">{title}</p>
-            <h1>{company.companyName}</h1>
-            <p>{company.address}</p>
-            <p>
-              {company.phone} · {company.email}
-            </p>
+        <div>
+          <small>DATE</small>
+          <strong>{dateLabel(date)}</strong>
+        </div>
+      </div>
+      {kind === 'letter' && (body || letterEditor) ? (
+        (letterEditor ?? (body ? <LetterBody body={body} /> : null))
+      ) : (
+        <>
+          <section>
+            <h2>{title}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="numeric">Quantity</th>
+                  <th className="numeric">Unit price</th>
+                  <th className="numeric">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, index) => (
+                  <tr key={index}>
+                    <td>{line.description}</td>
+                    <td className="numeric">
+                      {amountInput(line.quantityMilli)}
+                    </td>
+                    <td className="numeric">{money(line.price)}</td>
+                    <td className="numeric">{money(lineTotal(line))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <div className="invoice-final">
+            <span>Total</span>
+            <strong>{money(total)}</strong>
           </div>
-          <BrandMark className="invoice-logo" />
-        </header>
-        <div className="invoice-meta">
-          <div>
-            <small>DOCUMENT NUMBER</small>
-            <strong>{number}</strong>
-            <p>{recipient}</p>
-          </div>
-          {stamp && kind !== 'letter' ? (
-            <InvoiceStamp
-              settings={settings}
-              fileBase={fileBase}
-              status={stamp}
+          {notes ? <p className="receipt-note">{notes}</p> : null}
+        </>
+      )}
+      <footer className="invoice-footer">
+        <p>Prepared by {company.companyName}</p>
+        <div className="signature-line">
+          {settings.signatureFileId ? (
+            <img
+              className="invoice-signature"
+              src={`${fileBase}/${settings.signatureFileId}`}
+              alt="Authorized signature"
             />
           ) : null}
-          <div>
-            <small>DATE</small>
-            <strong>{dateLabel(date)}</strong>
-          </div>
+          <span className="signature-rule" />
+          <span>{settings.signatureLabel}</span>
         </div>
-        {kind === 'letter' && body ? (
-          <LetterBody body={body} />
-        ) : (
-          <>
-            <section>
-              <h2>{title}</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th className="numeric">Quantity</th>
-                    <th className="numeric">Unit price</th>
-                    <th className="numeric">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, index) => (
-                    <tr key={index}>
-                      <td>{line.description}</td>
-                      <td className="numeric">
-                        {amountInput(line.quantityMilli)}
-                      </td>
-                      <td className="numeric">{money(line.price)}</td>
-                      <td className="numeric">{money(lineTotal(line))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-            <div className="invoice-final">
-              <span>Total</span>
-              <strong>{money(total)}</strong>
-            </div>
-            {notes ? <p className="receipt-note">{notes}</p> : null}
-          </>
-        )}
-        <footer className="invoice-footer">
-          <p>Prepared by {company.companyName}</p>
-          <div className="signature-line">
-            {settings.signatureFileId ? (
-              <img
-                className="invoice-signature"
-                src={`${fileBase}/${settings.signatureFileId}`}
-                alt="Authorized signature"
-              />
-            ) : null}
-            <span className="signature-rule" />
-            <span>{settings.signatureLabel}</span>
-          </div>
-        </footer>
-      </article>
-    </DocumentPreview>
+      </footer>
+    </article>
   );
+  if (layout)
+    return (
+      <LetterSheets layout={layout} editing={letterEditor !== undefined}>
+        {article}
+      </LetterSheets>
+    );
+  return <DocumentPreview>{article}</DocumentPreview>;
 }

@@ -3,6 +3,7 @@ import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 import { readFileSync } from 'node:fs';
 import { paymentAccountSchema } from '../shared/receipts';
+import { defaultLetterLayout } from '../shared/letter';
 const headers = { Origin: 'http://127.0.0.1:5174' };
 async function emptyStyle(cell: Locator) {
   return cell.evaluate((element) => {
@@ -250,8 +251,9 @@ test('bilingual formatted letters preserve whitespace, omit charges and stamps, 
   await body.fill(
     'Dear Sir,  \n\nশ্রদ্ধেয় গ্রাহক, আপনার সহযোগিতার জন্য ধন্যবাদ।\n  With regards,\nHexa Agency',
   );
+  await body.press('Control+End');
   await body.press('Shift+Enter');
-  await body.pressSequentially('PS: Thank you.');
+  await page.keyboard.insertText('PS: Thank you.');
   if (info.project.name === 'mobile')
     await body.evaluate((element) => {
       const range = document.createRange();
@@ -345,4 +347,290 @@ test('bilingual formatted letters preserve whitespace, omit charges and stamps, 
     .filter({ hasText: 'Client letter ' + info.project.name });
   await expect(row).toContainText('Letter document');
   await expect(row).not.toContainText('৳0.00');
+});
+
+test('letter page setup, table controls, images and links survive save and export', async ({
+  page,
+}, info) => {
+  test.setTimeout(180000);
+  await login(page);
+  await page.goto('/manual-invoices');
+  const newDraft = async () => {
+    await page
+      .getByRole('button', { name: 'New invoice', exact: true })
+      .click();
+    const draft = page.getByRole('dialog', { name: 'New manual invoice' });
+    await draft.getByLabel('Document type').selectOption('letter');
+    return draft;
+  };
+  const draft = await newDraft();
+  await draft.getByLabel('Document title').fill('Page setup letter');
+  const body = draft.getByRole('textbox', { name: 'Letter body' });
+  await body.fill('English and বাংলা');
+  await body.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await draft.getByLabel('Font family').selectOption('Georgia');
+  await draft.getByLabel('Font size').selectOption('18pt');
+  await draft.getByLabel('Text alignment').selectOption('center');
+  await draft.getByLabel('Line spacing').selectOption('1.5');
+  await expect(body.locator('[data-letter-font="Georgia"]')).toBeVisible();
+  await draft.getByRole('button', { name: 'Insert link', exact: true }).click();
+  const link = page.getByRole('dialog', { name: 'Insert link', exact: true });
+  await link.getByLabel('Link address').fill('https://example.com/');
+  await link.getByRole('button', { name: 'Apply link' }).click();
+  await expect(body.locator('a')).toHaveAttribute(
+    'href',
+    'https://example.com/',
+  );
+  await body.press('Control+End');
+  await body.press('Enter');
+  await draft
+    .getByRole('button', { name: 'Insert table', exact: true })
+    .click();
+  const table = page.getByRole('dialog', { name: 'Insert table', exact: true });
+  await table.getByLabel('Rows').fill('3');
+  await table.getByLabel('Columns').fill('2');
+  await table
+    .getByRole('button', { name: 'Insert table', exact: true })
+    .click();
+  const cells = body.locator('td');
+  await expect(cells).toHaveCount(6);
+  await cells.first().click();
+  await page.keyboard.insertText('Delivery amount');
+  const tools = draft.getByRole('toolbar', { name: 'Table tools' });
+  await tools
+    .getByRole('button', { name: 'Add row below', exact: true })
+    .click();
+  await expect(cells).toHaveCount(8);
+  await tools
+    .getByRole('button', { name: 'Add column right', exact: true })
+    .click();
+  await expect(cells).toHaveCount(12);
+  await tools.getByLabel('Table borders').selectOption('dashed');
+  await cells.first().click();
+  await tools.getByLabel('Row height').selectOption('64');
+  await tools.getByLabel('Cell alignment').selectOption('bottom');
+  await expect(body.locator('table')).toHaveAttribute(
+    'data-letter-border',
+    'dashed',
+  );
+  await body.press('Control+End');
+  await draft
+    .getByRole('button', { name: 'Insert page break', exact: true })
+    .click();
+  await body.press('Control+End');
+  await page.keyboard.insertText('Second page — ধন্যবাদ');
+  const testImage = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 60;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas is unavailable.');
+    ctx.fillStyle = '#df3100';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL().split(',')[1] ?? '';
+  });
+  await draft.locator('input[type="file"]').setInputFiles({
+    name: 'test-image.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(testImage, 'base64'),
+  });
+  await expect(body.locator('img[alt="test-image.png"]')).toHaveCount(1);
+  await draft.getByRole('button', { name: 'Page setup', exact: true }).click();
+  const setup = page.getByRole('dialog', { name: 'Page setup', exact: true });
+  await setup.getByText('Pageless', { exact: true }).click();
+  await setup.getByText('Landscape', { exact: true }).click();
+  await setup.getByLabel('Paper size').selectOption('Custom');
+  await setup.getByLabel('Width (in)').fill('6');
+  await setup.getByLabel('Height (in)').fill('9');
+  await setup.getByLabel('Top', { exact: true }).fill('0.7');
+  await setup.getByLabel('Page color').fill('#f2f3fa');
+  await setup.getByRole('button', { name: 'Set as Default' }).click();
+  await expect(draft.locator('.letter-pageless')).toBeVisible();
+  await draft
+    .getByRole('button', { name: 'Save invoice', exact: true })
+    .click();
+  await expect(draft).toHaveCount(0);
+  const preview = page.getByRole('dialog', { name: 'Manual invoice preview' });
+  await expect(preview.locator('.letter-sheets-guide')).toContainText(
+    '2 pages',
+  );
+  await expect(preview.locator('.letter-body a')).toHaveAttribute(
+    'href',
+    'https://example.com/',
+  );
+  await expect(preview.locator('.letter-body td').first()).toHaveCSS(
+    'vertical-align',
+    'bottom',
+  );
+  await expect(preview.locator('.letter-body tr').first()).toHaveAttribute(
+    'style',
+    /height:\s*64px/,
+  );
+  await expect(preview.getByText('Second page — ধন্যবাদ')).toHaveCount(1);
+  await expect(preview.locator('.invoice-header')).toHaveCount(1);
+  await expect(preview.locator('.invoice-footer')).toHaveCount(1);
+  await preview.screenshot({
+    path: info.outputPath('letter-layout-preview.png'),
+  });
+  const downloading = page.waitForEvent('download');
+  await preview
+    .getByRole('button', { name: 'Download PDF', exact: true })
+    .click();
+  const pdfFile = info.outputPath('letter-custom.pdf');
+  await (await downloading).saveAs(pdfFile);
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = getDocument({ data: new Uint8Array(readFileSync(pdfFile)) });
+  try {
+    const document = await pdf.promise;
+    expect(document.numPages).toBe(2);
+    const sheet = await document.getPage(1);
+    expect(sheet.view.slice(2)).toEqual([648, 432]);
+    expect(await sheet.getAnnotations()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: 'https://example.com/' }),
+      ]),
+    );
+  } finally {
+    await pdf.destroy();
+  }
+  if (info.project.name === 'desktop') {
+    await page.evaluate(() => {
+      window.print = () => undefined;
+    });
+    await preview.getByRole('button', { name: 'Print', exact: true }).click();
+    const bytes = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+      path: info.outputPath('letter-print.pdf'),
+    });
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    const printed = getDocument({ data: new Uint8Array(bytes) });
+    try {
+      const document = await printed.promise;
+      expect(document.numPages).toBe(2);
+      const first = await document.getPage(1);
+      const second = await document.getPage(2);
+      expect(first.view[2]).toBeCloseTo(648, 0);
+      expect(first.view[3]).toBeCloseTo(432, 0);
+      const text = async (sheet: typeof first) =>
+        (await sheet.getTextContent()).items
+          .map((item) => ('str' in item ? item.str : ''))
+          .join(' ');
+      expect(await text(first)).toContain('Delivery amount');
+      expect(await text(second)).toContain('Second page');
+    } finally {
+      await printed.destroy();
+    }
+  }
+  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  const next = await newDraft();
+  await expect(next.locator('.letter-pageless')).toBeVisible();
+  await next.getByRole('button', { name: 'Page setup', exact: true }).click();
+  await expect(setup.getByLabel('Paper size')).toHaveValue('Custom');
+  await expect(setup.getByLabel('Top', { exact: true })).toHaveValue('0.7');
+});
+
+test('wide, multi-page letter tables fit the sheet and keep their last row', async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name === 'mobile',
+    'Desktop letter pagination and print',
+  );
+  test.setTimeout(120000);
+  await login(page);
+  const title = 'Long delivery table';
+  const response = await page.request.post('/api/manage/manual-invoices', {
+    headers,
+    data: {
+      requestId: crypto.randomUUID(),
+      kind: 'letter',
+      date: '2026-11-26',
+      title,
+      recipient: '',
+      notes: '',
+      pageSetup: { ...defaultLetterLayout, size: 'Statement' },
+      body: {
+        type: 'doc',
+        content: [
+          {
+            type: 'table',
+            attrs: { letterBorder: 'solid' },
+            content: Array.from({ length: 44 }, (_, index) => ({
+              type: 'tableRow',
+              attrs: { letterRowHeight: 38 },
+              content: [`Delivery ${String(index + 1)}`, '৳ 450.00'].map(
+                (text) => ({
+                  type: 'tableCell',
+                  attrs: { colwidth: [650] },
+                  content: [
+                    { type: 'paragraph', content: [{ type: 'text', text }] },
+                  ],
+                }),
+              ),
+            })),
+          },
+        ],
+      },
+    },
+  });
+  expect(response.status()).toBe(201);
+  await page.goto('/manual-invoices');
+  await page
+    .locator('.document-row')
+    .filter({ hasText: title })
+    .getByRole('button', { name: 'View / PDF' })
+    .click();
+  const preview = page.getByRole('dialog', { name: 'Manual invoice preview' });
+  await expect(preview.locator('.letter-sheets-guide')).toContainText(
+    '3 pages',
+  );
+  await expect(preview.locator('table')).toHaveAttribute('data-letter-fit', '');
+  const rows = preview.locator('tr');
+  await expect(rows).toHaveCount(44);
+  expect(
+    await rows.last().evaluate((row) => {
+      const rect = row.getBoundingClientRect();
+      const flow = row.closest('.letter-sheet-flow')?.getBoundingClientRect();
+      return (
+        !!flow &&
+        Math.abs(rect.width - flow.width) < 2 &&
+        rect.left > flow.right
+      );
+    }),
+  ).toBe(true);
+  await page.evaluate(() => {
+    window.print = () => undefined;
+  });
+  await preview.getByRole('button', { name: 'Print', exact: true }).click();
+  const bytes = await page.pdf({
+    preferCSSPageSize: true,
+    printBackground: true,
+    path: info.outputPath('long-table-print.pdf'),
+  });
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('afterprint'));
+  });
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = getDocument({ data: new Uint8Array(bytes) });
+  try {
+    const document = await pdf.promise;
+    expect(document.numPages).toBe(3);
+    const last = await document.getPage(3);
+    expect(last.view[2]).toBeCloseTo(396, 0);
+    const text = (await last.getTextContent()).items
+      .map((item) => ('str' in item ? item.str : ''))
+      .join(' ');
+    expect(text).toContain('Delivery 44');
+  } finally {
+    await pdf.destroy();
+  }
 });

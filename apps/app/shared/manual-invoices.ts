@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { letterDocument, letterText } from './letter';
+import { letterDocument, letterLayout, letterText } from './letter';
 import {
   assertMoney,
   sumMoney,
@@ -14,6 +14,7 @@ export const manualFields = z
     stamp: z.enum(['Paid', 'Unpaid', 'Due']).nullable().default(null),
     kind: z.enum(['itemized', 'letter']).default('itemized'),
     body: letterDocument.nullable().default(null),
+    pageSetup: letterLayout.optional(),
     lines: z
       .array(
         z
@@ -36,11 +37,12 @@ export const manualFields = z
           path: ['lines'],
           message: 'Add at least one item.',
         });
-      if (doc.body !== null)
+      if (doc.body !== null || doc.pageSetup !== undefined)
         ctx.addIssue({
           code: 'custom',
           path: ['body'],
-          message: 'Itemized invoices cannot contain a letter.',
+          message:
+            'Itemized invoices cannot contain letter content or page setup.',
         });
     } else {
       if (

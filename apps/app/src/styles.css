@@ -1127,6 +1127,354 @@ strong {
 .letter-editor-body s {
   text-decoration: line-through;
 }
+@font-face {
+  font-family: 'Letter Arial';
+  src: local('Arial'), local('Liberation Sans');
+  unicode-range: U+0000-024F;
+}
+@font-face {
+  font-family: 'Letter Times';
+  src: local('Times New Roman'), local('Liberation Serif');
+  unicode-range: U+0000-024F;
+}
+@font-face {
+  font-family: 'Letter Georgia';
+  src: local('Georgia'), local('DejaVu Serif');
+  unicode-range: U+0000-024F;
+}
+@font-face {
+  font-family: 'Letter Calibri';
+  src: local('Calibri'), local('Carlito');
+  unicode-range: U+0000-024F;
+}
+.letter-body [data-letter-font='Arial'],
+.letter-editor-body [data-letter-font='Arial'] {
+  font-family:
+    'Letter Arial', 'Manrope Variable', 'Noto Sans Bengali Variable', sans-serif;
+}
+.letter-body [data-letter-font='Times New Roman'],
+.letter-editor-body [data-letter-font='Times New Roman'] {
+  font-family:
+    'Letter Times', 'Manrope Variable', 'Noto Sans Bengali Variable', sans-serif;
+}
+.letter-body [data-letter-font='Georgia'],
+.letter-editor-body [data-letter-font='Georgia'] {
+  font-family:
+    'Letter Georgia', 'Manrope Variable', 'Noto Sans Bengali Variable',
+    sans-serif;
+}
+.letter-body [data-letter-font='Calibri'],
+.letter-editor-body [data-letter-font='Calibri'] {
+  font-family:
+    'Letter Calibri', 'Manrope Variable', 'Noto Sans Bengali Variable',
+    sans-serif;
+}
+.letter-options,
+.letter-margins {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.letter-options {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+.letter-options legend,
+.letter-margins legend {
+  margin: 0 0 8px;
+  font-weight: 650;
+}
+.letter-options input {
+  width: auto;
+  min-height: 0;
+}
+.letter-setup input[type='color'] {
+  padding: 4px;
+}
+.letter-invoice-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 12px;
+}
+.letter-invoice-form > .form-grid {
+  display: contents;
+}
+.letter-invoice-form > :is(.letter-editor, .alert, .primary) {
+  grid-column: 1 / -1;
+}
+.letter-invoice-form > .primary {
+  justify-self: start;
+}
+@media (max-width: 680px) {
+  .letter-invoice-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.letter-sheets {
+  min-width: 0;
+}
+.letter-sheets-guide {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 8px 8px;
+}
+.letter-sheets-viewport {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.letter-paged .letter-sheets-viewport {
+  background: var(--soft);
+}
+.letter-sheets-track {
+  --letter-step: calc(var(--letter-width) + var(--letter-gap));
+  position: relative;
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding: var(--letter-top) 0 var(--letter-bottom) var(--letter-left);
+  zoom: var(--letter-scale);
+}
+.letter-paged .letter-sheets-track {
+  width: calc(var(--letter-step) * var(--letter-pages) - var(--letter-gap));
+  min-height: var(--letter-height);
+  background: repeating-linear-gradient(
+    to right,
+    var(--letter-color) 0 var(--letter-width),
+    transparent var(--letter-width) var(--letter-step)
+  );
+}
+.letter-pageless .letter-sheets-track {
+  padding: 24px clamp(16px, 4vw, 48px);
+  background: var(--letter-color);
+}
+.letter-sheets .letter-sheet-flow {
+  background: transparent;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: block;
+  max-width: none;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+.letter-paged .letter-sheet-flow {
+  width: calc(var(--letter-width) - var(--letter-left) - var(--letter-right));
+  height: calc(var(--letter-height) - var(--letter-top) - var(--letter-bottom));
+  column-count: 1;
+  column-gap: calc(
+    var(--letter-gap) + var(--letter-left) + var(--letter-right)
+  );
+  column-fill: auto;
+}
+.letter-sheets .letter-sheet-flow > :not(.invoice-watermark) {
+  position: static;
+}
+.letter-sheets .invoice-header h1 {
+  font-size: 26px;
+}
+.letter-sheets .invoice-meta strong {
+  font-size: 13px;
+}
+.letter-sheets .invoice-header,
+.letter-sheets .invoice-meta,
+.letter-sheets .invoice-footer {
+  break-inside: avoid;
+}
+.letter-sheets .invoice-footer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.letter-sheets .invoice-watermark {
+  z-index: auto;
+}
+.letter-sheets .letter-editor-body {
+  background: transparent;
+  color: inherit;
+  min-height: 3em;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.letter-sheets .letter-body {
+  padding: 0;
+}
+.letter-sheets [data-letter-break] {
+  display: block;
+  height: 0;
+}
+.letter-paged [data-letter-break] {
+  break-after: column;
+}
+.letter-pageless [data-letter-break] {
+  height: 1px;
+  border-top: 1px dashed #87988e;
+  margin-block: 12px;
+}
+.letter-sheets [data-letter-image] {
+  display: block;
+  max-width: 100%;
+  max-height: min(
+    600px,
+    calc(var(--letter-height) - var(--letter-top) - var(--letter-bottom) - 4px)
+  );
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+  break-inside: avoid;
+}
+.letter-sheets :is(.letter-body, .letter-editor-body) a {
+  color: #174ea6;
+  text-decoration: underline;
+}
+.letter-sheets :is(ul, ol) {
+  padding-inline-start: 1.65em;
+  margin: 0.4em 0;
+}
+.letter-sheets ul[data-type='taskList'] {
+  list-style: none;
+  padding-inline-start: 0;
+}
+.letter-sheets ul[data-type='taskList'] ul[data-type='taskList'] {
+  padding-inline-start: 1.65em;
+}
+.letter-sheets ul[data-type='taskList'] li[data-checked] {
+  display: flex;
+  align-items: start;
+  gap: 0.45em;
+}
+.letter-sheets ul[data-type='taskList'] li[data-checked] > label {
+  flex: 0 0 auto;
+  line-height: 1.8;
+}
+.letter-sheets ul[data-type='taskList'] input {
+  width: auto;
+  min-height: 0;
+  accent-color: #20795f;
+}
+.letter-sheets ul[data-type='taskList'] li[data-checked] > div {
+  min-width: 0;
+  flex: 1;
+}
+.letter-sheets .letter-body [data-type='taskItem'] label {
+  pointer-events: none;
+}
+.letter-sheets .letter-body [data-type='taskItem'] input {
+  display: none;
+}
+.letter-sheets .letter-body li[data-checked] > label::before {
+  content: '□';
+}
+.letter-sheets .letter-body li[data-checked='true'] > label::before {
+  content: '☑';
+}
+.letter-sheets .invoice-document :is(.letter-body, .letter-editor-body) table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  min-width: 0 !important;
+  max-width: 100%;
+  margin-block: 8px;
+}
+.letter-sheets table:not(:has(col[style^='width'])) {
+  width: 100%;
+}
+.letter-sheets table[data-letter-fit] {
+  width: 100% !important;
+}
+.letter-sheets table[data-letter-fit] col {
+  min-width: 0 !important;
+  width: var(--letter-col-fit) !important;
+}
+.letter-sheets :is(tr, li) {
+  break-inside: avoid;
+}
+.letter-sheets
+  .invoice-document
+  :is(.letter-body, .letter-editor-body)
+  :is(td, th) {
+  font: inherit;
+  position: relative;
+  min-width: 0;
+  padding: 4px 6px;
+  border-width: 0 1px 1px 0;
+  border-color: #a7b8ac;
+  border-style: var(--letter-border, solid);
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.letter-sheets :is(td, th):first-child {
+  border-left-width: 1px !important;
+}
+.letter-sheets tr:first-child > :is(td, th) {
+  border-top-width: 1px !important;
+}
+.letter-sheets table[data-letter-border='none'] {
+  --letter-border: none;
+}
+.letter-sheets table[data-letter-border='dashed'] {
+  --letter-border: dashed;
+}
+.letter-sheets table[data-letter-border='dotted'] {
+  --letter-border: dotted;
+}
+.letter-sheets .column-resize-handle {
+  background: #20795f;
+  position: absolute;
+  inset: 0 -2px 0 auto;
+  width: 4px;
+  pointer-events: none;
+}
+.letter-sheets .resize-cursor {
+  cursor: col-resize;
+}
+.letter-sheets .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #20795f30;
+  pointer-events: none;
+}
+@media print {
+  dialog[open]:has(.letter-saved) > .business-dialog-heading {
+    display: none !important;
+  }
+  dialog[open]:has(.letter-saved) {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .letter-saved .letter-sheets-viewport,
+  .letter-saved .letter-sheets-track {
+    display: contents;
+  }
+  .letter-saved .letter-sheet-flow {
+    display: block;
+    column-count: auto;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    box-shadow: none;
+    print-color-adjust: exact;
+  }
+  body:has(.letter-saved) {
+    background: var(--letter-print-color, white);
+    print-color-adjust: exact;
+  }
+  .letter-saved [data-letter-break] {
+    break-after: page;
+  }
+}
 .brand-row.document-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
