@@ -24,4 +24,17 @@ export function applyLetterInlineStyles(root: Element) {
       if (value) element.style.setProperty(key, value);
     }
   }
+  for (const node of root.querySelectorAll<HTMLElement>(
+    '[data-letter-google]',
+  )) {
+    const family = node.dataset['letterFont'];
+    if (!family || !googleFontVariants(family)) continue;
+    const alias = JSON.stringify(googleFontAlias(family));
+    if (node.style.getPropertyValue('--letter-google-family') !== alias)
+      node.style.setProperty('--letter-google-family', alias);
+  }
 }
+import {
+  googleFontAlias,
+  googleFontVariants,
+} from '../../../shared/letter-fonts';

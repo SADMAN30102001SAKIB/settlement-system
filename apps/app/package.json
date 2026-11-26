@@ -6,6 +6,7 @@
     "dev": "cf dev",
     "preview": "vite preview",
     "build": "cf build",
+    "fonts:refresh": "node tools/update-letter-fonts.mjs",
     "types": "cf workers types",
     "db:migrate:local": "cf d1 migrations apply 00000000-0000-4000-8000-000000000001 --mode development --local --persist-to .cloudflare/state --dir ../../packages/database/migrations",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.e2e.json",

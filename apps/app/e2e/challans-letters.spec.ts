@@ -364,7 +364,8 @@ test('letter page setup, table controls, images and links survive save and expor
     return draft;
   };
   const draft = await newDraft();
-  await draft.getByLabel('Document title').fill('Page setup letter');
+  const title = `Page setup letter ${info.project.name}`;
+  await draft.getByLabel('Document title').fill(title);
   const body = draft.getByRole('textbox', { name: 'Letter body' });
   await body.fill('English and বাংলা');
   await body.evaluate((element) => {
@@ -374,11 +375,41 @@ test('letter page setup, table controls, images and links survive save and expor
     selection?.removeAllRanges();
     selection?.addRange(range);
   });
-  await draft.getByLabel('Font family').selectOption('Georgia');
+  const toolbar = draft.getByRole('toolbar', { name: 'Letter formatting' });
+  await toolbar.getByRole('button', { name: 'Font family' }).click();
+  const picker = page.getByRole('dialog', { name: 'Choose a font' });
+  expect(await picker.getByRole('option').count()).toBeGreaterThan(1900);
+  await picker.getByLabel('Search fonts').fill('no-such-letter-font');
+  await expect(picker.getByRole('status')).toContainText('No fonts match');
+  await picker.getByLabel('Search fonts').fill('Lora');
+  await picker.getByLabel('Font results').selectOption('Lora');
+  await picker.getByRole('button', { name: 'Apply font' }).click();
+  await expect(picker).toHaveCount(0);
   await draft.getByLabel('Font size').selectOption('18pt');
   await draft.getByLabel('Text alignment').selectOption('center');
   await draft.getByLabel('Line spacing').selectOption('1.5');
-  await expect(body.locator('[data-letter-font="Georgia"]')).toBeVisible();
+  const selectedFont = body.locator('[data-letter-font="Lora"]');
+  await expect(selectedFont).toHaveCSS('font-family', /Hexa Google Lora/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...document.fonts].some(
+          (face) =>
+            face.family.includes('Hexa Google Lora') &&
+            face.status === 'loaded',
+        ),
+      ),
+    )
+    .toBe(true);
+  expect(
+    await toolbar.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await toolbar.evaluate((element) => {
+    element.scrollIntoView({ block: 'center' });
+  });
+  await toolbar.screenshot({ path: info.outputPath('letter-toolbar.png') });
   await draft.getByRole('button', { name: 'Insert link', exact: true }).click();
   const link = page.getByRole('dialog', { name: 'Insert link', exact: true });
   await link.getByLabel('Link address').fill('https://example.com/');
@@ -420,6 +451,7 @@ test('letter page setup, table controls, images and links survive save and expor
     'dashed',
   );
   await body.press('Control+End');
+  await toolbar.getByLabel('More formatting').click();
   await draft
     .getByRole('button', { name: 'Insert page break', exact: true })
     .click();
@@ -475,6 +507,9 @@ test('letter page setup, table controls, images and links survive save and expor
   await expect(preview.getByText('Second page — ধন্যবাদ')).toHaveCount(1);
   await expect(preview.locator('.invoice-header')).toHaveCount(1);
   await expect(preview.locator('.invoice-footer')).toHaveCount(1);
+  await expect(
+    preview.locator('.letter-body [data-letter-font="Lora"]').first(),
+  ).toHaveCSS('font-family', /Hexa Google Lora/);
   await preview.screenshot({
     path: info.outputPath('letter-layout-preview.png'),
   });
@@ -501,9 +536,15 @@ test('letter page setup, table controls, images and links survive save and expor
   }
   if (info.project.name === 'desktop') {
     await page.evaluate(() => {
-      window.print = () => undefined;
+      window.print = () => {
+        document.documentElement.dataset['letterPrintReady'] = 'true';
+      };
     });
     await preview.getByRole('button', { name: 'Print', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-letter-print-ready',
+      'true',
+    );
     const bytes = await page.pdf({
       preferCSSPageSize: true,
       printBackground: true,
@@ -530,6 +571,27 @@ test('letter page setup, table controls, images and links survive save and expor
       await printed.destroy();
     }
   }
+  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await page
+    .locator('.document-row')
+    .filter({ hasText: title })
+    .getByRole('button', { name: 'View / PDF' })
+    .click();
+  await expect(
+    preview.locator('.letter-body [data-letter-font="Lora"]').first(),
+  ).toHaveCSS('font-family', /Hexa Google Lora/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...document.fonts].some(
+          (face) =>
+            face.family.includes('Hexa Google Lora') &&
+            face.status === 'loaded',
+        ),
+      ),
+    )
+    .toBe(true);
   await preview.getByRole('button', { name: 'Close', exact: true }).click();
   const next = await newDraft();
   await expect(next.locator('.letter-pageless')).toBeVisible();

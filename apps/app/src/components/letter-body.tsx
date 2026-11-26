@@ -3,13 +3,17 @@ import { generateHTML } from '@tiptap/core';
 import type { LetterDocument } from '../../shared/letter';
 import { letterExtensions } from '../features/manual/letter-extensions';
 import { applyLetterInlineStyles } from '../features/manual/letter-inline-styles';
+import { prepareLetterFonts } from '../features/manual/letter-font-loading';
 import '@fontsource-variable/noto-sans-bengali';
 
 export function LetterBody({ body }: { body: LetterDocument }) {
   const html = useMemo(() => generateHTML(body, letterExtensions()), [body]);
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    if (root.current) applyLetterInlineStyles(root.current);
+    if (root.current) {
+      applyLetterInlineStyles(root.current);
+      void prepareLetterFonts(root.current).catch(() => undefined);
+    }
   }, [html]);
   return (
     <div

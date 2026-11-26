@@ -1066,9 +1066,157 @@ strong {
 .letter-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: end;
+  gap: 6px;
+  align-items: center;
   margin-bottom: 12px;
+}
+.letter-format-toolbar {
+  gap: 4px 0;
+  padding: 5px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.letter-tool-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding-inline: 3px;
+}
+.letter-tool-group + .letter-tool-group {
+  border-inline-start: 1px solid var(--line);
+}
+.letter-tool-end {
+  margin-inline-start: auto;
+}
+.letter-tool,
+.letter-format-toolbar label.letter-tool-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.letter-tool:not(.letter-font-trigger):has(> svg) {
+  width: 34px;
+  padding-inline: 0;
+}
+.letter-tool:not(.letter-font-trigger):has(> svg) > span {
+  display: none;
+}
+.letter-tool:hover:not(:disabled),
+.letter-tool-choice:hover,
+.letter-more[open] > summary {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.letter-tool:focus-visible,
+.letter-tool-choice:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.letter-tool[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+.letter-tool:disabled {
+  opacity: 0.44;
+}
+.letter-font-trigger {
+  max-width: 124px;
+}
+.letter-font-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.letter-font-trigger svg,
+.letter-tool-choice svg {
+  flex: 0 0 auto;
+}
+.letter-format-toolbar label.letter-tool-choice {
+  position: relative;
+  padding-inline: 5px 1px;
+}
+.letter-format-toolbar .letter-tool-choice::after {
+  content: '';
+  position: absolute;
+  inset-inline-end: 7px;
+  top: calc(50% - 4px);
+  width: 5px;
+  height: 5px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.letter-format-toolbar .letter-tool-choice select {
+  appearance: none;
+  width: 62px;
+  min-height: 32px;
+  padding: 2px 15px 2px 4px;
+  font-size: 12px;
+  background: transparent;
+  border-color: transparent;
+}
+.letter-format-toolbar .letter-tool-choice select[title='Text alignment'] {
+  width: 69px;
+}
+.letter-more {
+  position: relative;
+}
+.letter-more > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.letter-more > summary::-webkit-details-marker {
+  display: none;
+}
+.letter-more-panel {
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: 0;
+  top: calc(100% + 4px);
+  display: grid;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 8px 24px #0002;
+}
+.letter-more-panel .letter-tool {
+  justify-content: start;
+}
+.letter-table-tools {
+  align-items: end;
+  padding: 5px;
+  border-bottom: 1px solid var(--line);
+}
+.letter-table-tools .letter-tool {
+  border-color: var(--line);
+}
+.letter-font-picker select[size] {
+  padding: 4px;
+}
+.letter-font-picker option {
+  padding: 6px 8px;
+}
+@media (max-width: 680px) {
+  .letter-tool,
+  .letter-format-toolbar label.letter-tool-choice {
+    min-height: 40px;
+  }
+  .letter-tool:not(.letter-font-trigger):has(> svg) {
+    width: 40px;
+  }
 }
 .letter-toolbar label {
   display: grid;
@@ -1080,11 +1228,6 @@ strong {
   max-width: 140px;
   min-height: 36px;
   padding: 6px 10px;
-}
-.letter-toolbar .secondary[aria-pressed='true'] {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: inset 0 0 0 1px currentColor;
 }
 .letter-body,
 .letter-editor-body {
@@ -1168,6 +1311,13 @@ strong {
   font-family:
     'Letter Calibri', 'Manrope Variable', 'Noto Sans Bengali Variable',
     sans-serif;
+}
+.letter-body [data-letter-google],
+.letter-editor-body [data-letter-google] {
+  font-family:
+    var(--letter-google-family, 'Manrope Variable'), 'Manrope Variable',
+    'Noto Sans Bengali Variable', sans-serif;
+  font-synthesis: weight style;
 }
 .letter-options,
 .letter-margins {

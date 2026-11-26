@@ -11,11 +11,11 @@ import { FontSize } from '@tiptap/extension-text-style/font-size';
 import {
   letterAlignments,
   letterBorders,
-  letterFonts,
   letterImageSource,
   letterLink,
   letterSpacings,
 } from '../../../shared/letter';
+import { googleFontVariants, isLetterFont } from '../../../shared/letter-fonts';
 
 class LetterTableView extends TableView {
   constructor(node: ProseMirrorNode, min: number, view?: EditorView) {
@@ -34,13 +34,19 @@ const LetterFormatting = Extension.create({
         attributes: {
           fontFamily: {
             default: null,
-            parseHTML: (el: HTMLElement) =>
-              letterFonts.find((font) => font === el.dataset['letterFont']) ??
-              null,
+            parseHTML: (el: HTMLElement) => {
+              const family = el.dataset['letterFont'];
+              return family && isLetterFont(family) ? family : null;
+            },
             renderHTML: (attrs: Record<string, unknown>) => {
               const family = attrs['fontFamily'];
-              return letterFonts.some((font) => font === family)
-                ? { 'data-letter-font': family }
+              return typeof family === 'string' && isLetterFont(family)
+                ? {
+                    'data-letter-font': family,
+                    ...(googleFontVariants(family)
+                      ? { 'data-letter-google': '' }
+                      : {}),
+                  }
                 : {};
             },
           },

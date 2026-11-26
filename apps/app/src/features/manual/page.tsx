@@ -26,6 +26,7 @@ import { downloadDocument } from '../../lib/pdf';
 import { LetterEditor } from './letter-editor';
 import { newLetterLayout } from './letter-layout';
 import { downloadLetter, printLetter } from './letter-output';
+import { prepareLetterFonts } from './letter-font-loading';
 import { defaultLetterLayout } from '../../../shared/letter';
 import type { JSONContent } from '@tiptap/react';
 const emptyLetter: JSONContent = {
@@ -509,9 +510,27 @@ export function ManualInvoices({ settings }: { settings: Settings }) {
             </button>
             <button
               className="secondary"
+              disabled={pending}
               onClick={() => {
-                if (view.pageSetup) printLetter(view.pageSetup);
-                else window.print();
+                const root = paper.current;
+                const layout = view.pageSetup;
+                const print = () => {
+                  if (layout) printLetter(layout);
+                  else window.print();
+                };
+                if (!root?.querySelector('[data-letter-google]')) {
+                  print();
+                  return;
+                }
+                setPending(true);
+                prepareLetterFonts(root)
+                  .then(print)
+                  .catch((reason: unknown) => {
+                    setError(ErrorMessage(reason));
+                  })
+                  .finally(() => {
+                    setPending(false);
+                  });
               }}
             >
               Print

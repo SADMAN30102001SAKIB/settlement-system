@@ -7,6 +7,7 @@ import {
   sheetMetrics,
 } from './letter-layout';
 import { applyLetterInlineStyles } from './letter-inline-styles';
+import { prepareLetterFonts } from './letter-font-loading';
 
 export function printLetter(layout: LetterLayout) {
   const { width, height } = paperDimensions(layout);
@@ -47,7 +48,7 @@ export async function downloadLetter(
       { cause },
     );
   });
-  await document.fonts.ready;
+  await prepareLetterFonts(track);
   await Promise.all(
     [...track.querySelectorAll('img')].map((image) =>
       image.decode().catch(() => undefined),
@@ -86,7 +87,9 @@ export async function downloadLetter(
       backgroundColor: layout.color,
       logging: false,
       windowWidth: 1440,
-      onclone: (cloned) => {
+      // html2canvas awaits this callback at runtime even though its types specify void.
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
+      onclone: async (cloned) => {
         const view = cloned.querySelector<HTMLElement>(
           '.letter-saved .letter-sheets-viewport',
         );
@@ -98,6 +101,7 @@ export async function downloadLetter(
         if (target) {
           target.style.background = 'none';
           applyLetterInlineStyles(target);
+          await prepareLetterFonts(target);
           const rendered =
             target.querySelector<HTMLElement>('.letter-sheet-flow');
           if (rendered) fitLetterTables(rendered);

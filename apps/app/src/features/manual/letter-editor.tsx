@@ -6,7 +6,6 @@ import type { JSONContent } from '@tiptap/react';
 import {
   letterAlignments,
   letterBorders,
-  letterFonts,
   letterImageSource,
   letterLink,
   letterSpacings,
@@ -18,6 +17,9 @@ import { formText } from '../../lib/format';
 import { letterExtensions } from './letter-extensions';
 import { applyLetterInlineStyles } from './letter-inline-styles';
 import { LetterPageSetup } from './letter-page-setup';
+import { LetterFontPicker } from './letter-font-picker';
+import { LetterToolbarIcon } from './letter-toolbar-icon';
+import { prepareLetterFonts } from './letter-font-loading';
 
 async function letterImage(file: File) {
   if (
@@ -76,7 +78,9 @@ export function LetterEditor({
   onLayout: (value: LetterLayout) => void;
   renderSurface: (editor: ReactNode) => ReactNode;
 }) {
-  const [dialog, setDialog] = useState<'setup' | 'table' | 'link' | null>(null);
+  const [dialog, setDialog] = useState<
+    'setup' | 'table' | 'link' | 'font' | null
+  >(null);
   const [imagePending, setImagePending] = useState(false);
   const [error, setError] = useState('');
   const imageInput = useRef<HTMLInputElement>(null);
@@ -110,6 +114,7 @@ export function LetterEditor({
       attributeFilter: ['style'],
     });
     apply();
+    void prepareLetterFonts(current).catch(() => undefined);
     return () => {
       observer.disconnect();
     };
@@ -166,15 +171,21 @@ export function LetterEditor({
     return (
       <button
         type="button"
-        className="secondary compact"
+        className="letter-tool"
+        title={label}
+        aria-label={label}
         aria-pressed={pressed}
         disabled={locked || unavailable}
         onMouseDown={(event) => {
           event.preventDefault();
         }}
-        onClick={action}
+        onClick={(event) => {
+          event.currentTarget.closest('details')?.removeAttribute('open');
+          action();
+        }}
       >
-        {label}
+        <LetterToolbarIcon name={label} />
+        <span>{label}</span>
       </button>
     );
   }
@@ -198,289 +209,343 @@ export function LetterEditor({
   return (
     <div className="letter-editor">
       <div
-        className="letter-toolbar"
+        className="letter-toolbar letter-format-toolbar"
         role="toolbar"
         aria-label="Letter formatting"
       >
-        <label>
-          Font family
-          <select
-            value={active.font}
-            disabled={locked}
-            onChange={(event) => {
-              const value = event.currentTarget.value || null;
-              editor
-                .chain()
-                .focus()
-                .setMark('textStyle', { fontFamily: value })
-                .removeEmptyTextStyle()
-                .run();
-            }}
-          >
-            <option value="">Default</option>
-            {letterFonts.map((font) => (
-              <option key={font}>{font}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Font size
-          <select
-            value={active.fontSize}
-            disabled={locked}
-            onChange={(event) => {
-              const chain = editor.chain().focus();
-              if (event.currentTarget.value)
-                chain.setFontSize(event.currentTarget.value).run();
-              else chain.unsetFontSize().run();
-            }}
-          >
-            <option value="">Default</option>
-            {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72].map(
-              (size) => (
-                <option key={size} value={`${String(size)}pt`}>
-                  {size} pt
-                </option>
-              ),
-            )}
-          </select>
-        </label>
-        {(['bold', 'italic', 'underline', 'strike'] as const).map((mark) => (
+        <div className="letter-tool-group">
+          {button(
+            'Undo',
+            () => {
+              editor.chain().focus().undo().run();
+            },
+            undefined,
+            !active.undo,
+          )}
+          {button(
+            'Redo',
+            () => {
+              editor.chain().focus().redo().run();
+            },
+            undefined,
+            !active.redo,
+          )}
+        </div>
+        <div className="letter-tool-group">
           <button
             type="button"
-            className="secondary compact"
-            key={mark}
-            aria-label={
-              mark === 'strike'
-                ? 'Strikethrough'
-                : mark.charAt(0).toUpperCase() + mark.slice(1)
-            }
-            aria-pressed={active[mark]}
+            className="letter-tool letter-font-trigger"
+            aria-label="Font family"
+            aria-haspopup="dialog"
+            title={active.font || 'Choose font family'}
             disabled={locked}
             onMouseDown={(event) => {
               event.preventDefault();
             }}
             onClick={() => {
-              const chain = editor.chain().focus();
-              if (mark === 'bold') chain.toggleBold().run();
-              else if (mark === 'italic') chain.toggleItalic().run();
-              else if (mark === 'underline') chain.toggleUnderline().run();
-              else chain.toggleStrike().run();
+              setDialog('font');
             }}
           >
-            {mark === 'strike'
-              ? 'Strike'
-              : mark.charAt(0).toUpperCase() + mark.slice(1)}
+            <span>{active.font || 'Default font'}</span>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path d="m4 6 4 4 4-4" />
+            </svg>
           </button>
-        ))}
-        <label>
-          Text color
-          <select
-            aria-label="Letter text color"
-            value={active.color}
-            disabled={locked}
-            onChange={(e) => {
-              const chain = editor.chain().focus();
-              if (e.target.value) chain.setColor(e.target.value).run();
-              else chain.unsetColor().run();
-            }}
-          >
-            <option value="">Default</option>
-            <option value="#172e28">Black</option>
-            <option value="#174ea6">Blue</option>
-            <option value="#b3261e">Red</option>
-            <option value="#176b52">Green</option>
-            {active.color &&
-            !['#172e28', '#174ea6', '#b3261e', '#176b52'].includes(
-              active.color,
-            ) ? (
-              <option value={active.color}>Custom</option>
-            ) : null}
-          </select>
-        </label>
-        <label>
-          Highlight
-          <select
-            aria-label="Letter highlight"
-            value={active.background}
-            disabled={locked}
-            onChange={(e) => {
-              const chain = editor.chain().focus();
-              if (e.target.value)
-                chain.setBackgroundColor(e.target.value).run();
-              else chain.unsetBackgroundColor().run();
-            }}
-          >
-            <option value="">None</option>
-            <option value="#fff3a3">Yellow</option>
-            <option value="#d8edcc">Green</option>
-            <option value="#d9e8ff">Blue</option>
-            {active.background &&
-            !['#fff3a3', '#d8edcc', '#d9e8ff'].includes(active.background) ? (
-              <option value={active.background}>Custom</option>
-            ) : null}
-          </select>
-        </label>
-        <label>
-          Text alignment
-          <select
-            value={active.align}
-            disabled={locked}
-            onChange={(event) => {
-              editor
-                .chain()
-                .focus()
-                .updateAttributes('paragraph', {
-                  textAlign: event.currentTarget.value || null,
-                })
-                .run();
-            }}
-          >
-            <option value="">Default</option>
-            {letterAlignments.map((align) => (
-              <option key={align} value={align}>
-                {align.charAt(0).toUpperCase() + align.slice(1)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Line spacing
-          <select
-            value={active.spacing}
-            disabled={locked}
-            onChange={(event) => {
-              editor
-                .chain()
-                .focus()
-                .updateAttributes('paragraph', {
-                  lineSpacing: Number(event.currentTarget.value) || null,
-                })
-                .run();
-            }}
-          >
-            <option value="">Default</option>
-            {letterSpacings.map((spacing) => (
-              <option key={spacing}>{spacing}</option>
-            ))}
-          </select>
-        </label>
-        {button(
-          'Insert link',
-          () => {
-            setDialog('link');
-          },
-          !!active.link,
-        )}
-        {button(imagePending ? 'Adding image…' : 'Insert image', () => {
-          imageInput.current?.click();
-        })}
-        <input
-          ref={imageInput}
-          hidden
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          aria-label="Upload letter image"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            if (!file) return;
-            setError('');
-            setImagePending(true);
-            void letterImage(file)
-              .then((attrs) => {
+          <label className="letter-tool-choice">
+            <span className="sr-only">Font size</span>
+            <select
+              title="Font size"
+              value={active.fontSize}
+              disabled={locked}
+              onChange={(event) => {
+                const chain = editor.chain().focus();
+                if (event.currentTarget.value)
+                  chain.setFontSize(event.currentTarget.value).run();
+                else chain.unsetFontSize().run();
+              }}
+            >
+              <option value="">Default</option>
+              {[
+                8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72,
+              ].map((size) => (
+                <option key={size} value={`${String(size)}pt`}>
+                  {size} pt
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="letter-tool-group">
+          {(['bold', 'italic', 'underline', 'strike'] as const).map((mark) => (
+            <button
+              type="button"
+              className="letter-tool"
+              key={mark}
+              title={
+                mark === 'strike'
+                  ? 'Strikethrough'
+                  : mark.charAt(0).toUpperCase() + mark.slice(1)
+              }
+              aria-label={
+                mark === 'strike'
+                  ? 'Strikethrough'
+                  : mark.charAt(0).toUpperCase() + mark.slice(1)
+              }
+              aria-pressed={active[mark]}
+              disabled={locked}
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                const chain = editor.chain().focus();
+                if (mark === 'bold') chain.toggleBold().run();
+                else if (mark === 'italic') chain.toggleItalic().run();
+                else if (mark === 'underline') chain.toggleUnderline().run();
+                else chain.toggleStrike().run();
+              }}
+            >
+              <LetterToolbarIcon
+                name={
+                  mark === 'strike'
+                    ? 'Strikethrough'
+                    : mark.charAt(0).toUpperCase() + mark.slice(1)
+                }
+              />
+            </button>
+          ))}
+        </div>
+        <div className="letter-tool-group">
+          <label className="letter-tool-choice">
+            <LetterToolbarIcon name="Letter text color" />
+            <select
+              title="Text color"
+              aria-label="Letter text color"
+              value={active.color}
+              disabled={locked}
+              onChange={(e) => {
+                const chain = editor.chain().focus();
+                if (e.target.value) chain.setColor(e.target.value).run();
+                else chain.unsetColor().run();
+              }}
+            >
+              <option value="">Default</option>
+              <option value="#172e28">Black</option>
+              <option value="#174ea6">Blue</option>
+              <option value="#b3261e">Red</option>
+              <option value="#176b52">Green</option>
+              {active.color &&
+              !['#172e28', '#174ea6', '#b3261e', '#176b52'].includes(
+                active.color,
+              ) ? (
+                <option value={active.color}>Custom</option>
+              ) : null}
+            </select>
+          </label>
+          <label className="letter-tool-choice">
+            <LetterToolbarIcon name="Letter highlight" />
+            <select
+              title="Highlight"
+              aria-label="Letter highlight"
+              value={active.background}
+              disabled={locked}
+              onChange={(e) => {
+                const chain = editor.chain().focus();
+                if (e.target.value)
+                  chain.setBackgroundColor(e.target.value).run();
+                else chain.unsetBackgroundColor().run();
+              }}
+            >
+              <option value="">None</option>
+              <option value="#fff3a3">Yellow</option>
+              <option value="#d8edcc">Green</option>
+              <option value="#d9e8ff">Blue</option>
+              {active.background &&
+              !['#fff3a3', '#d8edcc', '#d9e8ff'].includes(active.background) ? (
+                <option value={active.background}>Custom</option>
+              ) : null}
+            </select>
+          </label>
+        </div>
+        <div className="letter-tool-group">
+          <label className="letter-tool-choice">
+            <LetterToolbarIcon name="Text alignment" />
+            <select
+              aria-label="Text alignment"
+              title="Text alignment"
+              value={active.align}
+              disabled={locked}
+              onChange={(event) => {
                 editor
                   .chain()
                   .focus()
-                  .insertContent({ type: 'letterImage', attrs })
+                  .updateAttributes('paragraph', {
+                    textAlign: event.currentTarget.value || null,
+                  })
                   .run();
-              })
-              .catch((reason: unknown) => {
-                setError(ErrorMessage(reason));
-              })
-              .finally(() => {
-                setImagePending(false);
-              });
-          }}
-        />
-        {button(
-          'Checklist',
-          () => {
-            editor.chain().focus().toggleTaskList().run();
-          },
-          active.checklist,
-        )}
-        {button(
-          'Bulleted list',
-          () => {
-            editor.chain().focus().toggleBulletList().run();
-          },
-          active.bullet,
-        )}
-        {button(
-          'Numbered list',
-          () => {
-            editor.chain().focus().toggleOrderedList().run();
-          },
-          active.numbered,
-        )}
-        {button('Decrease indent', () => {
-          indent(-1);
-        })}
-        {button('Increase indent', () => {
-          indent(1);
-        })}
-        {button('Clear formatting', () => {
-          editor
-            .chain()
-            .focus()
-            .unsetAllMarks()
-            .updateAttributes('paragraph', {
-              textAlign: null,
-              lineSpacing: null,
-              indent: null,
-            })
-            .run();
-        })}
-        {button(
-          'Undo',
-          () => {
-            editor.chain().focus().undo().run();
-          },
-          undefined,
-          !active.undo,
-        )}
-        {button(
-          'Redo',
-          () => {
-            editor.chain().focus().redo().run();
-          },
-          undefined,
-          !active.redo,
-        )}
-        {button(
-          'Insert table',
-          () => {
-            setDialog('table');
-          },
-          undefined,
-          active.table,
-        )}
-        {button(
-          'Insert page break',
-          () => {
-            editor
-              .chain()
-              .focus()
-              .insertContent([{ type: 'pageBreak' }, { type: 'paragraph' }])
-              .run();
-          },
-          undefined,
-          active.table || active.bullet || active.numbered || active.checklist,
-        )}
-        {button('Page setup', () => {
-          setDialog('setup');
-        })}
+              }}
+            >
+              <option value="">Default</option>
+              {letterAlignments.map((align) => (
+                <option key={align} value={align}>
+                  {align.charAt(0).toUpperCase() + align.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="letter-tool-choice">
+            <LetterToolbarIcon name="Line spacing" />
+            <select
+              aria-label="Line spacing"
+              title="Line spacing"
+              value={active.spacing}
+              disabled={locked}
+              onChange={(event) => {
+                editor
+                  .chain()
+                  .focus()
+                  .updateAttributes('paragraph', {
+                    lineSpacing: Number(event.currentTarget.value) || null,
+                  })
+                  .run();
+              }}
+            >
+              <option value="">Default</option>
+              {letterSpacings.map((spacing) => (
+                <option key={spacing}>{spacing}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="letter-tool-group">
+          {button(
+            'Insert link',
+            () => {
+              setDialog('link');
+            },
+            !!active.link,
+          )}
+          {button(imagePending ? 'Adding image…' : 'Insert image', () => {
+            imageInput.current?.click();
+          })}
+          <input
+            ref={imageInput}
+            hidden
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-label="Upload letter image"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (!file) return;
+              setError('');
+              setImagePending(true);
+              void letterImage(file)
+                .then((attrs) => {
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContent({ type: 'letterImage', attrs })
+                    .run();
+                })
+                .catch((reason: unknown) => {
+                  setError(ErrorMessage(reason));
+                })
+                .finally(() => {
+                  setImagePending(false);
+                });
+            }}
+          />
+          {button(
+            'Insert table',
+            () => {
+              setDialog('table');
+            },
+            undefined,
+            active.table,
+          )}
+        </div>
+        <div className="letter-tool-group">
+          {button(
+            'Checklist',
+            () => {
+              editor.chain().focus().toggleTaskList().run();
+            },
+            active.checklist,
+          )}
+          {button(
+            'Bulleted list',
+            () => {
+              editor.chain().focus().toggleBulletList().run();
+            },
+            active.bullet,
+          )}
+          {button(
+            'Numbered list',
+            () => {
+              editor.chain().focus().toggleOrderedList().run();
+            },
+            active.numbered,
+          )}
+        </div>
+        <div className="letter-tool-group letter-tool-end">
+          <details className="letter-more">
+            <summary
+              className="letter-tool"
+              aria-label="More formatting"
+              title="More formatting"
+            >
+              <LetterToolbarIcon name="More formatting" />
+            </summary>
+            <div className="letter-more-panel">
+              {button('Decrease indent', () => {
+                indent(-1);
+              })}
+              {button('Increase indent', () => {
+                indent(1);
+              })}
+              {button('Clear formatting', () => {
+                editor
+                  .chain()
+                  .focus()
+                  .unsetAllMarks()
+                  .updateAttributes('paragraph', {
+                    textAlign: null,
+                    lineSpacing: null,
+                    indent: null,
+                  })
+                  .run();
+              })}
+              {button(
+                'Insert page break',
+                () => {
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContent([
+                      { type: 'pageBreak' },
+                      { type: 'paragraph' },
+                    ])
+                    .run();
+                },
+                undefined,
+                active.table ||
+                  active.bullet ||
+                  active.numbered ||
+                  active.checklist,
+              )}
+            </div>
+          </details>
+          {button('Page setup', () => {
+            setDialog('setup');
+          })}
+        </div>
       </div>
       {active.table ? (
         <div
@@ -600,6 +665,21 @@ export function LetterEditor({
       {renderSurface(
         <EditorContent className="letter-edit-content" editor={editor} />,
       )}
+      {dialog === 'font' ? (
+        <LetterFontPicker
+          current={active.font}
+          onClose={close}
+          onChoose={(family) => {
+            close();
+            editor
+              .chain()
+              .focus()
+              .setMark('textStyle', { fontFamily: family || null })
+              .removeEmptyTextStyle()
+              .run();
+          }}
+        />
+      ) : null}
       {dialog === 'setup' ? (
         <LetterPageSetup
           value={layout}

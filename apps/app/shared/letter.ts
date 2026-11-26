@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isLetterFont } from './letter-fonts';
 
 export const paperSizes = {
   Letter: [8.5, 11],
@@ -11,12 +12,6 @@ export const paperSizes = {
   A4: [210 / 25.4, 297 / 25.4],
   A5: [148 / 25.4, 210 / 25.4],
 } as const;
-export const letterFonts = [
-  'Arial',
-  'Times New Roman',
-  'Georgia',
-  'Calibri',
-] as const;
 export const letterAlignments = ['left', 'center', 'right', 'justify'] as const;
 export const letterSpacings = [1, 1.15, 1.5, 1.8, 2] as const;
 export const letterBorders = ['none', 'solid', 'dashed', 'dotted'] as const;
@@ -108,7 +103,11 @@ const mark = z.union([
     attrs: z.strictObject({
       color: optionalColor,
       backgroundColor: optionalColor,
-      fontFamily: z.enum(letterFonts).nullish(),
+      fontFamily: z
+        .string()
+        .max(100)
+        .refine(isLetterFont, 'Unknown letter font.')
+        .nullish(),
       fontSize: z.preprocess(
         (value) => (value === '' ? null : value),
         z
